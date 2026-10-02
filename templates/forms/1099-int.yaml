@@ -1,0 +1,9 @@
+# Form 1099-INT, IRS box labels. One file per layout; list every tax year it covers.
+form: 1099-INT
+years: [2024, 2025, 2026]
+match: ["1099-INT"]
+boxes:
+  "1": {label: "Interest income", pattern: "\\b1 Interest income\\s+AMOUNT", required: true}
+  "3": {label: "Interest on U.S. Savings Bonds and Treasury obligations", pattern: "\\b3 Interest on U\\.?S\\.? Savings Bonds[^\\n]*?\\s+AMOUNT"}
+  "4": {label: "Federal income tax withheld", pattern: "\\b4 Federal income tax withheld\\s+AMOUNT"}
+  "8": {label: "Tax-exempt interest", pattern: "\\b8 Tax-exempt interest\\s+AMOUNT"}

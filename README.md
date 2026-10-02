@@ -57,3 +57,18 @@ are never touched.
 
 Reference cases (hand-worked, $1 tolerance) are in `tests/test_tax.py`; the engine's
 coverage of each rule the planner relies on is recorded in `config/capabilities.yaml`.
+
+## Intake (Phase 2a)
+
+Drop files into `data/inbox/` (PDFs, or a ZIP of them) and run `planner ingest`. Each
+file is fingerprinted, matched page by page against the templates in `templates/forms/`
+(1099-INT, 1099-DIV, 1099-B totals, 1099-R, 1095-A), and its box values land in the
+ledger (`data/ledger/planner.db`) with the source file and page. The originals move to
+`data/archive/<year>/` only after the facts commit; a file the templates cannot read
+moves to `data/inbox/UNMATCHED/` beside a `.reason.txt`. The same file dropped twice is
+a no-op. A corrected form supersedes the earlier one by form, payer and year. No value
+is ever inferred: a required box that does not parse unmatches the whole file.
+
+`planner facts --year 2025 --form 1099-DIV` lists what the ledger holds. CSV importers,
+the filed-return templates, the Needed panel and OCR confirm land in the next three
+Phase 2 PRs.

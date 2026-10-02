@@ -1,0 +1,33 @@
+# Form 1095-A Part III: per month, column A premium, column B SLCSP, column C advance credit.
+form: 1095-A
+years: [2024, 2025, 2026]
+match: ["1095-A"]
+year_pattern: "(?:calendar year|tax year|coverage year)\\s*:?\\s*(20\\d\\d)"
+issuer_pattern: "Marketplace identifier:?\\s*([^\\n]+)"
+boxes:
+  "slcsp_01": {label: "January SLCSP", pattern: "\\b21 January\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2, required: true}
+  "aptc_01": {label: "January advance credit", pattern: "\\b21 January\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3, required: true}
+  "slcsp_02": {label: "February SLCSP", pattern: "\\b22 February\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2}
+  "aptc_02": {label: "February advance credit", pattern: "\\b22 February\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3}
+  "slcsp_03": {label: "March SLCSP", pattern: "\\b23 March\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2}
+  "aptc_03": {label: "March advance credit", pattern: "\\b23 March\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3}
+  "slcsp_04": {label: "April SLCSP", pattern: "\\b24 April\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2}
+  "aptc_04": {label: "April advance credit", pattern: "\\b24 April\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3}
+  "slcsp_05": {label: "May SLCSP", pattern: "\\b25 May\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2}
+  "aptc_05": {label: "May advance credit", pattern: "\\b25 May\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3}
+  "slcsp_06": {label: "June SLCSP", pattern: "\\b26 June\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2}
+  "aptc_06": {label: "June advance credit", pattern: "\\b26 June\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3}
+  "slcsp_07": {label: "July SLCSP", pattern: "\\b27 July\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2}
+  "aptc_07": {label: "July advance credit", pattern: "\\b27 July\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3}
+  "slcsp_08": {label: "August SLCSP", pattern: "\\b28 August\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2}
+  "aptc_08": {label: "August advance credit", pattern: "\\b28 August\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3}
+  "slcsp_09": {label: "September SLCSP", pattern: "\\b29 September\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2}
+  "aptc_09": {label: "September advance credit", pattern: "\\b29 September\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3}
+  "slcsp_10": {label: "October SLCSP", pattern: "\\b30 October\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2}
+  "aptc_10": {label: "October advance credit", pattern: "\\b30 October\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3}
+  "slcsp_11": {label: "November SLCSP", pattern: "\\b31 November\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2}
+  "aptc_11": {label: "November advance credit", pattern: "\\b31 November\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3}
+  "slcsp_12": {label: "December SLCSP", pattern: "\\b32 December\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2}
+  "aptc_12": {label: "December advance credit", pattern: "\\b32 December\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3}
+  "slcsp_annual": {label: "Annual SLCSP total", pattern: "\\b33 Annual Totals?\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 2}
+  "aptc_annual": {label: "Annual advance credit total", pattern: "\\b33 Annual Totals?\\s+AMOUNT\\s+AMOUNT\\s+AMOUNT", group: 3}
