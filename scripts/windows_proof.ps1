@@ -3,6 +3,7 @@
 # moved folder; network blocked; standard (non-admin) user; cloud-sync refusal.
 param([Parameter(Mandatory = $true)][string]$Zip)
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false   # PS 7.4+: a nonzero exit is ours to check
 $expected = '$3,820.00'   # 2026 single, $50,000 wages: 10% x 12,400 + 12% x 21,500
 
 $base = 'C:\pröof dir'
@@ -11,11 +12,18 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Expand-Archive -LiteralPath $Zip -DestinationPath $dest -Force
 
 function Invoke-Planner([string]$Dir, [string]$Cmd, [int]$Expect = 0) {
-    $out = & cmd.exe /c "`"$Dir\planner.cmd`" $Cmd 2>&1"
+    # The redirection stays on the PowerShell side: cmd.exe drops a batch file's
+    # `exit /b` code when the /c line itself carries a redirection, so
+    # `cmd /c "planner.cmd ... 2>&1"` reported 0 for every step (PR #1 proof).
+    $ErrorActionPreference = 'Continue'
+    $out = & cmd.exe /c "`"$Dir\planner.cmd`" $Cmd" 2>&1 | ForEach-Object { "$_" }
     $out | ForEach-Object { "  | $_" }
     if ($LASTEXITCODE -ne $Expect) { throw "planner.cmd $Cmd exited $LASTEXITCODE, expected $Expect" }
     return ($out -join "`n")
 }
+
+Write-Host "== 0. a failing command reports its exit code"
+Invoke-Planner $dest 'no-such-command' 2 | Out-Null
 
 Write-Host "== 1. version / paths / config in '$dest'"
 Invoke-Planner $dest 'version' | Out-Null
