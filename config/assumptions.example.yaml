@@ -1,0 +1,21 @@
+# Profile assumptions. Copy is made by the planner into data/profile/assumptions.yaml
+# and filled by the intake loop (documents first, typed answers second).
+# A field left null is unknown. Unknown is never treated as zero.
+birth_date: null          # YYYY-MM-DD; the one fact no document supplies
+filing_status: null       # single | married_joint | married_separate | head_of_household
+state: null               # two-letter, e.g. NC
+county: null              # county name as the engine spells it, e.g. Macon
+spending_floor: null      # annual, dollars: the lowest the household can run on
+spending_ceiling: null    # annual, dollars: comfortable spending
+withdrawal_rate: null     # fraction of investable assets per year, e.g. 0.035
+cash_target: null         # dollars of cash buffer to hold
+inflation: null           # fraction per year, e.g. 0.025
+return_floor: null        # fraction per year, pessimistic real return
+return_track: null        # fraction per year, planning real return
+ss_estimate_62: null      # monthly benefit at 62, from the SSA statement
+ss_estimate_67: null      # monthly benefit at 67
+ss_estimate_70: null      # monthly benefit at 70
+ira_access_age: 59.5      # penalty-free IRA access
+ss_claim_age: null        # planned claim age
+conversion_margin: null   # dollars kept below a threshold when sizing a conversion
+conversion_cap: null      # hard cap on a single year's Roth conversion, dollars

@@ -1,0 +1,37 @@
+# Thresholds the planner watches. Every value carries its source. Refreshed from
+# the engine's parameters each year where the engine has them (Phase 4b).
+# All figures single filer unless noted; dollars.
+2026:
+  std_deduction_single:
+    value: 16100
+    source: "Rev. Proc. 2025-32"
+  ltcg_0pct_top_single:
+    value: 49450
+    source: "Rev. Proc. 2025-32 (taxable income ceiling for 0% LTCG rate)"
+  bracket_12pct_top_single:
+    value: 50400
+    source: "Rev. Proc. 2025-32 (22% bracket begins)"
+  ira_contribution_limit:
+    value: 7500
+    source: "IRS Notice 2025-67"
+  ira_catchup_50plus:
+    value: 1100
+    source: "IRS Notice 2025-67"
+  fpl_household_1:
+    value: 15650
+    source: "HHS 2025 poverty guidelines (used for 2026 coverage year); 400% = 62600"
+  aca_cliff_fpl_pct:
+    value: 400
+    source: "IRC 36B; enhanced PTC (ARPA/IRA) expired 2025-12-31"
+  medicaid_expansion_fpl_pct:
+    value: 138
+    source: "42 CFR 435.119; NC expansion effective 2023-12-01; tested monthly (42 CFR 435.603(e)(1); NC MA-3306 §VII, §XII)"
+  medicaid_work_requirement_start:
+    value: "2027-01-01"
+    source: "OBBBA; 80 hours/month"
+  nc_income_tax_rate:
+    value: 0.0399
+    source: "N.C.G.S. 105-153.7; 3.49% scheduled 2027 on revenue trigger"
+  nc_std_deduction_single:
+    value: 12750
+    source: "N.C.G.S. 105-153.5"

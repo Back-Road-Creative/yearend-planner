@@ -1,0 +1,46 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen --extra dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy planner tests
+      - run: uv run pytest
+        env:
+          PYTHONUTF8: "1"
+
+  # The gate for a release: the zip itself, on a clean Windows machine.
+  windows-proof:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Build release zip
+        run: uv run --no-project python scripts/build_release.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yearend-planner-win64
+          path: dist/yearend-planner-*-win64.zip
+          if-no-files-found: error
+      - name: Prove the zip
+        shell: pwsh
+        run: |
+          $zip = (Get-ChildItem dist\yearend-planner-*-win64.zip | Select-Object -First 1).FullName
+          & scripts\windows_proof.ps1 -Zip $zip
