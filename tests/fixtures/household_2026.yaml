@@ -1,0 +1,8 @@
+# Synthetic household for CLI tests: single, NC, interest + qualified dividends,
+# $40,000 Roth conversion.
+age: 55
+filing_status: SINGLE
+state: NC
+interest: 1000
+qualified_dividends: 3000
+roth_conversion: 40000

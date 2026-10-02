@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from planner import __version__
@@ -35,3 +36,39 @@ def test_check_config(planner_home: Path) -> None:
     r = runner.invoke(app, ["check-config"])
     assert r.exit_code == 0, r.output
     assert "thresholds: years [2026]" in r.output
+
+
+@pytest.mark.engine
+def test_compute_and_sweep_cli(repo_root: Path) -> None:
+    import json
+
+    from planner.cli import app
+
+    fx = repo_root / "tests" / "fixtures" / "household_2026.yaml"
+    res = CliRunner().invoke(app, ["compute", str(fx)])
+    assert res.exit_code == 0, res.output
+    out = json.loads(res.output)
+    assert out["year"] == 2026 and out["agi"] == 44000.0
+    res = CliRunner().invoke(
+        app, ["sweep", str(fx), "--lo", "0", "--hi", "10000", "--step", "10000"]
+    )
+    assert res.exit_code == 0, res.output
+    assert len(json.loads(res.output)) == 2
+
+
+@pytest.mark.engine
+def test_verify_cli_passes_on_the_synthetic_return(repo_root: Path) -> None:
+    from planner.cli import app
+
+    res = CliRunner().invoke(
+        app, ["verify", str(repo_root / "tests/fixtures/2025_return.yaml")]
+    )
+    assert res.exit_code == 0, res.output
+    assert "DIFF" not in res.output
+
+
+def test_update_without_args_exits_2(planner_home: Path) -> None:
+    from planner.cli import app
+
+    res = CliRunner().invoke(app, ["update"])
+    assert res.exit_code == 2
