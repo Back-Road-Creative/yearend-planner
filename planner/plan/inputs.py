@@ -20,7 +20,7 @@ from planner.engine.household import Household, MissingInputError
 from planner.ingest.needs import _needed
 from planner.ledger import db
 from planner.paths import Layout
-from planner.taxprep import capgains
+from planner.taxprep import capgains, hsa
 
 FILING = {
     "single": "SINGLE",
@@ -105,6 +105,7 @@ def build(
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
         capgains.store(conn, lay, year)  # typed carryovers reach Schedule D
+        hsa.store(conn, lay, year)  # and typed HSA answers reach Form 8889
         report = _needed(conn, lay, year)
         recorded = _recorded_conversions(conn, year)
     finally:

@@ -408,3 +408,31 @@ carries both.
   between 1040 line 7a and Schedule D is printed as `CHECK:`.
 - **Assumption.** Boxes A and D assume the broker reported the basis to the IRS;
   a noncovered lot belongs in box B or E.
+
+## Health savings accounts: Form 8889 (Phase 4j-2)
+
+`planner hsa --year 2025` builds Form 8889, and `planner draft` carries it onto
+Schedule 1 (line 13, and line 8f for taxable distributions) and Schedule 2
+(line 17c).
+
+- **The limit.** The limit for your coverage (`hsa_coverage`: self or family),
+  pro-rated by the months covered on the 1st (`hsa_months`, 12 when not typed).
+  At 55 or older it adds the $1,000 catch-up. The limits come from the yearly
+  Rev. Proc. and are checked against `config/thresholds.yaml`.
+- **Contributions.** The total is 5498-SA box 2 plus box 3 (`hsa_contributions`).
+  Employer and payroll money (W-2 box 12 code W, `hsa_employer_contributions`)
+  counts against the limit first and is never deducted again. The deduction
+  (line 13) is the smaller of what you put in yourself and the room left.
+- **Excess.** Money in over the limit is named, with the fix: take it out with its
+  earnings before the filing deadline, or pay a 6% excise tax each year it stays.
+- **Distributions.** 1099-SA box 1, less the qualified medical expenses paid from
+  the HSA (`hsa_qualified_expenses`), is income. Before 65 it also carries a 20%
+  additional tax. Until the expenses are typed, the distributions are taken as
+  spent on medical care, and the draft says so.
+- **When the Needed panel uses it.** After the year ends, line 13 is the panel's
+  HSA deduction. Until then, the typed HSA contribution stands.
+- **The HSA lever.** The year-end HSA lever now takes payroll money off the room
+  it offers.
+- **Not handled, and named.** Archer MSA contributions (line 4), a funding
+  distribution from an IRA (line 10), rollovers (line 14b), and a family limit
+  split with a spouse's own HSA (line 6).

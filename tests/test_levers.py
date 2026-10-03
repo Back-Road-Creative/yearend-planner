@@ -71,6 +71,12 @@ def test_menu_ranks_the_moves_and_gets_under_the_cliff(lots: Layout) -> None:  #
     )
     by = {rw.name: rw.lever for rw in m.lower[1:]}
     assert by["hsa"] is not None and by["hsa"].amount == 5_400.0  # 4,400 + 55+ 1,000
+    payroll = levers.menu(
+        answered(lots, hsa_employer_contributions="1,500"), 2026, AS_OF
+    )
+    hsa_lever = {rw.name: rw.lever for rw in payroll.lower[1:]}["hsa"]
+    assert hsa_lever is not None and hsa_lever.amount == 3_900.0  # less W-2 code W
+    assert "1,500 through payroll" in hsa_lever.why
     assert by["traditional_ira"] is not None
     assert by["traditional_ira"].amount == 8_600.0  # 7,500 + 50+ 1,100
     assert m.together is not None and m.together.net > 0

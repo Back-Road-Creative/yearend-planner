@@ -1,6 +1,6 @@
-"""The draft federal return: Form 1040 with Schedules 1, 2, 3 and SE and Form
-8962, every line priced by the engine from the household the Needed panel
-confirmed, and every line naming where its figure came from.
+"""The draft federal return: Form 1040 with Schedules 1, 2, 3, D and SE and
+Forms 8949, 8889 and 8962, every line priced by the engine from the household
+the Needed panel confirmed, and every line naming where its figure came from.
 
 The engine prices the year; this module lays its figures onto the form lines
 (line numbers follow the 2025 forms) and adds what the engine does not see:
@@ -21,7 +21,7 @@ from planner.engine import tax
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
-from planner.taxprep import capgains
+from planner.taxprep import capgains, hsa
 from planner.taxprep.expected import inventory
 
 ENGINE = (
@@ -244,9 +244,19 @@ def build(lay: Layout, year: int) -> Draft:
         facts = db.facts_for(conn, year)
         paid = [p for p in esttax.payments(conn, lay, year) if p.agency == "fed"]
         cg = capgains.build(conn, lay, year)
+        h = hsa.build(conn, lay, year)
     finally:
         conn.close()
     hh = inp.household
+    if h.lines:
+        other = dict(hh.other)
+        if h.lines.get("16"):
+            other["miscellaneous_income"] = other.get("miscellaneous_income", 0) + int(
+                round(h.lines["16"])
+            )
+        hh = dataclasses.replace(
+            hh, hsa_contribution=int(round(h.lines.get("13", 0.0))), other=other
+        )
     exempt = _sum(facts, EXEMPT_INTEREST)
     if exempt:
         hh = dataclasses.replace(
@@ -292,10 +302,21 @@ def build(lay: Layout, year: int) -> Draft:
         v["self_employment_income"],
         origin("se_income"),
     )
-    s1_10 = add("Sch 1", "10", "Additional income", s1_3, "line 3")
-    named = 0.0
+    s1_9 = 0.0
+    if h.lines.get("16"):
+        add("Sch 1", "8f", "Income from Form 8889", h.lines["16"], "Form 8889 line 16")
+        s1_9 = add("Sch 1", "9", "Total other income", h.lines["16"], "line 8f")
+    s1_10 = add(
+        "Sch 1", "10", "Additional income", s1_3 + s1_9, "3 + 9" if s1_9 else "line 3"
+    )
+    named = add(
+        "Sch 1",
+        "13",
+        "HSA deduction",
+        v["health_savings_account_ald"],
+        "Form 8889 line 13" if h.lines else "engine health_savings_account_ald",
+    )
     for ln, label, var in (
-        ("13", "HSA deduction", "health_savings_account_ald"),
         ("15", "Deductible part of SE tax", "self_employment_tax_ald"),
         (
             "16",
@@ -377,7 +398,23 @@ def build(lay: Layout, year: int) -> Draft:
         v["net_investment_income_tax"],
         "engine net_investment_income_tax",
     )
-    s2_21 = add("Sch 2", "21", "Total other taxes", s2_4 + s2_11 + s2_12, "4 + 11 + 12")
+    s2_18 = 0.0
+    if h.lines.get("17b"):
+        add(
+            "Sch 2",
+            "17c",
+            "Additional tax on HSA distributions",
+            h.lines["17b"],
+            "Form 8889 line 17b",
+        )
+        s2_18 = add("Sch 2", "18", "Total additional taxes", h.lines["17b"], "17c")
+    s2_21 = add(
+        "Sch 2",
+        "21",
+        "Total other taxes",
+        s2_4 + s2_11 + s2_12 + s2_18,
+        "4 + 11 + 12 + 18" if s2_18 else "4 + 11 + 12",
+    )
 
     # Schedule 3
     s3_8 = add(
@@ -552,6 +589,9 @@ def build(lay: Layout, year: int) -> Draft:
     else:
         add(f, "37", "Amount you owe", l24 - l33, "24 - 33")
 
+    for line, value in h.lines.items():
+        add("8889", line, hsa.LABELS[line], value, h.sources[line])
+    d.notes.extend(h.notes)
     if cg.lots or cg.lines:
         limit = 1500.0 if hh.filing_status == "SEPARATE" else 3000.0
         _schedule_d(sheet, d, cg, l7, l11 - l14, limit)
@@ -627,10 +667,11 @@ def _schedule_d(
         )
 
 
-ORDER = ("1040", "Sch 1", "Sch 2", "Sch 3", "Sch D", "Sch SE", "8949", "8962")
+ORDER = ("1040", "Sch 1", "Sch 2", "Sch 3", "Sch D", "Sch SE", "8949", "8889", "8962")
 HEADINGS = {
     "1040": "Form 1040",
     "8949": "Form 8949",
+    "8889": "Form 8889 (health savings accounts)",
     "8962": "Form 8962",
     "Carryover": "Capital loss carryover to next year",
 }

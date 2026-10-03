@@ -306,6 +306,24 @@ def gains(year: int = typer.Option(..., help="tax year")) -> None:
 
 
 @app.command()
+def hsa(year: int = typer.Option(..., help="tax year")) -> None:
+    """Form 8889: the HSA limit for your coverage and months, employer money
+    against it, the deduction, any excess, and distributions not spent on
+    medical care. Once the year has ended its deduction feeds the Needed
+    panel."""
+    from planner.ledger import db
+    from planner.taxprep import hsa as form_8889
+
+    lay = layout()
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    try:
+        h = form_8889.store(conn, lay, year)
+    finally:
+        conn.close()
+    typer.echo(form_8889.render(h), nl=False)
+
+
+@app.command()
 def categorize(
     year: int = typer.Option(..., help="tax year"),
     rule: str | None = typer.Option(None, help="description text to match"),
