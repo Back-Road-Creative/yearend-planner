@@ -11,11 +11,13 @@ $dest = Join-Path $base 'planner ✓'
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Expand-Archive -LiteralPath $Zip -DestinationPath $dest -Force
 
-function Invoke-Planner([string]$Dir, [string]$Cmd, [int]$Expect = 0) {
+function Invoke-Planner([string]$Dir, [object]$Cmd, [int]$Expect = 0) {
     # PowerShell runs the launcher itself and takes the batch file's exit code;
     # going through `cmd.exe /c "..."` reported 0 for every exit (PR #1 proof).
+    # $Cmd is a string split on spaces, or an array when an argument has one.
     $ErrorActionPreference = 'Continue'
-    $out = & "$Dir\planner.cmd" $Cmd.Split(' ') 2>&1 | ForEach-Object { "$_" }
+    $argv = if ($Cmd -is [array]) { $Cmd } else { $Cmd.Split(' ') }
+    $out = & "$Dir\planner.cmd" $argv 2>&1 | ForEach-Object { "$_" }
     $code = $LASTEXITCODE
     $out | ForEach-Object { Write-Host "  | $_" }
     if ($code -ne $Expect) { throw "planner.cmd $Cmd exited $code, expected $Expect" }
@@ -89,6 +91,48 @@ Copy-Item -Path (Join-Path $moved '*') -Destination $cloud -Recurse
 Remove-Item -Recurse -Force -Path (Join-Path $cloud 'data'), (Join-Path $cloud 'out') -ErrorAction SilentlyContinue
 Invoke-Planner $cloud 'paths' 2 | Out-Null
 if (Test-Path (Join-Path $cloud 'data')) { throw 'data/ was created inside OneDrive' }
+
+Write-Host '== 7. update, then roll back (planner.cmd moves the folders)'
+$ver = (Get-Content -LiteralPath (Join-Path $moved 'VERSION')).Trim()
+$next = "$ver.1"
+$cand = Join-Path $base 'candidate'
+New-Item -ItemType Directory -Force -Path $cand | Out-Null
+foreach ($n in 'python', 'planner', 'config', 'templates', 'planner.cmd', 'LICENSE', 'README.md') {
+    Copy-Item -Recurse -LiteralPath (Join-Path $moved $n) -Destination $cand
+}
+Set-Content -LiteralPath (Join-Path $cand 'VERSION') -Value $next -Encoding ascii
+$candZip = Join-Path $base "yearend-planner-$next-win64.zip"
+Compress-Archive -Path (Join-Path $cand '*') -DestinationPath $candZip
+$sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $candZip).Hash.ToLower()
+Set-Content -LiteralPath (Join-Path $moved 'data\private\keep.txt') -Value 'mine'
+$o = Invoke-Planner $moved @('update', $candZip, '--sha256', $sha)
+if ($o -notlike "*updated $ver -> $next*") { throw 'update did not report the new version' }
+if ((Get-Content -LiteralPath (Join-Path $moved 'VERSION')).Trim() -ne $next) { throw 'VERSION not swapped' }
+if ((Get-Content -LiteralPath (Join-Path $moved 'python-previous\VERSION')).Trim() -ne $ver) { throw 'previous not kept' }
+$o = Invoke-Planner $moved 'version'
+if ($o -notlike "*planner $next*") { throw 'version after update' }
+$o = Invoke-Planner $moved 'update --rollback'
+if ($o -notlike "*rolled back to $ver*") { throw 'rollback did not report' }
+if ((Get-Content -LiteralPath (Join-Path $moved 'VERSION')).Trim() -ne $ver) { throw 'VERSION not restored' }
+if (Test-Path (Join-Path $moved 'python-previous')) { throw 'python-previous left behind' }
+if ((Get-Content -LiteralPath (Join-Path $moved 'data\private\keep.txt')) -ne 'mine') { throw 'data/ touched' }
+
+Write-Host '== 8. the update feed: run stages it, the next run swaps it in and reruns'
+Set-Content -LiteralPath "$candZip.sha256" -Value "$sha  yearend-planner-$next-win64.zip" -Encoding ascii
+$feed = Join-Path $base 'latest.json'
+$rel = @{ tag_name = "v$next"; assets = @(
+    @{ name = "yearend-planner-$next-win64.zip"; browser_download_url = ([System.Uri]$candZip).AbsoluteUri },
+    @{ name = "yearend-planner-$next-win64.zip.sha256"; browser_download_url = ([System.Uri]"$candZip.sha256").AbsoluteUri }) }
+$rel | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $feed -Encoding utf8
+$env:PLANNER_UPDATE_FEED = ([System.Uri]$feed).AbsoluteUri
+try {
+    $o = Invoke-Planner $moved 'run --quiet'
+    if ($o -notlike "*update $next is ready*") { throw 'run did not stage the update' }
+    $o = Invoke-Planner $moved 'run --quiet'
+    if ($o -notlike "*updated $ver -> $next*") { throw 'run did not swap the update in' }
+    if ($o -notlike '*written*index.html*') { throw 'run did not rerun on the new release' }
+    if ((Get-Content -LiteralPath (Join-Path $moved 'VERSION')).Trim() -ne $next) { throw 'VERSION after feed update' }
+} finally { Remove-Item Env:PLANNER_UPDATE_FEED }
 
 Write-Host 'PROOF PASSED'
 # The last launcher call above was the refused run (exit 2) and the Actions pwsh

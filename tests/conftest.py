@@ -7,6 +7,13 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 
+@pytest.fixture(autouse=True)
+def _no_update_feed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests never reach the real release feed; test_feed sets its own."""
+    monkeypatch.setenv("PLANNER_UPDATE_FEED", "off")
+    monkeypatch.delenv("PLANNER_LAUNCHER", raising=False)
+
+
 @pytest.fixture
 def repo_root() -> Path:
     return ROOT

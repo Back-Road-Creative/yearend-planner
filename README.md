@@ -609,3 +609,29 @@ year and next from the installed policyengine-us. It needs no network.
 - **The page header** shows the engine version and where each year's limits
   came from, for example `limits 2026 (config), 2027 (engine projection +
   carried)`.
+
+## Updates (Phase 6b)
+
+- **Automatic check.** Each `planner run` looks for a newer release on the
+  feed named in `config/update.yaml` (GitHub's "latest release" address). It
+  sends one plain request and no personal data. Offline, or with no newer
+  release, it says nothing. `--no-update-check` or `PLANNER_UPDATE_FEED=off`
+  turns it off.
+- **Checked before it is used.** A newer release is downloaded, its sha256
+  checked against the `.sha256` file published beside it, and unpacked into
+  `python-candidate/`. It must pass its own selfcheck there, with its own
+  Python. Limits you typed into `config/thresholds.yaml` that the new release
+  lacks are copied into it.
+- **Swapped in on the next start.** `planner run` swaps the ready release in,
+  keeps the old one in `python-previous/`, and starts again on the new one.
+  On Windows, `planner.cmd` does the move after Python exits, because a
+  running python.exe locks its folder; if a file is in use (another planner
+  window), everything is put back and nothing changes.
+- **Held.** A release that fails its selfcheck is never swapped in. The
+  dashboard shows "engine update held" with the reason, and the same release
+  is not tried again.
+- **By hand.** `planner update <zip> --sha256 <hash>` installs a downloaded
+  release the same way, `planner update --rollback` goes back to
+  `python-previous/`, and `planner update --check` looks for one now. `data/`
+  and `out/` are never touched.
+- `scripts/build_release.py` writes the `.sha256` file beside the zip.

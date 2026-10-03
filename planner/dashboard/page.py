@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from planner.engine import feed
 from planner.engine import limits as limits_
 from planner.engine.household import MissingInputError
 from planner.engine.tax import engine_version
@@ -138,6 +139,15 @@ def last_import(lay: Layout) -> str | None:
 
 def _alerts(lay: Layout, page: Page, today: date) -> list[Alert]:
     out: list[Alert] = []
+    hold = feed.held(lay)
+    if hold:
+        out.append(
+            Alert(
+                "update",
+                f"engine update {hold['version']} held on {hold['date']}: "
+                f"{hold['reason']}; still on {hold['installed']}",
+            )
+        )
     unmatched = lay.data / "inbox" / "UNMATCHED"
     for path in sorted(unmatched.glob("*")) if unmatched.is_dir() else []:
         if path.name.endswith(".reason.txt"):
