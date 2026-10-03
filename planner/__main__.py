@@ -1,3 +1,3 @@
-from planner.cli import app
+from planner.cli import main
 
-app()
+main()

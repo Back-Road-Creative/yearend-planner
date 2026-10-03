@@ -14,7 +14,7 @@ from planner.paths import CloudSyncedPathError, layout
 if TYPE_CHECKING:
     from planner.plan.inputs import Overrides
 
-app = typer.Typer(add_completion=False, no_args_is_help=True)
+app = typer.Typer(add_completion=False)
 
 
 @app.command()
@@ -1484,8 +1484,10 @@ def thresholds(
         )
 
 
-def main() -> int:
-    app()
+def main(argv: list[str] | None = None) -> int:
+    """Entry point. No arguments (a double-clicked planner.cmd) is planner run."""
+    args = sys.argv[1:] if argv is None else argv
+    app(args=args or ["run"])
     return 0
 
 

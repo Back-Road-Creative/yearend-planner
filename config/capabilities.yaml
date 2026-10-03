@@ -57,3 +57,4 @@ stale_banner: verified  # tests/test_validation.py; >90 days since last import -
 release: verified  # tests/test_privacy.py + .github/workflows/release.yml; tag -> suite, build, windows_proof, draft release with .sha256
 privacy_audit: verified  # tests/test_privacy.py; release stages git-tracked files only, audit() refuses private folders/databases, sentinel absent
 end_to_end: verified  # tests/test_end_to_end.py; inbox -> dashboard, fresh config + data/ renders the identical page
+double_click_run: verified  # tests/test_launch.py; no arguments = planner run, a failed double-click pauses before the window closes
