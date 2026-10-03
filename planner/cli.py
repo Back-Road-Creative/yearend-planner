@@ -404,6 +404,29 @@ def draft(
 
 
 @app.command()
+def taxpack(
+    year: int = typer.Option(..., help="tax year"),
+    as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
+) -> None:
+    """Everything a preparer asks for in out/tax-<year>/: the draft return
+    (text and printable HTML), Form 8949 CSV, Schedule C, carryforward and
+    basis, estimated payments, the form inventory, and the originals ZIP."""
+    from datetime import date
+
+    from planner.engine.household import MissingInputError
+    from planner.taxprep import package
+
+    try:
+        pack = package.build(
+            layout(), year, date.fromisoformat(as_of) if as_of else None
+        )
+    except MissingInputError as exc:
+        typer.echo(f"blocked: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(package.render(pack), nl=False)
+
+
+@app.command()
 def enter(
     key: str = typer.Argument(..., help="item name from `planner needed`"),
     value: str = typer.Argument(..., help="the typed answer"),

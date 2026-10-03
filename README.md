@@ -465,3 +465,28 @@ and its Schedule S. It uses the same engine run as the federal return.
 - **Not drafted, and named.** Part-year and nonresident returns (line 13,
   Schedule PN), D-400TC credits, penalties and interest (lines 26b-26e,
   Form D-422), and the amended-return lines.
+
+## The tax pack: one folder for the preparer (Phase 4l)
+
+`planner taxpack --year 2025` writes `out/tax-2025/`. Every file shows
+something another command already prints:
+
+| File | What it holds |
+|---|---|
+| `draft.txt` | the draft return (`planner draft`), every line with its source |
+| `draft.html` | the same draft laid out to print; Print, then Save as PDF |
+| `form-8949.csv` | Form 8949 rows by box, columns (a)-(h) and the account (`planner gains`) |
+| `schedule-c.txt` | the Schedule C summary and any uncategorised rows (`planner categorize`) |
+| `carryforward.csv` | the capital loss carried to next year |
+| `basis.csv` | cost basis of each open lot, and each Roth conversion's basis and penalty-free date |
+| `estimated-payments.csv` | federal and NC estimated payments, the installment, and where each came from |
+| `forms.csv` | the expected forms, which arrived and their source files (`planner forms`) |
+| `originals.zip` | the archived originals in `data/archive/<year>/` |
+
+How a run behaves:
+
+- A run replaces the files from the last run.
+- A run blocked on a missing answer (for example, birth date) writes nothing
+  and exits 2.
+- The summary at the end names any form still to come and any `CHECK:` line
+  to resolve first.
