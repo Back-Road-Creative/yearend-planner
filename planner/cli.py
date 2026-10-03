@@ -241,12 +241,18 @@ def rows(
 def needed(
     year: int = typer.Option(..., help="plan year"),
     all: bool = typer.Option(False, "--all", help="also list what is already covered"),
+    as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
 ) -> None:
     """What the plan still lacks for a year: each missing item, why, and the
-    document that supplies it. Empty when the intake loop is done."""
+    document that supplies it, then every form past its due date that the
+    return needs. Empty when the intake loop is done."""
+    from datetime import date
+
     from planner.ingest.needs import needed as _needed
+    from planner.taxprep.expected import inventory
 
     rep = _needed(layout(), year)
+    late = inventory(layout(), year, date.fromisoformat(as_of) if as_of else None).late
     for st in rep.items:
         if st.state == "missing":
             typer.echo(f"needed    {st.need.key:28} {st.need.label}")
@@ -261,8 +267,28 @@ def needed(
             tag = "dont-have" if st.state == "dont_have" else "actual   "
             val = "" if st.value is None else f" {st.value}"
             typer.echo(f"{tag} {st.need.key:28}{val}  ({st.origin})")
-    n = len(rep.by_state("missing"))
+    for e in late:
+        typer.echo(f"form      {e.form} from {e.issuer} (due {e.due})")
+        typer.echo(f"          why: {e.reason}")
+        typer.echo(f"          from: {e.where}; drop it in the inbox")
+    n = len(rep.by_state("missing")) + len(late)
     typer.echo("nothing needed" if n == 0 else f"{n} needed")
+
+
+@app.command()
+def forms(
+    year: int = typer.Option(..., help="tax year"),
+    as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
+) -> None:
+    """The forms the year should produce (from last year's issuers, the
+    accounts and the Needed panel), which have arrived, and where to download
+    the rest."""
+    from datetime import date
+
+    from planner.taxprep.expected import inventory, render
+
+    inv = inventory(layout(), year, date.fromisoformat(as_of) if as_of else None)
+    typer.echo(render(inv), nl=False)
 
 
 @app.command()
