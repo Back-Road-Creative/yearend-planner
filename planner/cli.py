@@ -1391,31 +1391,128 @@ def paid(
     )
 
 
+def _ask_amount(label: str, *, signed: bool = False) -> float | None:
+    """One typed planning number, asked until it parses; Enter skips it."""
+    import math
+
+    from planner.ingest.needs import MONEY_MAX
+
+    while True:
+        text = typer.prompt(label, default="", show_default=False).strip()
+        if not text:
+            return None
+        cleaned = text.replace("$", "").replace(",", "").replace(" ", "")
+        neg = cleaned.startswith("(") and cleaned.endswith(")")
+        try:
+            v = float(cleaned.strip("()"))
+        except ValueError:
+            v = math.nan
+        v = -v if neg else v
+        if not math.isfinite(v):
+            typer.echo(f"  not a number: {text!r}")
+        elif (v < 0 and not signed) or abs(v) > MONEY_MAX:
+            lo = "-" if signed else "0"
+            typer.echo(f"  between {lo} and {MONEY_MAX:,} dollars, please: {text!r}")
+        else:
+            return v
+
+
 @app.command()
 def plan(
     year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     as_of: str | None = AS_OF,
-    q4_dividends: float = Q4,
-    sales_st: float = ST,
-    sales_lt: float = LT,
+    total_income: float | None = typer.Option(
+        None,
+        help="the year's total income before the planned items ($); wages become "
+        "the total less the other income the ledger counts",
+        min=0,
+        max=100_000_000,
+    ),
+    q4_dividends: float | None = typer.Option(
+        None, help="Q4 dividend estimate to add ($)"
+    ),
+    sales_st: float | None = typer.Option(
+        None, help="planned short-term gain to add ($)"
+    ),
+    sales_lt: float | None = typer.Option(
+        None, help="planned long-term gain to add ($)"
+    ),
     conversion: float = CONV,
+    conversion_target: str | None = typer.Option(
+        None,
+        help="manual (the --conversion amount; default) or auto (adopt the "
+        "recommended conversion for the year)",
+    ),
     hsa: float | None = HSA,
+    ask: bool | None = typer.Option(
+        None,
+        "--ask/--no-ask",
+        help="prompt for the typed fields not given as options; default when "
+        "run from a terminal",
+    ),
     write: bool = typer.Option(True, help="also write out/plan-<year>.md"),
 ) -> None:
     """The year-end plan on one page: the Needed panel, projected MAGI against
     every line, the conversion, the spending band, the glide path, cash to
     raise, estimated tax, wash sales and the deadline calendar. A planner
-    still missing an input says so instead of stopping the page."""
+    still missing an input says so instead of stopping the page. From a
+    terminal it first asks for the few typed fields (total income, Q4
+    dividends, planned sales, conversion target); Enter skips one."""
+    import sys
     from datetime import date
 
     from planner.plan import year as year_plan
+    from planner.plan.inputs import CONVERSION_TARGETS, OverrideError, Overrides
 
-    yp = year_plan.assemble(
-        layout(),
-        year,
-        date.fromisoformat(as_of) if as_of else None,
-        _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa),
-    )
+    if conversion_target is not None and conversion_target not in CONVERSION_TARGETS:
+        typer.echo(
+            "refused: --conversion-target must be manual or auto, "
+            f"got {conversion_target!r}",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if sys.stdin.isatty() if ask is None else ask:
+        if total_income is None:
+            total_income = _ask_amount(
+                "total income for the year, before the items below [Enter skips]"
+            )
+        if q4_dividends is None:
+            q4_dividends = _ask_amount("Q4 dividend estimate [Enter skips]")
+        if sales_st is None:
+            sales_st = _ask_amount(
+                "planned short-term gain from sales [Enter skips]", signed=True
+            )
+        if sales_lt is None:
+            sales_lt = _ask_amount(
+                "planned long-term gain from sales [Enter skips]", signed=True
+            )
+        while conversion_target is None and not conversion:
+            text = typer.prompt(
+                "conversion target: manual or auto (adopt the recommended conversion)",
+                default="manual",
+            ).strip()
+            if text in CONVERSION_TARGETS:
+                conversion_target = text
+            else:
+                typer.echo(f"  manual or auto, please: {text!r}")
+    try:
+        yp = year_plan.assemble(
+            layout(),
+            year,
+            date.fromisoformat(as_of) if as_of else None,
+            Overrides(
+                q4_dividends or 0.0,
+                sales_st or 0.0,
+                sales_lt or 0.0,
+                conversion,
+                hsa,
+                total_income,
+                conversion_target or "manual",
+            ),
+        )
+    except OverrideError as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
     typer.echo(year_plan.render(yp), nl=False)
     if write:
         typer.echo(f"written {year_plan.write(layout(), yp)}")

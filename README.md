@@ -64,7 +64,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `needed` | What the plan still lacks for a year: each missing item, why, and the document that supplies it, then every form past its due date that the return needs. |
 | `paid` | Record an estimated payment the bank export does not show. |
 | `paths` | Show where this planner keeps its folders, creating data/ and out/. |
-| `plan` | The year-end plan on one page: the Needed panel, projected MAGI against every line, the conversion, the spending band, the glide path, cash to raise, estimated tax, wash sales and the deadline calendar. |
+| `plan` | The year-end plan on one page: the Needed panel, projected MAGI against every line, the conversion, the spending band, the glide path, cash to raise, estimated tax, wash sales and the deadline calendar. From a terminal it first asks for total income, Q4 dividends, planned sales and the conversion target (`--total-income`, `--q4-dividends`, `--sales-st`, `--sales-lt`, `--conversion-target manual\|auto`; `--no-ask` skips the questions). |
 | `restore` | Check a backup (paths, size, every file against its manifest), then swap its data/ in. |
 | `rollover` | Roll the year that ended into the next: carry AGI, total tax, NC tax and the capital loss carryforward (filed figures once closed, else the draft's), keep a snapshot of the ledger and the year's dashboard, make next year the active one, refresh its limits and print the checklist. |
 | `rows` | List imported CSV rows (holdings, lots, transactions, income, bank lines). |

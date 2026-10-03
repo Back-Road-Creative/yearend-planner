@@ -5,7 +5,8 @@ is estimated in its place."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from datetime import date
 
 from planner.engine.household import MissingInputError
@@ -23,7 +24,7 @@ from planner.plan import (
     washsale,
     withdraw,
 )
-from planner.plan.inputs import Overrides
+from planner.plan.inputs import OverrideError, Overrides
 from planner.taxprep import expected
 
 SECTIONS = (
@@ -99,35 +100,50 @@ def _magi(lay: Layout, year: int, _today: date, ov: Overrides) -> Section:
     return Section("magi", True, lines, notes)
 
 
-def _conversion(lay: Layout, year: int, _today: date, ov: Overrides) -> Section:
-    sz = conversion.size(
-        lay,
-        year,
-        Overrides(
-            ov.q4_dividend_estimate,
-            ov.planned_st_sales,
-            ov.planned_lt_sales,
-            0.0,
-            ov.planned_hsa,
-        ),
+SPILL = "WARNING: qualified dividends / long-term gains pushed into 15%"
+
+
+def _conversion(
+    lay: Layout,
+    year: int,
+    _today: date,
+    ov: Overrides,
+    sizing: conversion.Sizing | None = None,
+) -> Section:
+    # sized from the ledger year plus the other overrides; the conversion the
+    # plan adopts (``ov.planned_conversion`` once resolved) is what is sized
+    sz = sizing or conversion.size(
+        lay, year, replace(ov, planned_conversion=0.0, conversion_target="manual")
     )
     rec = sz.recommendation
-    lines = [
+    lines = []
+    notes = list(sz.notes)
+    if ov.conversion_target == "auto" and rec:
+        lines.append(
+            f"adopted {rec.name} {rec.amount:,.2f} as the year's conversion "
+            f"(+{ov.planned_conversion:,.2f} on the {sz.already:,.2f} already "
+            "recorded); MAGI, levers, cash and estimated tax include it"
+        )
+    elif ov.conversion_target == "auto":
+        notes.append("auto: no recommendation, nothing adopted")
+    lines.append(
         f"already converted {sz.already:,.2f}; cap {sz.cap:,.2f}; "
         + (
             f"recommended {rec.name} {rec.amount:,.2f} (cash needed "
             f"{rec.cash_needed:,.2f}; {rec.note})"
+            + (f"  {SPILL}" if rec.qualified_spill else "")
             if rec
             else "no recommendation (set conversion_objective in the profile)"
         )
-    ]
+    )
     for c in sz.candidates:
         lines.append(
             f"{c.name:15} {c.amount:>12,.2f}  federal +{c.fed_delta:,.2f}  "
             f"NC +{c.state_delta:,.2f}  ACA credit {c.ptc_delta:+,.2f}"
             f"{'  Medicaid month OVER' if c.medicaid_month_over else ''}"
+            f"{'  ' + SPILL if c.qualified_spill else ''}"
         )
-    return Section("conversion", True, lines, list(sz.notes))
+    return Section("conversion", True, lines, notes)
 
 
 def _forms(lay: Layout, year: int, today: date, _ov: Overrides) -> Section:
@@ -263,11 +279,17 @@ def assemble(
 ) -> YearPlan:
     today = as_of or date.today()
     ov = overrides or Overrides()
+    # conversion_target=auto: one sizing, adopted by every section that follows
+    ov, sizing = conversion.resolve(lay, year, ov)
+    builders: dict[str, Callable[[Layout, int, date, Overrides], Section]] = {
+        **BUILDERS,
+        "conversion": lambda lay_, y, t, o: _conversion(lay_, y, t, o, sizing),
+    }
     plan = YearPlan(year, today.isoformat())
     for name in SECTIONS:
         try:
-            plan.sections.append(BUILDERS[name](lay, year, today, ov))
-        except MissingInputError as exc:
+            plan.sections.append(builders[name](lay, year, today, ov))
+        except (MissingInputError, OverrideError) as exc:
             plan.sections.append(Section(name, False, [f"needs: {exc}"]))
     return plan
 

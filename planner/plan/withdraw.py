@@ -6,7 +6,7 @@ engine so the MAGI and tax effect is verified, not estimated."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 
 from planner.engine.tax import r
@@ -138,12 +138,10 @@ def pick(
     after = project(
         lay,
         year,
-        Overrides(
-            ov.q4_dividend_estimate,
-            ov.planned_st_sales + w.gain_st,
-            ov.planned_lt_sales + w.gain_lt,
-            ov.planned_conversion,
-            ov.planned_hsa,
+        replace(
+            ov,
+            planned_st_sales=ov.planned_st_sales + w.gain_st,
+            planned_lt_sales=ov.planned_lt_sales + w.gain_lt,
         ),
     )
     w.magi_before, w.magi_after = base.result.aca_magi, after.result.aca_magi

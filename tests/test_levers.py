@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 from planner.cli import app
 from planner.ingest.needs import enter
 from planner.paths import Layout
-from planner.plan import levers
+from planner.plan import conversion, levers, year
 from planner.plan.inputs import Overrides
 from tests.test_spending import AS_OF, lay  # noqa: F401
 from tests.test_withdraw import lots  # noqa: F401
@@ -156,3 +156,45 @@ def test_cli_levers_whatif_thresholds(lots: Layout) -> None:  # noqa: F811
     # the engine's IRA limit lags Notice 2025-67; the config row wins for sizing
     assert "ENGINE HAS 7,000" in r.output and "row(s) differ" in r.output
     assert runner.invoke(app, ["thresholds", "--year", "1990"]).exit_code == 1
+
+
+def _objective(home: Layout) -> None:
+    for key, text in (
+        ("conversion_objective", "bracket_12"),
+        ("conversion_margin", "1,000"),
+        ("conversion_cap", "150,000"),
+    ):
+        enter(home, 2026, key, text)
+
+
+def _conversion_lever(home: Layout, ov: Overrides) -> levers.Lever:
+    _, found, _ = levers.catalog(home, 2026, AS_OF, ov)
+    return next(lv for lv in found if lv.key == "conversion")
+
+
+@pytest.mark.engine
+def test_adopted_conversion_is_not_proposed_again(lots: Layout) -> None:  # noqa: F811
+    _objective(lots)
+    manual = _conversion_lever(lots, Overrides())
+    assert manual.available and manual.amount > 0
+    # auto adopts the recommendation into the year; the lever sees it as done
+    ov, sz = conversion.resolve(lots, 2026, Overrides(conversion_target="auto"))
+    assert sz is not None and ov.planned_conversion > 0
+    auto = _conversion_lever(lots, ov)
+    assert not auto.available and auto.amount == 0.0
+    assert auto.why.endswith("already met")
+    page = year.assemble(lots, 2026, AS_OF, Overrides(conversion_target="auto"))
+    assert not any(
+        ln.startswith("Roth conversion") and "already met" not in ln
+        for ln in page.section("levers").lines
+    )
+
+
+@pytest.mark.engine
+def test_total_income_changes_the_conversion_lever_sizing(lots: Layout) -> None:  # noqa: F811
+    _objective(lots)
+    ledger = _conversion_lever(lots, Overrides())
+    typed = _conversion_lever(lots, Overrides(total_income=120_000.0))
+    # the typed 120,000 leaves no room for the objective; the ledger wages do
+    assert ledger.available and ledger.amount > 0
+    assert not typed.available and typed.amount == 0.0
