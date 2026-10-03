@@ -23,6 +23,26 @@ def test_paths_creates_folders_under_home(planner_home: Path) -> None:
     assert (planner_home / "data" / "inbox" / "UNMATCHED").is_dir()
 
 
+def test_init_makes_the_folders_and_is_safe_to_repeat(planner_home: Path) -> None:
+    for _ in range(2):
+        r = runner.invoke(app, ["init"])
+        assert r.exit_code == 0, r.output
+        assert "ready" in r.output
+    assert (planner_home / "data" / "inbox" / "UNMATCHED").is_dir()
+    assert (planner_home / "out").is_dir()
+
+
+def test_init_refuses_onedrive(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    home = tmp_path / "OneDrive" / "Planner"
+    home.mkdir(parents=True)
+    monkeypatch.setenv("PLANNER_HOME", str(home))
+    r = runner.invoke(app, ["init"])
+    assert r.exit_code == 2
+    assert "refused" in r.output and "inside a cloud-sync folder" in r.output
+    assert "Move the planner folder somewhere local" in r.output
+    assert not (home / "data").exists()
+
+
 def test_paths_refuses_onedrive(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     home = tmp_path / "OneDrive" / "Planner"
     home.mkdir(parents=True)

@@ -138,6 +138,10 @@ class LedgerRow(Row):
     file_name: str = ""
 
 
+class LedgerOutOfDate(RuntimeError):
+    """The ledger's schema is not the one this planner reads."""
+
+
 def connect(path: Path) -> sqlite3.Connection:
     """Open (creating if needed) the ledger; schema is applied idempotently."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -149,6 +153,29 @@ def connect(path: Path) -> sqlite3.Connection:
         conn.execute("INSERT INTO schema_version VALUES (?)", (SCHEMA_VERSION,))
     conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
     conn.commit()
+    return conn
+
+
+def connect_readonly(path: Path) -> sqlite3.Connection | None:
+    """Open the ledger for reading only, or ``None`` when there is none yet.
+
+    Never creates the file, applies the schema or commits, so it takes no write
+    lock and runs beside a writer. A ledger from an older schema is refused
+    with :class:`LedgerOutOfDate`; any writing command brings it up to date."""
+    if not path.is_file():
+        return None
+    conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute("SELECT version FROM schema_version").fetchone()
+    except sqlite3.OperationalError:
+        row = None
+    if row is None or row[0] != SCHEMA_VERSION:
+        conn.close()
+        raise LedgerOutOfDate(
+            "the ledger was written by an older planner; run a writing command "
+            "(for example `planner derive`) to bring it up to date"
+        )
     return conn
 
 

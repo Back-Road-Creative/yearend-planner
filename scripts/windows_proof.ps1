@@ -98,7 +98,9 @@ Copy-Tree $moved $cloud
 # Steps 1-5 already created data/ and out/ in the source folder; the check below is
 # that the refused run creates nothing, so start the copy without them.
 Remove-Item -Recurse -Force -Path (Join-Path $cloud 'data'), (Join-Path $cloud 'out') -ErrorAction SilentlyContinue
-Invoke-Planner $cloud 'paths' 2 | Out-Null
+$o = Invoke-Planner $cloud 'paths' 2
+if ($o -notlike '*WARNING: this folder is inside a cloud-sync folder*') { throw 'planner.cmd did not warn' }
+Invoke-Planner $cloud 'init' 2 | Out-Null
 if (Test-Path (Join-Path $cloud 'data')) { throw 'data/ was created inside OneDrive' }
 
 Write-Host '== 7. update, then roll back (planner.cmd moves the folders)'

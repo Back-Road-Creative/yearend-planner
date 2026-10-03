@@ -6,6 +6,7 @@ and hand limits carried into the live config."""
 from __future__ import annotations
 
 import json
+import shutil
 import stat
 import zipfile
 from pathlib import Path
@@ -14,6 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 from planner import backup as bk
+from planner import paths
 from planner.cli import app
 from planner.ingest.needs import enter
 from planner.ledger import db
@@ -218,3 +220,39 @@ def test_cli_backup_restore_and_run_keeps_the_restore(lay: Layout) -> None:
     assert "restore kept: data-previous/ removed" in r.output
     r = runner.invoke(app, ["restore", "--undo"])
     assert r.exit_code == 0 and "nothing to undo" in r.output
+
+
+def test_restore_and_undo_let_go_of_the_lock_before_data_moves(
+    lay: Layout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows cannot rename a folder that holds an open file: planner.lock is
+    released around the swap, then taken again for the rest of the command."""
+    z = bk.backup(lay, tmp_path / "b.zip")
+    seen: list[bool] = []
+    real = Path.rename
+
+    def spy(self: Path, target: str | Path) -> Path:
+        if self == lay.data:
+            seen.append(lock.held)
+        return real(self, target)
+
+    monkeypatch.setattr(Path, "rename", spy)
+    with lay.lock() as lock:
+        bk.restore(lay, z)
+        assert lock.held and lay.lock_file.exists()
+        assert bk.undo(lay)
+        assert lock.held
+        with pytest.raises(paths.WriterBusyError):
+            lay.lock().acquire()
+    assert seen == [False, False]
+
+
+def test_restore_into_a_folder_with_no_data_keeps_no_previous(
+    planner_home: Path, lay: Layout, tmp_path: Path
+) -> None:
+    z = bk.backup(lay, tmp_path / "b.zip")
+    shutil.rmtree(lay.data)
+    r = runner.invoke(app, ["restore", str(z)])
+    assert r.exit_code == 0, r.output
+    assert "data-previous" not in r.output
+    assert _wages(lay) == [41000.0]

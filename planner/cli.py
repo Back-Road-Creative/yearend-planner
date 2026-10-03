@@ -3,18 +3,93 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import typer
+from typer.core import TyperGroup
 
-from planner.paths import CloudSyncedPathError, layout
+from planner.paths import CloudSyncedPathError, Layout, WriterBusyError, layout
 
 if TYPE_CHECKING:
     from planner.plan.inputs import Overrides
 
-app = typer.Typer(add_completion=False)
+
+class _Group(TyperGroup):
+    """Notes whether the subcommand was asked for ``--help``: the group callback
+    runs before the subcommand reads its arguments, and help takes no lock."""
+
+    def resolve_command(self, ctx: Any, args: list[str]) -> Any:
+        found = super().resolve_command(ctx, args)
+        ctx.meta["planner.help"] = "--help" in found[2]
+        return found
+
+
+app = typer.Typer(add_completion=False, cls=_Group)
+
+# Commands that never write under data/ (or only read it, as backup, facts and
+# rows do: they open the ledger read-only), so they run beside a dashboard or
+# another window. Every other command takes the
+# single-writer lock in :func:`_single_writer`.
+NO_LOCK = frozenset(
+    {
+        "backup",
+        "check-config",
+        "compute",
+        "facts",
+        "init",
+        "paths",
+        "rows",
+        "selfcheck",
+        "sweep",
+        "thresholds",
+        "verify",
+        "version",
+    }
+)
+BUSY_EXIT = 2
+
+
+@app.callback()
+def _single_writer(ctx: typer.Context) -> None:
+    """Year-End Tax & Retirement Planner. One planner writes at a time."""
+    if (
+        ctx.resilient_parsing
+        or ctx.invoked_subcommand is None
+        or ctx.invoked_subcommand in NO_LOCK
+        or ctx.meta.get("planner.help")
+    ):
+        return
+    try:
+        ctx.with_resource(layout().lock())
+    except CloudSyncedPathError as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except WriterBusyError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=BUSY_EXIT) from exc
+
+
+def _open_ledger_readonly() -> sqlite3.Connection | None:
+    """The ledger opened read-only for the listing commands, which hold no lock;
+    ``None`` when no ledger exists yet (nothing is created)."""
+    from planner.ledger import db
+
+    try:
+        return db.connect_readonly(layout().data / "ledger" / "planner.db")
+    except db.LedgerOutOfDate as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+
+def _ensure_or_refuse(lay: Layout) -> None:
+    try:
+        lay.ensure()
+    except CloudSyncedPathError as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
 
 
 @app.command()
@@ -26,14 +101,21 @@ def version() -> None:
 
 
 @app.command()
+def init() -> None:
+    """Set up this folder: create data/ and out/ with every subfolder. Refuses a
+    folder inside OneDrive, Dropbox, iCloud Drive or Google Drive (exit 2),
+    since a sync client would copy your ledger to the cloud. Safe to repeat."""
+    lay = layout()
+    _ensure_or_refuse(lay)
+    typer.echo(f"ready: {lay.root}")
+    typer.echo(f"drop your tax documents in {lay.data / 'inbox'}, then run planner")
+
+
+@app.command()
 def paths() -> None:
     """Show where this planner keeps its folders, creating data/ and out/."""
     lay = layout()
-    try:
-        lay.ensure()
-    except CloudSyncedPathError as exc:
-        typer.echo(f"refused: {exc}", err=True)
-        raise typer.Exit(code=2) from exc
+    _ensure_or_refuse(lay)
     typer.echo(f"root   {lay.root}")
     typer.echo(f"data   {lay.data}")
     typer.echo(f"out    {lay.out}")
@@ -308,8 +390,10 @@ def facts(
     """List the accepted facts in the ledger, each with its source file and page."""
     from planner.ledger import db
 
-    conn = db.connect(layout().data / "ledger" / "planner.db")
-    rows = db.facts_for(conn, year, form)
+    conn = _open_ledger_readonly()
+    rows = db.facts_for(conn, year, form) if conn else []
+    if conn:
+        conn.close()
     for r in rows:
         typer.echo(
             f"{r.tax_year} {r.form:9} {r.issuer[:24]:24} box {r.box:12} "
@@ -329,8 +413,10 @@ def rows(
     """List imported CSV rows (holdings, lots, transactions, income, bank lines)."""
     from planner.ledger import db
 
-    conn = db.connect(layout().data / "ledger" / "planner.db")
-    out = db.rows_for(conn, year, source, kind)
+    conn = _open_ledger_readonly()
+    out = db.rows_for(conn, year, source, kind) if conn else []
+    if conn:
+        conn.close()
     for r in out:
         amount = f"{r.amount_cents / 100:>14,.2f}" if r.amount_cents is not None else ""
         typer.echo(
