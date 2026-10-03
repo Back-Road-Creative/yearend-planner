@@ -1,0 +1,16 @@
+# NC Form D-400. Lines 6, 12b, 15 and 20a are the ones the planner relies on; the
+# payment lines (21a, 23, 26a, 28) follow the printed form and are optional.
+form: NC-D400
+years: [2024, 2025, 2026]
+match: ["D-400", "Individual Income Tax Return"]
+year_pattern: '(?:calendar year|tax year)\s*:?\s*(20\d\d)'
+issuer: NC
+boxes:
+  "6": {label: "Federal adjusted gross income", pattern: 'Federal Adjusted Gross Income[\s.]*6\.?\s+AMOUNT'}
+  "12b": {label: "NC taxable income", pattern: 'North Carolina Taxable Income[\s.]*12b\.?\s+AMOUNT'}
+  "15": {label: "NC income tax", pattern: 'North Carolina Income Tax[\s.]*15\.?\s+AMOUNT', required: true}
+  "20a": {label: "NC income tax withheld", pattern: 'North Carolina Income Tax Withheld[\s.]*20a\.?\s+AMOUNT'}
+  "21a": {label: "NC estimated tax paid", pattern: 'Estimated Tax[\s.]*21a\.?\s+AMOUNT'}
+  "23": {label: "Total payments", pattern: 'Total Payments[\s.]*23\.?\s+AMOUNT'}
+  "26a": {label: "Amount due", pattern: 'Pay This Amount[\s.]*26a\.?\s+AMOUNT'}
+  "28": {label: "Refund", pattern: 'Amount to be Refunded[\s.]*28\.?\s+AMOUNT'}

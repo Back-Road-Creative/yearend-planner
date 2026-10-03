@@ -1,0 +1,11 @@
+# Schedule C (Form 1040): profit or loss from business.
+form: 1040-SCHC
+years: [2024, 2025, 2026]
+match: ["Schedule C (Form 1040)"]
+year_pattern: 'Schedule C \(Form 1040\)\s*(20\d\d)'
+issuer: self
+boxes:
+  "1": {label: "Gross receipts or sales", pattern: 'Gross receipts or sales[^\n]*?\b1\s+AMOUNT'}
+  "7": {label: "Gross income", pattern: 'Gross income[^\n]*?\b7\s+AMOUNT'}
+  "28": {label: "Total expenses", pattern: 'Total expenses before expenses for business use of home[^\n]*?\b28\s+AMOUNT'}
+  "31": {label: "Net profit or loss", pattern: 'Net profit or \(loss\)[^\n]*?\b31\s+AMOUNT', required: true}

@@ -1,0 +1,24 @@
+# Form 1040 page 1 (income, AGI, deductions). IRS line labels; dot leaders allowed.
+# The filed return is the taxpayer's own document: issuer is the literal "self".
+form: 1040
+years: [2024, 2025, 2026]
+match: ["U.S. Individual Income Tax Return"]
+year_pattern: 'Form 1040(?:-SR)?\s*\((20\d\d)\)'
+issuer: self
+boxes:
+  "1z": {label: "Wages (line 1z)", pattern: 'Add lines 1a through 1h[\s.]*1z\s+AMOUNT'}
+  "2a": {label: "Tax-exempt interest", pattern: 'Tax-exempt interest[\s.]*2a\s+AMOUNT'}
+  "2b": {label: "Taxable interest", pattern: 'Taxable interest[\s.]*2b\s+AMOUNT'}
+  "3a": {label: "Qualified dividends", pattern: 'Qualified dividends[\s.]*3a\s+AMOUNT'}
+  "3b": {label: "Ordinary dividends", pattern: 'Ordinary dividends[\s.]*3b\s+AMOUNT'}
+  "4b": {label: "IRA distributions, taxable", pattern: 'Taxable amount[\s.]*4b\s+AMOUNT'}
+  "5b": {label: "Pensions and annuities, taxable", pattern: 'Taxable amount[\s.]*5b\s+AMOUNT'}
+  "6b": {label: "Social security, taxable", pattern: 'Taxable amount[\s.]*6b\s+AMOUNT'}
+  "7": {label: "Capital gain or loss", pattern: 'Capital gain or \(loss\)[^\n]*?\b7\s+AMOUNT'}
+  "8": {label: "Additional income (Schedule 1)", pattern: 'Additional income from Schedule 1, line 10[\s.]*8\s+AMOUNT'}
+  "9": {label: "Total income", pattern: 'This is your total income[\s.]*9\s+AMOUNT'}
+  "10": {label: "Adjustments to income", pattern: 'Adjustments to income from Schedule 1, line 26[\s.]*10\s+AMOUNT'}
+  "11": {label: "Adjusted gross income", pattern: 'This is your adjusted gross income[\s.]*11\s+AMOUNT', required: true}
+  "12": {label: "Standard or itemized deductions", pattern: 'Standard deduction or itemized deductions[^\n]*?\b12\s+AMOUNT'}
+  "13": {label: "QBI deduction", pattern: 'Qualified business income deduction[^\n]*?\b13\s+AMOUNT'}
+  "15": {label: "Taxable income", pattern: 'This is your taxable income[\s.]*15\s+AMOUNT'}

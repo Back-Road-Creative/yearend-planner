@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from planner.ingest.csvfile import load_csv_templates, parse_csv
+from planner.ingest.derive import derive, row_years
 from planner.ingest.pdf import ParsedForm, Unmatched, load_templates, parse_pdf
 from planner.ledger import db
 from planner.paths import Layout
@@ -46,6 +47,7 @@ class IngestReport:
     imported: list[Imported] = field(default_factory=list)
     duplicates: list[str] = field(default_factory=list)
     unmatched: list[tuple[str, str]] = field(default_factory=list)
+    derived: dict[int, int] = field(default_factory=dict)  # year -> YTD facts
 
 
 def fingerprint(path: Path) -> str:
@@ -180,5 +182,10 @@ def ingest(lay: Layout, templates_dir: Path | None = None) -> IngestReport:
                 archived_as=str(archived.relative_to(lay.data)),
             )
         )
+    if report.imported:
+        for year in row_years(conn):
+            n = derive(conn, year, report.batch)
+            if n:
+                report.derived[year] = n
     conn.close()
     return report

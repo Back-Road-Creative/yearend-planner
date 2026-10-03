@@ -69,9 +69,8 @@ moves to `data/inbox/UNMATCHED/` beside a `.reason.txt`. The same file dropped t
 a no-op. A corrected form supersedes the earlier one by form, payer and year. No value
 is ever inferred: a required box that does not parse unmatches the whole file.
 
-`planner facts --year 2025 --form 1099-DIV` lists what the ledger holds. The
-filed-return templates, the Needed panel and OCR confirm land in the next two Phase 2
-PRs.
+`planner facts --year 2025 --form 1099-DIV` lists what the ledger holds. The Needed
+panel and OCR confirm land in Phase 2d.
 
 ## CSV intake (Phase 2b)
 
@@ -91,3 +90,25 @@ Vanguard's cost-basis, realized-gains and income exports are matched on the colu
 names in `templates/csv/`; they are verified against synthetic files in the test suite,
 and your own export is the check that the names are right (the UNMATCHED reason shows
 what differs).
+
+## Filed returns and other forms (Phase 2c)
+
+The same inbox reads last year's filed return and the rest of the year-end paperwork.
+Templates in `templates/forms/` now cover Form 1040 (both pages merge into one form,
+issuer `self`), Schedules 1, 2, 3, C, D and SE, NC Form D-400 (issuer `NC`), the Social
+Security Statement (monthly estimates at 62, 67 and 70, tax year = statement year),
+1099-NEC, 1099-K, 1098, 5498, 5498-SA and 1099-SA. A template may name a literal
+`issuer` for the taxpayer's own documents instead of a payer regex, and the line
+patterns tolerate the dot leaders the IRS prints. The D-400 template is verified on the
+lines the planner relies on (6, 12b, 15, 20a); the payment lines follow the printed form
+and are optional, so a layout difference there never unmatches the return.
+
+Until the 1099s arrive, `planner ingest` folds the imported rows into year-to-date
+facts under form `YTD` (issuer = the CSV source): short- and long-term proceeds, basis
+and gain from realized rows, dividends, interest and capital-gain distributions from
+income rows (or from Dividend/Interest transactions when no income export covers the
+year), deposits and withdrawals from bank rows. Every ingest recomputes them and
+supersedes the last run; `planner derive --year 2025` reruns one year by hand.
+`planner facts --year 2025 --form YTD` shows them beside the forms, box for box
+(the realized boxes use the 1099-B names), so the estimate and the statement can be
+compared the day the form lands.

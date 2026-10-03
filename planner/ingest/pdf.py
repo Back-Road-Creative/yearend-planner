@@ -43,6 +43,7 @@ class Template:
     issuer_pattern: re.Pattern[str]
     boxes: tuple[Box, ...]
     source: str
+    issuer: str | None = None  # literal, for the taxpayer's own documents
 
     def matches(self, text: str) -> bool:
         low = text.lower()
@@ -53,6 +54,8 @@ class Template:
         return int(m.group(1)) if m else None
 
     def find_issuer(self, text: str) -> str:
+        if self.issuer is not None:
+            return self.issuer
         m = self.issuer_pattern.search(text)
         return " ".join(m.group(1).split()) if m else "unknown"
 
@@ -115,6 +118,7 @@ def load_template(path: Path) -> Template:
         issuer_pattern=_compile(str(raw.get("issuer_pattern", DEFAULT_ISSUER))),
         boxes=boxes,
         source=path.name,
+        issuer=None if raw.get("issuer") is None else str(raw["issuer"]),
     )
 
 

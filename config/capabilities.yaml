@@ -13,6 +13,11 @@ medicaid_expansion_magi: partial
 se_health_insurance_deduction: partial
 # Intake (not engine rules): what the templates read today.
 pdf_text_1099_int_div_b_r_1095a: verified  # tests/test_ingest.py
+pdf_filed_1040_and_schedules_1_2_3_c_d_se: verified  # tests/test_forms.py, synthetic dot-leader text
+pdf_nc_d400: partial  # lines 6, 12b, 15, 20a verified; payment lines optional, from memory of the form
+pdf_ssa_statement: verified  # tests/test_forms.py
+pdf_1099_nec_k_1098_5498_5498sa_1099sa: verified  # tests/test_forms.py
+ytd_facts_from_rows: verified  # tests/test_derive.py; planner derive / ingest
 pdf_scanned_ocr_confirm: unsupported  # lands in Phase 2d; file goes to UNMATCHED
 csv_vanguard_download: verified  # tests/test_csv.py (holdings + transactions blocks)
 csv_vanguard_cost_basis_realized_income: partial  # synthetic headers; real export confirms

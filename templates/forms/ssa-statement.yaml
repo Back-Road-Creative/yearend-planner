@@ -1,0 +1,11 @@
+# Social Security Statement: monthly retirement estimates at 62, 67 and 70.
+# Tax year = the statement date's year.
+form: SSA
+years: [2024, 2025, 2026]
+match: ["Social Security Statement"]
+year_pattern: '(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, (20\d\d)'
+issuer: SSA
+boxes:
+  "monthly_62": {label: "Monthly benefit at 62", pattern: '\b(?:at |age )?62\b[^\n$]*\$\s*AMOUNT', required: true}
+  "monthly_67": {label: "Monthly benefit at 67", pattern: '\b(?:at |age )?67\b[^\n$]*\$\s*AMOUNT', required: true}
+  "monthly_70": {label: "Monthly benefit at 70", pattern: '\b(?:at |age )?70\b[^\n$]*\$\s*AMOUNT', required: true}
