@@ -321,9 +321,11 @@ NEEDS: tuple[Need, ...] = (
         "se_income",
         "Self-employment net income",
         "SE tax, QBI, Schedule C",
-        "1099-NEC / 1099-K from each payer, or the bank CSV",
+        "Schedule C line 31 from the bank CSV once its rows are categorised "
+        "(planner categorize); 1099-NEC / 1099-K from each payer stand in",
         "money",
-        boxes=(("1099-NEC", "1"), ("1099-K", "1a")),
+        boxes=(("SCH-C", "31"),),
+        estimate=(("1099-NEC", "1"), ("1099-K", "1a")),
     ),
     Need(
         "interest",

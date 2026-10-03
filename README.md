@@ -333,3 +333,24 @@ needed to file.
 A form past its due date that the return needs joins `planner needed` with
 where to download it, so the intake loop is not done until it is in the inbox
 (`--as-of` checks any date). The plan page lists the inventory under "forms".
+
+## Schedule C from categorised bank rows (Phase 4h)
+
+`planner categorize --year 2026` lists the year's bank rows that have no
+category. A row gets one only from you: `--rule "CLIENT PAYMENT" --as receipts`
+catches every row whose description contains that text (case ignored; the
+first rule wins), and `--row bank:T-3 --as supplies` sets one row, which beats
+any rule. Categories are the Schedule C lines (receipts, returns, advertising,
+car, commissions, contract_labor, insurance, interest, legal_professional,
+office, rent_equipment, rent_property, repairs, supplies, taxes_licenses,
+travel, meals, utilities, wages, other) plus `personal` and `transfer`, which
+are left out. Rules and row choices are kept in `data/profile/categories.yaml`
+and apply to every later export.
+
+Line 1 is the categorised receipts, or the 1099-NEC and 1099-K total when the
+forms add up to more, with a note saying which. Meals count at half. Net
+profit (line 31) becomes the plan's self-employment income; until a row is
+categorised the 1099 forms stand in as an estimate. An uncategorised row is
+listed and left out, never guessed into a line, and while any remain
+`planner needed` asks for them. Depreciation and the home office are not built
+from bank rows.
