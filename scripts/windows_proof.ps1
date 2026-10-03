@@ -9,7 +9,16 @@ $expected = '$3,820.00'   # 2026 single, $50,000 wages: 10% x 12,400 + 12% x 21,
 $base = 'C:\pröof dir'
 $dest = Join-Path $base 'planner ✓'
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Expand-Archive -LiteralPath $Zip -DestinationPath $dest -Force
+# Expand-Archive, Copy-Item and Compress-Archive took about half of a 29-minute
+# proof on the bundle's tens of thousands of small files; .NET's zip and a
+# multi-threaded robocopy do the same work in a fraction of the time.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::ExtractToDirectory($Zip, $dest, $true)
+
+function Copy-Tree([string]$From, [string]$To) {
+    robocopy $From $To /E /MT:16 /NFL /NDL /NJH /NJS /NP | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "robocopy $From -> $To exited $LASTEXITCODE" }
+}
 
 function Invoke-Planner([string]$Dir, [object]$Cmd, [int]$Expect = 0) {
     # PowerShell runs the launcher itself and takes the batch file's exit code;
@@ -85,7 +94,7 @@ Remove-LocalUser -Name $user
 Write-Host '== 6. cloud-sync folder refused'
 $cloud = Join-Path $base 'OneDrive\planner'
 New-Item -ItemType Directory -Force -Path $cloud | Out-Null
-Copy-Item -Path (Join-Path $moved '*') -Destination $cloud -Recurse
+Copy-Tree $moved $cloud
 # Steps 1-5 already created data/ and out/ in the source folder; the check below is
 # that the refused run creates nothing, so start the copy without them.
 Remove-Item -Recurse -Force -Path (Join-Path $cloud 'data'), (Join-Path $cloud 'out') -ErrorAction SilentlyContinue
@@ -97,12 +106,15 @@ $ver = (Get-Content -LiteralPath (Join-Path $moved 'VERSION')).Trim()
 $next = "$ver.1"
 $cand = Join-Path $base 'candidate'
 New-Item -ItemType Directory -Force -Path $cand | Out-Null
-foreach ($n in 'python', 'planner', 'config', 'templates', 'planner.cmd', 'LICENSE', 'README.md', 'GUIDE.md') {
-    Copy-Item -Recurse -LiteralPath (Join-Path $moved $n) -Destination $cand
+foreach ($n in 'python', 'planner', 'config', 'templates') {
+    Copy-Tree (Join-Path $moved $n) (Join-Path $cand $n)
+}
+foreach ($n in 'planner.cmd', 'LICENSE', 'README.md', 'GUIDE.md') {
+    Copy-Item -LiteralPath (Join-Path $moved $n) -Destination $cand
 }
 Set-Content -LiteralPath (Join-Path $cand 'VERSION') -Value $next -Encoding ascii
 $candZip = Join-Path $base "yearend-planner-$next-win64.zip"
-Compress-Archive -Path (Join-Path $cand '*') -DestinationPath $candZip
+[System.IO.Compression.ZipFile]::CreateFromDirectory($cand, $candZip)
 $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $candZip).Hash.ToLower()
 Set-Content -LiteralPath (Join-Path $moved 'data\private\keep.txt') -Value 'mine'
 $o = Invoke-Planner $moved @('update', $candZip, '--sha256', $sha)
