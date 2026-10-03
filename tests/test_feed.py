@@ -95,7 +95,10 @@ def test_finish_reports_and_tidies_after_the_launcher_moved_the_folders(
         msg
         == "updated 0.1.0 -> 0.2.0; candidate selfcheck: ok; kept your limits: 2027.x"
     )
-    assert not cand.exists() and not (lay.data / "update" / "swap.cmd").exists()
+    assert not cand.exists()
+    # cmd is still reading swap.cmd (the rerun line comes after --finish):
+    # deleting it here ended the script with "The batch file cannot be found"
+    assert (lay.data / "update" / "swap.cmd").exists()
     with pytest.raises(upd.UpdateError, match="no update is waiting"):
         upd.finish(lay.root)
 
