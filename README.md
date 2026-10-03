@@ -277,7 +277,7 @@ year-end cut-off to the one before, an opening not at all); the holidays are
 computed, including DC Emancipation Day, which the IRS counts. Estimated-tax
 installments use the same shift.
 
-## Levers (Phase 4f)
+## Levers and what-if (Phase 4f)
 
 `planner levers --year 2026` lists every move left this year that changes the
 tax bill or the ACA credit, each sized from the ledger, priced through the
@@ -294,14 +294,21 @@ against doing nothing; friction is never folded into the number.
   counted; a "together" row says whether the set reaches under the nearest
   line you are over. Medicaid tests income month by month when you apply, so
   it is never the year-end target.
+- **Use the room**: a Roth conversion (the sizer's pick when an objective is
+  set, otherwise filled to the next line), a 0% gain harvest, an inherited-IRA
+  withdrawal, and a Roth contribution (no tax effect). They share the room
+  before the next line, so each is priced alone and ranked by what each
+  dollar costs now.
 
 A lever missing an input names it: `hsa_coverage` (none, self or family) and
 `workplace_plan` (W-2 box 13) are Needed-panel questions; limits, catch-ups
 and IRA/Roth phase-outs come from `config/thresholds.yaml`, each with its
-source. The plan page shows the top three moves.
+source. The plan page shows the top three of each menu.
 
-`planner thresholds --year 2026` prints the sourced limits and checks the ones
-the engine also carries; a mismatch (the engine's 2026 IRA limit is still 7,000
-against Notice 2025-67's 7,500) means the engine prices with its own value
-until policyengine-us updates. Engine runs are
+`planner whatif --year 2026 --apply traditional_ira,hsa --set hsa=1000`
+recomputes the full year with the chosen moves and prints it before and after,
+with every watched line. `planner thresholds --year 2026` prints the sourced
+limits and checks the ones the engine also carries; a mismatch (the engine's
+2026 IRA limit is still 7,000 against Notice 2025-67's 7,500) means the engine
+prices with its own value until policyengine-us updates. Engine runs are
 memoized per household, so the page prices each household once.

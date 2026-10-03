@@ -38,6 +38,10 @@ def test_catalog_sizes_from_the_ledger_and_names_what_it_needs(
         "se_health",
         "traditional_ira",
         "carryforward",
+        "conversion",
+        "gain_harvest",
+        "inherited_ira",
+        "roth_contribution",
     ]
     # unanswered: never guessed, the Needed panel question is named
     assert not by["hsa"].available and by["hsa"].why.startswith("needs hsa_coverage")
@@ -49,7 +53,7 @@ def test_catalog_sizes_from_the_ledger_and_names_what_it_needs(
     assert harvest.delta == (("short_term_gains", -10_000),)
     assert "bought 2026-06-20: selling before 2026-07-21 washes it" in harvest.why
     assert by["se_health"].delta == (("se_health_premiums", 3_600),)
-    assert not by["defer_sales"].available
+    assert not by["defer_sales"].available and not by["inherited_ira"].available
     _, found, _ = levers.catalog(lots, 2026, AS_OF, Overrides(planned_lt_sales=5_000.0))
     defer = next(lv for lv in found if lv.key == "defer_sales")
     assert defer.delta == (("long_term_gains", -5_000),)
@@ -72,6 +76,12 @@ def test_menu_ranks_the_moves_and_gets_under_the_cliff(lots: Layout) -> None:  #
     assert m.together is not None and m.together.net > 0
     assert f"{CLIFF} (now under)" in m.together.crosses
     assert m.together.result.aca_ptc > 0 and m.base.aca_ptc == 0
+    # the room levers share one room and are ranked by cost per dollar
+    rooms = [rw for rw in m.rooms[1:] if rw.rate is not None]
+    assert m.room is not None and all(rw.lever.amount <= m.room for rw in rooms)  # type: ignore[union-attr]
+    assert [rw.rate for rw in rooms] == sorted(rw.rate for rw in rooms)  # type: ignore[type-var]
+    roth = next(rw for rw in m.rooms if rw.name == "roth_contribution")
+    assert roth.net == 0 and roth.rate is None
     text = levers.render_menu(m)
     assert f"get under: {CLIFF}, over by" in text
     assert f"{'carryforward':20} not available: needs prior_capital_loss" in text
@@ -79,11 +89,48 @@ def test_menu_ranks_the_moves_and_gets_under_the_cliff(lots: Layout) -> None:  #
 
 
 @pytest.mark.engine
-def test_cli_levers_thresholds(lots: Layout) -> None:  # noqa: F811
+def test_whatif_recomputes_the_year(lots: Layout) -> None:  # noqa: F811
+    lay_ = answered(lots)
+    w = levers.whatif(lay_, 2026, ["traditional_ira", "hsa"], {"hsa": 1_000.0}, AS_OF)
+    assert [lv.amount for lv in w.applied] == [8_600.0, 1_000.0]
+    assert w.after.agi == pytest.approx(w.before.agi - 9_600, abs=0.01)
+    assert w.net == pytest.approx(levers.cost(w.before) - levers.cost(w.after))
+    assert "hsa 1,000" in levers.render_whatif(w)
+    with pytest.raises(ValueError, match="unknown lever nope"):
+        levers.whatif(lay_, 2026, ["nope"], as_of=AS_OF)
+    with pytest.raises(ValueError, match="carryforward is not available: needs"):
+        levers.whatif(lay_, 2026, ["carryforward"], as_of=AS_OF)
+    with pytest.raises(ValueError, match="--set hsa: add it to --apply"):
+        levers.whatif(lay_, 2026, ["se_health"], {"hsa": 500.0}, AS_OF)
+
+
+@pytest.mark.engine
+def test_room_when_income_is_low(lots: Layout) -> None:  # noqa: F811
+    m = levers.menu(answered(lots, se_income="30,000"), 2026, AS_OF)
+    # Medicaid tests monthly income when you apply: never the year-end target
+    assert m.target is None
+    assert m.room_line is not None and m.room_line.name == "ACA CSR 250% FPL"
+    priced = [rw for rw in m.rooms if rw.rate is not None]
+    assert {rw.name for rw in priced} == {"conversion", "gain_harvest"}
+    assert all(rw.lever.amount == m.room for rw in priced)  # type: ignore[union-attr]
+    # NC taxes the gain, the conversion is ordinary income: the gain is cheaper
+    assert priced[0].name == "gain_harvest"
+    assert any(n.startswith("together the moves overshoot") for n in m.notes)
+    assert any(n.startswith("a move crosses the Medicaid line") for n in m.notes)
+
+
+@pytest.mark.engine
+def test_cli_levers_whatif_thresholds(lots: Layout) -> None:  # noqa: F811
     answered(lots)
     r = runner.invoke(app, ["levers", "--year", "2026", "--as-of", "2026-07-10"])
     assert r.exit_code == 0, r.output
     assert f"get under: {CLIFF}" in r.output and "together: net +" in r.output
+    args = ["whatif", "--year", "2026", "--as-of", "2026-07-10"]
+    r = runner.invoke(app, [*args, "--apply", "se_health", "--set", "se_health=1,200"])
+    assert r.exit_code == 0, r.output
+    assert "What if 2026: se_health 1,200" in r.output and "net (saved +)" in r.output
+    r = runner.invoke(app, [*args, "--apply", "nope"])
+    assert r.exit_code == 2 and "unknown lever nope" in r.output
     r = runner.invoke(app, ["thresholds", "--year", "2026"])
     assert r.exit_code == 0, r.output
     assert "std_deduction_single" in r.output and "engine agrees" in r.output

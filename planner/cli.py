@@ -930,6 +930,16 @@ def plan(
         typer.echo(f"written {year_plan.write(layout(), yp)}")
 
 
+def _lever_amounts(pairs: list[str]) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for pair in pairs:
+        key, sep, amount = pair.partition("=")
+        if not sep:
+            raise typer.BadParameter(f"--set {pair}: use lever=amount")
+        out[key.strip()] = float(amount.replace(",", ""))
+    return out
+
+
 @app.command()
 def levers(
     year: int = typer.Option(..., help="plan year"),
@@ -953,6 +963,40 @@ def levers(
         _overrides(q4_dividends, sales_st, sales_lt, 0.0, hsa),
     )
     typer.echo(lv.render_menu(m), nl=False)
+
+
+@app.command()
+def whatif(
+    year: int = typer.Option(..., help="plan year"),
+    apply: str = typer.Option(..., help="lever keys, comma-separated"),
+    set_: list[str] = typer.Option(  # noqa: B008
+        [], "--set", help="lever=amount to size a lever yourself (repeatable)"
+    ),
+    as_of: str | None = AS_OF,
+    q4_dividends: float = Q4,
+    sales_st: float = ST,
+    sales_lt: float = LT,
+    hsa: float | None = HSA,
+) -> None:
+    """Recompute the full year with the chosen levers and show it before and
+    after, side by side."""
+    from datetime import date
+
+    from planner.plan import levers as lv
+
+    try:
+        w = lv.whatif(
+            layout(),
+            year,
+            [k.strip() for k in apply.split(",") if k.strip()],
+            _lever_amounts(set_),
+            date.fromisoformat(as_of) if as_of else None,
+            _overrides(q4_dividends, sales_st, sales_lt, 0.0, hsa),
+        )
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(lv.render_whatif(w), nl=False)
 
 
 @app.command()
