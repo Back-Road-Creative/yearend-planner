@@ -41,3 +41,4 @@ threshold_drift: verified  # tests/test_levers.py; planner thresholds; config ro
 expected_forms: verified  # tests/test_expected.py; planner forms; late forms join planner needed
 schedule_c: verified  # tests/test_schedule_c.py; planner categorize; rules and row choices, never guessed
 draft_return: verified  # tests/test_draft.py; planner draft; 1040 + Sch 1/2/3/SE + 8962, each line sourced, engine totals cross-checked
+schedule_d: verified  # tests/test_capgains.py; planner gains; 8949 lots, cross-account wash sales (W), 1099-DIV 2a, carryover in and out

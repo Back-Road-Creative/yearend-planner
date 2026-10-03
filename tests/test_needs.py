@@ -42,6 +42,7 @@ def test_registry_keys_are_unique_and_every_box_names_a_template(
         forms.setdefault(str(t["form"]), {}).update(t["boxes"])
     forms["YTD"] = {}
     forms["SCH-C"] = {}  # stored by planner categorize, not read from a PDF
+    forms["SCH-D"] = {}  # stored by planner gains from the lots
     for n in NEEDS:
         for form, box in n.boxes:
             assert form in forms, (n.key, form)
@@ -72,18 +73,15 @@ def test_documents_and_rows_cover_needs(lay: Layout) -> None:
         by["ss_estimate_67"].state == "actual" and by["ss_estimate_67"].value == 2640.0
     )
     assert by["prior_nc_tax"].state == "missing"
-    # a YTD figure stands in as an estimate until the 1099-B / Schedule D arrives
+    # the YTD facts stay; once the year has ended Schedule D from the lots is actual
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
         ytd = {f.box: f.value for f in db.facts_for(conn, 2025, "YTD")}
     finally:
         conn.close()
     assert ytd["lt_gain"] == 9000.0
-    assert (
-        needed(lay, 2025).items
-        and {s.need.key: s for s in needed(lay, 2025).items}["long_term_gains"].state
-        == "estimate"
-    )
+    lt = {s.need.key: s for s in needed(lay, 2025).items}["long_term_gains"]
+    assert (lt.state, lt.value, lt.origin) == ("actual", 9000.0, "SCH-D 2025 planner")
     assert "2025" in by["prior_agi"].origin
 
 

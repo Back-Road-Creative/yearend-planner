@@ -377,3 +377,34 @@ printed as `CHECK:`. Unknown inputs, YTD estimates and forms still to come are
 listed under the lines. Social Security benefits now come from SSA-1099 box 5
 (`planner needed` asks for them), and the 1040 template reads the 2025 form's
 7a, 11a, 12e and 13a lines.
+
+## Capital gains: Form 8949 and Schedule D (Phase 4j-1)
+
+`planner gains --year 2025` builds Form 8949 and Schedule D, and `planner draft`
+carries both.
+
+- **Lots.** Each closed lot from the realized-lots CSV in a taxable account is
+  one Form 8949 row: box A when short-term, box D when long-term. A sale inside
+  an IRA, Roth or HSA is not reported. When the CSV has no Term column, the term
+  comes from the two dates.
+- **Wash sales.** A loss lot whose symbol was bought again within 30 days either
+  side, in any account, has part of its loss disallowed (code W). The part is in
+  proportion to the replacement shares, and each replacement share covers one
+  loss share, oldest first. A replacement bought in an IRA makes the loss lost
+  for good (Rev. Rul. 2008-5). The broker reports wash sales only inside its own
+  account; when its 1099-B figure differs, the draft says so.
+- **No lots on file.** The 1099-B summaries go straight onto lines 1a and 8a
+  (basis reported, no adjustments).
+- **Other lines.** Capital gain distributions (1099-DIV box 2a) go on line 13.
+  The loss carried in from last year is typed as `st_loss_carryover` and
+  `lt_loss_carryover` and goes on lines 6 and 14.
+- **When the Needed panel uses it.** After the year ends, Schedule D lines 7 and
+  15 are the short- and long-term gains in the Needed panel. Until then the
+  year-to-date estimate stands in, and it now includes capital gain
+  distributions.
+- **A loss beyond the yearly limit.** The draft adds line 21 and the Capital Loss
+  Carryover Worksheet figures for next year.
+- **Checks.** A gap between lot proceeds and the 1099-B proceeds is named. A gap
+  between 1040 line 7a and Schedule D is printed as `CHECK:`.
+- **Assumption.** Boxes A and D assume the broker reported the basis to the IRS;
+  a noncovered lot belongs in box B or E.

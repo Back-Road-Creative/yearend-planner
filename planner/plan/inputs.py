@@ -20,6 +20,7 @@ from planner.engine.household import Household, MissingInputError
 from planner.ingest.needs import _needed
 from planner.ledger import db
 from planner.paths import Layout
+from planner.taxprep import capgains
 
 FILING = {
     "single": "SINGLE",
@@ -103,6 +104,7 @@ def build(
     ov = overrides or Overrides()
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
+        capgains.store(conn, lay, year)  # typed carryovers reach Schedule D
         report = _needed(conn, lay, year)
         recorded = _recorded_conversions(conn, year)
     finally:

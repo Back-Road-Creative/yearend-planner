@@ -288,6 +288,24 @@ def needed(
 
 
 @app.command()
+def gains(year: int = typer.Option(..., help="tax year")) -> None:
+    """Form 8949 and Schedule D: each closed lot in a taxable account, wash sales
+    across every account (code W), 1099-DIV capital gain distributions and the
+    loss carried in. Once the year has ended its Schedule D feeds the Needed
+    panel."""
+    from planner.ledger import db
+    from planner.taxprep import capgains
+
+    lay = layout()
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    try:
+        cg = capgains.store(conn, lay, year)
+    finally:
+        conn.close()
+    typer.echo(capgains.render(cg), nl=False)
+
+
+@app.command()
 def categorize(
     year: int = typer.Option(..., help="tax year"),
     rule: str | None = typer.Option(None, help="description text to match"),
