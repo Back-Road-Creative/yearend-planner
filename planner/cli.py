@@ -751,6 +751,93 @@ def glide(
         typer.echo(f"note: {note}")
 
 
+@app.command()
+def washsales(
+    year: int | None = typer.Option(None, help="loss sales in this year; default all"),
+    as_of: str | None = AS_OF,
+) -> None:
+    """Every loss sale with a buy of the same symbol within 30 days either side,
+    across all accounts, and the symbols whose window is still open."""
+    from datetime import date
+
+    from planner.ledger import db
+    from planner.plan import washsale
+
+    lay = layout()
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    try:
+        flags = washsale.check(conn, year)
+        windows = washsale.open_windows(
+            conn, date.fromisoformat(as_of) if as_of else date.today()
+        )
+    finally:
+        conn.close()
+    for f in flags:
+        typer.echo(
+            f"WASH {f.sale.symbol:8} sold {f.sale.date} ({f.sale.account}) loss "
+            f"{f.sale.loss:,.2f}; bought {f.buy.date} ({f.buy.account}, {f.buy.type}) "
+            f"{f.days:+d} days"
+        )
+    if not flags:
+        typer.echo("no wash sales flagged")
+    for symbol, until, loss in windows:
+        typer.echo(f"open window {symbol}: no buys before {until} (loss {loss:,.2f})")
+
+
+LOT = typer.Option(None, help="sell this lot first: ACCOUNT:SYMBOL:YYYY-MM-DD (repeat)")
+
+
+@app.command()
+def withdraw(
+    year: int = typer.Option(..., help="plan year"),
+    target: float | None = typer.Option(None, help="cash to hold; default cash_target"),
+    budget: float | None = typer.Option(None, help="realized gain allowed ($)"),
+    as_of: str | None = AS_OF,
+    lot: list[str] | None = LOT,
+    q4_dividends: float = Q4,
+    sales_st: float = ST,
+    sales_lt: float = LT,
+    conversion: float = CONV,
+    hsa: float | None = HSA,
+) -> None:
+    """Raise the cash target: cash accounts first, then the taxable lots with
+    the least gain per dollar (specific-ID lots first); the MAGI and tax
+    effect is priced through the engine."""
+    from datetime import date
+
+    from planner.plan.withdraw import pick
+
+    w = pick(
+        layout(),
+        year,
+        target,
+        budget,
+        date.fromisoformat(as_of) if as_of else None,
+        lot or [],
+        _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa),
+    )
+    typer.echo(
+        f"{year} as of {w.as_of}: cash {w.cash_now:,.2f} of target {w.target:,.2f}; "
+        f"need {w.need:,.2f}"
+    )
+    for s in w.sales:
+        typer.echo(
+            f"  sell {s.quantity:>12,.3f} {s.symbol:8} {s.account} acquired "
+            f"{s.acquired} ({s.term}) proceeds {s.proceeds:>12,.2f} "
+            f"basis {s.basis:>12,.2f} gain {s.gain:>12,.2f}"
+        )
+    typer.echo(
+        f"proceeds {w.proceeds:,.2f}; gain short-term {w.gain_st:,.2f} "
+        f"long-term {w.gain_lt:,.2f}; short {w.short:,.2f}"
+    )
+    typer.echo(
+        f"ACA MAGI {w.magi_before:,.2f} -> {w.magi_after:,.2f}; "
+        f"federal + NC tax {w.tax_before:,.2f} -> {w.tax_after:,.2f}"
+    )
+    for note in w.notes:
+        typer.echo(f"note: {note}")
+
+
 def main() -> int:
     app()
     return 0
