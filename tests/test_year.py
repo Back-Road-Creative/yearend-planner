@@ -105,6 +105,27 @@ def test_plan_page_names_what_a_blocked_planner_needs(lots: Layout) -> None:  # 
     assert "blocked until the Needed panel is answered: spending, glide" in year.render(
         yp
     )
+    # the cash section still runs; only its monthly line (the glide run) is not drawn
+    cash = yp.section("cash")
+    assert cash.ok and cash.tables == []
+    assert any(
+        "monthly cash line not drawn: the plan needs spending_floor" in n
+        for n in cash.notes
+    )
+
+
+@pytest.mark.engine
+def test_plan_text_carries_the_tables_aligned(lots: Layout) -> None:  # noqa: F811
+    yp = year.assemble(lots, 2026, AS_OF)
+    text = year.render(yp)
+    assert "Age and year table, 2026 to 2066" in text
+    assert "Monthly cash line, 2026-01 to 2027-12" in text
+    assert "Return bands, 2026 to 2035" in text
+    glide_tbl = yp.section("glide").tables[0]
+    widths = {len(ln) for ln in year.text_table(glide_tbl)}
+    assert len(widths) == 1  # right-aligned numbers: every row the same width
+    assert "2026-01*" in text and "2027-12 " in text
+    assert len(year.text_table(yp.section("cash").tables[0])) == 25
 
 
 @pytest.mark.engine
@@ -389,3 +410,16 @@ def test_planned_sale_without_a_lot_to_price_is_named(lots: Layout) -> None:  # 
     assert any("planned_st_sales" in n and "no taxable lot" in n for n in g.notes), (
         g.notes
     )
+
+
+def test_glide_panel_says_the_cash_falls_under_the_target(lay: Layout) -> None:  # noqa: F811
+    """first_short_month is the first month under the cash target, not under zero:
+    with 15,000 in the cash bucket the glide and cash panels say the same thing."""
+    from planner.ledger import portfolio
+
+    portfolio.save_account(lay, "22222222", balance=15_000.0)
+    g = glidepath.glide(lay, 2026, AS_OF)
+    assert g.first_short_month == "2026-01" and g.months[0].cash > 0
+    lines = year._glide(lay, 2026, AS_OF, Overrides(), g).lines
+    assert "cash line falls under the target in 2026-01" in lines
+    assert not any("negative" in ln for ln in lines)

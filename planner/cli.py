@@ -1218,7 +1218,8 @@ def glide(
     conversion: float = CONV,
     hsa: float | None = HSA,
 ) -> None:
-    """The age/year table to 95 under the planning return, the accessible-bucket
+    """The age/year table to 95 under the planning return (the comfort-floor line,
+    the same rule at the floor return, beside it), the accessible-bucket
     floor through the IRA access age, three stress rows, and the month-by-month
     cash line for this year and next. Estimated payments come from the
     ``esttax`` installments, and the planned sales (``--sales-st``,
@@ -1241,20 +1242,22 @@ def glide(
         _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa),
     )
     typer.echo(
-        f"{year} age {g.age} balance {g.balance:,.2f}; accessible {g.accessible:,.2f} "
+        f"{year} age {g.age} balance {g.balance:,.2f} ({g.band}); "
+        f"accessible {g.accessible:,.2f} "
         f"vs floor through {g.access_age:g} ({g.years_to_access} years) "
         f"{g.floor_needed:,.2f}: "
         + (f"SHORT by {g.floor_shortfall:,.2f}" if g.floor_shortfall else "covered")
     )
     typer.echo(
         f"{'year':>6} {'age':>4} {'real':>15} {'nominal':>15} {'SS':>10} "
-        f"{'spend':>10} {'withdraw':>10}"
+        f"{'spend':>10} {'withdraw':>10} {'comfort floor':>15}"
     )
-    for rw in g.rows:
+    for rw, fl in zip(g.rows, g.floor_rows, strict=True):
         typer.echo(
             f"{rw.year:>6} {rw.age:>4} {rw.balance_real:>15,.2f} "
             f"{rw.balance_nominal:>15,.2f} "
-            f"{rw.ss:>10,.2f} {rw.spend:>10,.2f} {rw.withdrawal:>10,.2f}"
+            f"{rw.ss:>10,.2f} {rw.spend:>10,.2f} {rw.withdrawal:>10,.2f} "
+            f"{fl.balance_real:>15,.2f}"
         )
     for s in g.stresses:
         end = f"runs out at {s.runs_out_age}" if s.runs_out_age else "lasts"

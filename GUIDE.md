@@ -333,6 +333,12 @@ cash itself; its tax is in the estimated payments and the `tax due` month, and
 a note gives the tax it adds. None of this needs `--cash-in`. The cash bucket
 is carried month by month and the first month under `cash_target` is named.
 
+The glide path also runs the comfort-floor line: the same spending rule at
+`return_floor` every year, printed beside the on-track line in the `comfort
+floor` column. `planner glide` names which band this year's spending sits in
+(inside the band, at the floor, at the ceiling, or held at the floor by the
+drawdown rule).
+
 ## Planners: raising cash and wash sales (Phase 4c)
 
 `planner withdraw --year 2026 [--target 30000] [--budget 5000] [--lot 11111111:VTSAX:2019-01-15]`
@@ -708,7 +714,13 @@ whole year. It is a static copy for printing and backup. `planner run` (Phase
   2. OCR values awaiting confirm, if any.
   3. The planners: glide path, spending band, MAGI headroom, levers, the
      conversion, tax-prep forms with the draft return, estimated tax, cash
-     buffer, wash sales and deadlines.
+     buffer, wash sales and deadlines. Three panels carry a table under
+     their summary: the glide path shows which band you are in and the
+     age/year table to 95 (the on-track line beside the comfort-floor line,
+     real and nominal), the spending band the return-band table for the next
+     ten years, and the cash buffer the monthly cash line for this year and
+     next with each month marked `ok` or `UNDER` the cash target. `planner
+     plan` prints the same tables as aligned text.
   4. Alerts.
 - **Every panel is tagged.**
   - *Estimate*: a projection made before the year ends, or one resting on

@@ -14,6 +14,7 @@ from planner.cli import app
 from planner.dashboard import page, render
 from planner.ingest.needs import profile_path
 from planner.paths import Layout
+from planner.plan import glidepath, spending
 from tests.test_spending import AS_OF, lay  # noqa: F401
 from tests.test_withdraw import lots  # noqa: F401
 
@@ -189,3 +190,63 @@ def test_needed_grouped_by_document(planner_home: Path) -> None:
     # the same item is never listed twice
     listed = [s.need.key for g in pg.needed_groups for s in g.items]
     assert sorted(listed) == sorted(s.need.key for s in pg.needed)
+
+
+def test_glide_year_and_month_tables_on_page(lots: Layout) -> None:  # noqa: F811
+    pg = page.gather(lots, 2026, AS_OF)
+    g = glidepath.glide(lots, 2026, AS_OF)
+    sp = spending.plan(lots, 2026, AS_OF, years=10)
+
+    # glide panel: the age/year table, the on-track line beside the comfort-floor line
+    glide_tbl = pg.panel("glide").tables[0]
+    assert glide_tbl.headers[:4] == ["year", "age", "on-track real", "on-track nominal"]
+    assert "comfort-floor real" in glide_tbl.headers
+    assert len(glide_tbl.rows) == len(g.rows) and glide_tbl.rows[0][:2] == [
+        "2026",
+        "55",
+    ]
+    assert glide_tbl.rows[-1][1] == "95"
+    i = glide_tbl.headers.index("comfort-floor real")
+    assert glide_tbl.rows[0][i] == f"{g.floor_rows[0].balance_real:,.2f}"
+    assert glide_tbl.rows[-1][i] == f"{g.floor_rows[-1].balance_real:,.2f}"
+    assert any(ln.startswith("band: inside the band") for ln in pg.panel("glide").lines)
+
+    # cash panel: the monthly cash line, 24 months, flagged against the target
+    cash_tbl = pg.panel("cash").tables[0]
+    assert len(cash_tbl.rows) == 24 and cash_tbl.rows[0][0] == "2026-01*"
+    assert cash_tbl.rows[-1][0] == "2027-12"
+    assert cash_tbl.headers[-2:] == ["cash", "vs target"]
+    assert cash_tbl.rows[0][-2] == f"{g.months[0].cash:,.2f}"
+    assert {row[-1] for row in cash_tbl.rows} == {"ok"}
+
+    # spending panel: the return-band table under the floor and planning returns
+    band_tbl = pg.panel("spending").tables[0]
+    assert len(band_tbl.rows) == len(sp.rows) == 10
+    assert band_tbl.rows[1][2] == f"{sp.rows[1].balance_floor:,.2f}"
+    assert band_tbl.rows[1][4] == f"{sp.rows[1].balance_track:,.2f}"
+
+    # the page renders all three, escaped, with no external assets
+    text = render.html(pg)
+    for needle in (
+        "Age and year table",
+        ">comfort-floor real</th>",
+        '<td>2026</td><td class="num">55</td>',
+        "Monthly cash line",
+        "<td>2026-01*</td>",
+        "<td>2027-12</td>",
+        "Return bands",
+        f"{sp.rows[1].balance_track:,.2f}",
+    ):
+        assert needle in text, needle
+    assert "http://" not in text and "https://" not in text
+
+
+@pytest.mark.engine
+def test_cash_table_flags_months_under_the_target(lots: Layout) -> None:  # noqa: F811
+    from planner.ledger import portfolio
+
+    portfolio.save_account(lots, "22222222", balance=15_000.0)
+    pg = page.gather(lots, 2026, AS_OF)
+    rows = pg.panel("cash").tables[0].rows
+    assert rows[0][-1] == "UNDER"
+    assert "UNDER" in render.html(pg)

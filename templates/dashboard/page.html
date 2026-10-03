@@ -41,6 +41,9 @@ table { border-collapse:collapse; width:100%; font-size:13px; }
 td, th { text-align:left; padding:3px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
 td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .scroll { overflow-x:auto; }
+h3 { margin:12px 0 4px; font-size:14px; }
+th.num { text-align:right; }
+tr.under td { color:var(--unavailable); font-weight:600; }
 .done { color:var(--actual); font-weight:600; }
 .stale { margin:.5rem 0 0; padding:.4rem .6rem; border-left:4px solid var(--estimate); background:var(--panel); }
 @media print { #drop, form, button { display:none !important; } body { background:#fff; } section { break-inside:avoid; } }
@@ -218,6 +221,14 @@ td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap
   <h2>{{ panel.title }} <span class="tag {{ panel.tag }}">{{ panel.tag }}</span></h2>
   <pre>{{ panel.lines|join('\n') }}</pre>
   {% if panel.notes %}<ul class="notes">{% for n in panel.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+  {% for t in panel.tables %}
+  <h3>{{ t.title }}</h3>
+  <div class="scroll"><table class="grid">
+    <tr>{% for h in t.headers %}<th{% if not loop.first %} class="num"{% endif %}>{{ h }}</th>{% endfor %}</tr>
+    {% for row in t.rows %}<tr{% if row[-1] == 'UNDER' %} class="under"{% endif %}>{% for c in row %}{% if loop.first %}<td>{{ c }}</td>{% else %}<td class="num">{{ c }}</td>{% endif %}{% endfor %}</tr>
+    {% endfor %}
+  </table></div>
+  {% endfor %}
   {% if panel.name == 'forms' %}
   <h2 style="margin-top:12px">Draft return <span class="tag {{ 'unavailable' if not p.draft else ('estimate' if p.draft.estimates or p.draft.unknown or p.draft.missing else 'actual') }}">{{ 'unavailable' if not p.draft else ('estimate' if p.draft.estimates or p.draft.unknown or p.draft.missing else 'actual') }}</span></h2>
   {% if p.draft %}
