@@ -1,8 +1,8 @@
 """SQLite storage for imported documents and the facts read from them.
 
 Phase 2a schema: ``documents`` (one row per imported file, keyed by content
-hash) and ``facts`` (one row per form box read from a page). Phase 3 adds
-accounts, lots, transactions and the views the planners read.
+hash) and ``facts`` (one row per form box read from a page). Money is stored
+as integer cents. Phase 2b adds CSV rows; Phase 3 adds the planner views.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 SCHEMA_VERSION = 1
@@ -33,13 +34,22 @@ CREATE TABLE IF NOT EXISTS facts (
     issuer TEXT NOT NULL,
     box TEXT NOT NULL,
     label TEXT NOT NULL,
-    value REAL NOT NULL,
+    value_cents INTEGER NOT NULL,
     page INTEGER NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('accepted', 'pending', 'superseded')),
     UNIQUE (document_id, form, tax_year, issuer, box)
 );
 CREATE INDEX IF NOT EXISTS facts_by_year ON facts (tax_year, form, status);
 """
+
+
+def to_cents(value: float) -> int:
+    """Money is stored as integer cents; half-cents round away from zero."""
+    return int(Decimal(str(value)).quantize(Decimal("1.00"), ROUND_HALF_UP) * 100)
+
+
+def from_cents(cents: int) -> float:
+    return cents / 100
 
 
 @dataclass(frozen=True)
@@ -117,7 +127,7 @@ def add_document(
             )
         conn.executemany(
             "INSERT INTO facts (document_id, form, tax_year, issuer, box, label, "
-            "value, page, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "value_cents, page, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
                     doc_id,
@@ -126,7 +136,7 @@ def add_document(
                     f.issuer,
                     f.box,
                     f.label,
-                    f.value,
+                    to_cents(f.value),
                     f.page,
                     f.status,
                 )
@@ -168,7 +178,7 @@ def facts_for(
             issuer=r["issuer"],
             box=r["box"],
             label=r["label"],
-            value=r["value"],
+            value=from_cents(r["value_cents"]),
             page=r["page"],
             status=r["status"],
             document_id=r["document_id"],

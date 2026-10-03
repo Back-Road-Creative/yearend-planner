@@ -187,3 +187,12 @@ def test_cli_ingest_and_facts(lay: Layout) -> None:
     r = runner.invoke(app, ["facts", "--year", "2025", "--form", "1095-A"])
     assert r.exit_code == 0, r.output
     assert "slcsp_01" in r.output and "520.00" in r.output
+
+
+def test_money_is_stored_as_integer_cents(lay: Layout) -> None:
+    make_pdf(inbox(lay) / "int.pdf", [INT_2025])
+    ingest(lay)
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    raw = conn.execute("SELECT value_cents FROM facts WHERE box = '1'").fetchone()[0]
+    assert raw == 123456 and isinstance(raw, int)
+    assert db.to_cents(0.015) == 2 and db.to_cents(-12.345) == -1235
