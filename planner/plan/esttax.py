@@ -16,6 +16,7 @@ from planner.engine.tax import r
 from planner.ingest.needs import load_manual, manual_path, need_value
 from planner.ledger import db
 from planner.paths import Layout
+from planner.plan.calendar import shift
 from planner.plan.inputs import Overrides
 from planner.plan.magi import project
 
@@ -32,12 +33,15 @@ LUMPY_SHARE = 0.50
 
 
 def due_dates(year: int) -> list[date]:
-    return [
+    """The four installment due dates, each moved to the next business day
+    when the 15th is a weekend or a holiday."""
+    nominal = (
         date(year, 4, 15),
         date(year, 6, 15),
         date(year, 9, 15),
         date(year + 1, 1, 15),
-    ]
+    )
+    return [shift(d) for d in nominal]
 
 
 @dataclass(frozen=True)
