@@ -2,7 +2,9 @@
 
 The unit of update is a release zip from the project's GitHub Releases page, whose
 sha256 is published beside it. The flow never touches the live folders until the
-candidate has passed the same selfcheck the live install passes:
+candidate has passed the same selfcheck the live install passes, and its
+regression over the shipped reference cases reproduces the baseline recorded
+for the pinned engine (``data/engine-baseline.json``) to within $5:
 
     python-candidate/   the zip extracted; selfcheck run with its own interpreter
     python/ planner/ config/ templates/ + planner.cmd LICENSE README.md GUIDE.md VERSION
@@ -38,6 +40,7 @@ from typing import Any
 
 import yaml
 
+from planner.engine import verify
 from planner.engine.selfcheck import format_years, years_in
 
 CANDIDATE = "python-candidate"
@@ -147,13 +150,12 @@ def extract_candidate(zip_path: Path, root: Path) -> Path:
     return cand
 
 
-def selfcheck_candidate(cand: Path, python_exe: str = "python.exe") -> str:
-    """Run the candidate's own interpreter against the candidate's own package."""
+def _run_candidate(cand: Path, python_exe: str, *args: str) -> str:
     exe = cand / LIVE / python_exe
     if not exe.exists():
         raise UpdateError(f"candidate interpreter missing: {exe}")
     proc = subprocess.run(  # noqa: S603
-        [str(exe), "-m", "planner", "selfcheck"],
+        [str(exe), "-m", "planner", *args],
         cwd=cand,
         capture_output=True,
         text=True,
@@ -161,8 +163,54 @@ def selfcheck_candidate(cand: Path, python_exe: str = "python.exe") -> str:
         check=False,
     )
     if proc.returncode != 0:
-        raise UpdateError(f"candidate selfcheck failed:\n{proc.stdout}{proc.stderr}")
+        raise UpdateError(
+            f"candidate {' '.join(args)} failed:\n{proc.stdout}{proc.stderr}"
+        )
     return proc.stdout.strip()
+
+
+def regression_drift(
+    printed: dict[str, float], baseline: dict[str, float], pinned: str
+) -> None:
+    """Raise :class:`UpdateError` when the candidate's regression output is
+    missing, or differs from the pinned engine's baseline by more than
+    :data:`verify.BASELINE_TOLERANCE` dollars on any figure. The first line is
+    the reason shown on the dashboard; the rest lists every figure."""
+    if not printed:
+        raise UpdateError(
+            "candidate printed no regression values (its selfcheck --regression "
+            "ran no reference cases), so it cannot be shown to match the "
+            f"policyengine-us {pinned} baseline"
+        )
+    moved = verify.drifts(baseline, printed)
+    if not moved:
+        return
+    limit = f"${verify.BASELINE_TOLERANCE:,.2f}"
+    head = (
+        f"candidate regression is off the engine baseline (policyengine-us "
+        f"{pinned}) by more than {limit} on {len(moved)} of {len(baseline)} "
+        f"figures; first {verify.describe_drift(moved[0])}"
+    )
+    rest = [f"  {verify.describe_drift(d)}" for d in moved[:20]]
+    more = [f"  ... and {len(moved) - 20} more"] if len(moved) > 20 else []
+    raise UpdateError("\n".join([head, *rest, *more]))
+
+
+def selfcheck_candidate(
+    cand: Path,
+    python_exe: str = "python.exe",
+    baseline: tuple[str, dict[str, float]] | None = None,
+) -> str:
+    """Run the candidate's own interpreter against the candidate's own package:
+    its selfcheck, then, given the pinned ``baseline`` (engine version, figures),
+    its regression over the reference cases, which must reproduce that baseline.
+    Returns the selfcheck output."""
+    check = _run_candidate(cand, python_exe, "selfcheck")
+    if baseline is not None:
+        out = _run_candidate(cand, python_exe, "selfcheck", "--regression")
+        pinned, figures = baseline
+        regression_drift(verify.parse_regression(out), figures, pinned)
+    return check
 
 
 def _move(src: Path, dst: Path) -> None:
@@ -307,8 +355,11 @@ def stage(
     """Verify, extract and self-check the candidate, carry hand limits into it
     and mark it ready. Nothing live is touched. A candidate that jumps a major
     version of policyengine-us or the planner is held (before its selfcheck
-    runs) unless ``allow_major``; the tax years its engine publishes are
-    recorded, with next year flagged when absent."""
+    runs) unless ``allow_major``. The candidate then runs its selfcheck and its
+    regression over the reference cases; a figure more than $5 off the pinned
+    engine's baseline (``data/engine-baseline.json``, recorded here if no run
+    has yet) refuses it, ``allow_major`` or not. The tax years its engine
+    publishes are recorded, with next year flagged when absent."""
     verify_zip(zip_path, expected_sha256)
     cand = extract_candidate(zip_path, root)
     if not allow_major:
@@ -317,7 +368,11 @@ def stage(
         except MajorUpdateHeld:
             shutil.rmtree(cand, ignore_errors=True)
             raise
-    check = selfcheck_candidate(cand, python_exe)
+    try:
+        pinned = verify.pinned_baseline(root, today)
+    except ValueError as exc:
+        raise UpdateError(str(exc)) from exc
+    check = selfcheck_candidate(cand, python_exe, pinned)
     version = (cand / "VERSION").read_text(encoding="utf-8").strip()
     years = years_in(check)
     next_year = (today or date.today()).year + 1

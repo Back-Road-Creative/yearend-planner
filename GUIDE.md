@@ -16,15 +16,18 @@ runs the whole range in one engine call.
 
 `planner verify data/private/returns/<year>.yaml` recomputes a filed year from the inputs
 recorded in that file and prints each line as filed next to the engine's figure. The file
-format is `tests/fixtures/2025_return.yaml` (synthetic); your own lives under
-`data/private/` and is never committed.
+format is one case of `planner/engine/reference.yaml` (synthetic, `year`, `household`
+and `filed`); `planner verify` with no file checks those shipped reference cases. Your own
+returns live under `data/private/` and are never committed.
 
 `planner update <release.zip> --sha256 <digest>` verifies the zip, extracts it to
-`python-candidate/`, runs the candidate's own selfcheck, then swaps it in and keeps the old
+`python-candidate/`, runs the candidate's own selfcheck and its regression against the
+engine baseline, then swaps it in and keeps the old
 install as `python-previous/`. `planner update --rollback` restores it. `data/` and `out/`
 are never touched.
 
-Reference cases (hand-worked, $1 tolerance) are in `tests/test_tax.py`; the engine's
+Reference cases (hand-worked, $1 tolerance) are in `tests/test_tax.py` and, shipped with
+every release, in `planner/engine/reference.yaml`; the engine's
 coverage of each rule the planner relies on is recorded in `config/capabilities.yaml`.
 
 ## Intake (Phase 2a)
@@ -600,7 +603,20 @@ year and next from the installed policyengine-us. It needs no network.
   On Windows, `planner.cmd` does the move after Python exits, because a
   running python.exe locks its folder; if a file is in use (another planner
   window), everything is put back and nothing changes.
-- **Held.** A release that fails its selfcheck is never swapped in. The
+- **Regression against the engine baseline.** The first `planner run` records what the
+  engine you run computes on the reference cases in `planner/engine/reference.yaml`
+  (synthetic households with hand-worked figures) in `data/engine-baseline.json`, keyed
+  by the policyengine-us version, and prints how far the engine is from the filed lines:
+  the reference cases, then each return you filed under `data/private/returns/`. That gap
+  is reported, never a failure; a known variance (say, the self-employed health
+  insurance deduction) does not stop updates. The first engine recorded is the baseline.
+  A candidate release runs `planner selfcheck --regression` inside `python-candidate/`
+  with its own Python, and every figure must land within $5 of the baseline or the
+  release is held. A release that prints no regression figures is held too. A later
+  engine that is within $5 is recorded beside the baseline; one that is not is named on
+  each run. Delete `data/engine-baseline.json` only to start a new baseline from the
+  engine you run now.
+- **Held.** A release that fails its selfcheck or its regression is never swapped in. The
   dashboard shows "engine update held" with the reason, and the same release
   is not tried again.
 - **Major versions are held for you.** A release whose policyengine-us (read

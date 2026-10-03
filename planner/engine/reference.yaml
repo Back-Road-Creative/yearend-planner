@@ -1,0 +1,76 @@
+# The reference cases: SYNTHETIC households with hand-worked figures, not anyone's
+# real return. They ship inside the release so a candidate engine can be run on
+# them before it is installed (``planner selfcheck --regression``), and the first
+# ``planner run`` records the pinned engine's output on them as the baseline
+# (data/engine-baseline.json). Each case has the shape of a filed-return file
+# (see ``planner verify``): ``year``, ``household`` (engine inputs, see
+# ``Household``) and ``filed`` (the lines worked by hand).
+cases:
+  # 2025 single, NC, $50,000 wages, no other income.
+  # Hand-worked: std deduction 15,750 (P.L. 119-21 sec. 70102); taxable 34,250;
+  # tax 10% x 11,925 + 12% x 22,325 = 1,192.50 + 2,679.00 = 3,871.50 (Rev. Proc. 2024-40).
+  # NC 2025: 4.25% x (50,000 - 12,750 std) = 1,583.13 (G.S. 105-153.7, 105-153.5).
+  single_wages_2025:
+    year: 2025
+    household:
+      age: 54
+      filing_status: SINGLE
+      state: NC
+      wages: 50000
+    filed:
+      agi: 50000
+      taxable_income: 34250
+      fed_income_tax_after_credits: 3871.50
+      se_tax: 0
+      fed_total_tax: 3871.50
+      state_tax: 1583.13
+  # 2026 single, NC, 1,000 interest + 3,000 qualified dividends + 40,000 Roth conversion.
+  # AGI 44,000; taxable 44,000 - 16,100 = 27,900 (Rev. Proc. 2025-32); the 3,000 of
+  # qualified dividends sit at 0%; ordinary 24,900 -> 10% x 12,400 + 12% x 12,500 = 2,740.
+  # NC: (44,000 - 12,750) x 3.99% = 1,246.88 (G.S. 105-153.7).
+  roth_conversion_2026:
+    year: 2026
+    household:
+      age: 55
+      filing_status: SINGLE
+      state: NC
+      interest: 1000
+      qualified_dividends: 3000
+      roth_conversion: 40000
+    filed:
+      agi: 44000
+      taxable_income: 27900
+      fed_income_tax_after_credits: 2740
+      state_tax: 1246.88
+  # 2026 single, NC, 100,000 long-term gains and nothing else.
+  # Taxable 100,000 - 16,100 = 83,900, all preferential: 49,450 at 0%, the 34,450 above
+  # it at 15% = 5,167.50 (Rev. Proc. 2025-32, capital-gains breakpoints).
+  ltcg_above_0pct_2026:
+    year: 2026
+    household:
+      age: 55
+      filing_status: SINGLE
+      state: NC
+      long_term_gains: 100000
+    filed:
+      agi: 100000
+      taxable_income: 83900
+      fed_income_tax_after_credits: 5167.50
+  # 2026 single, NC, 30,000 of self-employment income.
+  # SE tax 30,000 x 92.35% x 15.3% = 4,238.87 (Schedule SE); half (2,119.43) is an
+  # adjustment, AGI 27,880.57. QBI: 20% x (30,000 - 2,119.43) = 5,576.11, capped at
+  # 20% of taxable income before QBI (27,880.57 - 16,100 = 11,780.57) = 2,356.11
+  # (IRC 199A); taxable 9,424.46 -> 10% = 942.45; total 942.45 + 4,238.87 = 5,181.32.
+  self_employment_2026:
+    year: 2026
+    household:
+      age: 55
+      filing_status: SINGLE
+      state: NC
+      se_income: 30000
+    filed:
+      se_tax: 4238.87
+      agi: 27880.57
+      qbi_deduction: 2356.11
+      fed_income_tax_after_credits: 942.45
+      fed_total_tax: 5181.32

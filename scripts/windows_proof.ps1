@@ -122,6 +122,7 @@ Set-Content -LiteralPath (Join-Path $moved 'data\private\keep.txt') -Value 'mine
 $o = Invoke-Planner $moved @('update', $candZip, '--sha256', $sha)
 if ($o -notlike "*updated $ver -> $next*") { throw 'update did not report the new version' }
 if ((Get-Content -LiteralPath (Join-Path $moved 'VERSION')).Trim() -ne $next) { throw 'VERSION not swapped' }
+if (-not (Test-Path (Join-Path $moved 'data\engine-baseline.json'))) { throw 'update did not record the engine baseline' }
 if ((Get-Content -LiteralPath (Join-Path $moved 'python-previous\VERSION')).Trim() -ne $ver) { throw 'previous not kept' }
 $o = Invoke-Planner $moved 'version'
 if ($o -notlike "*planner $next*") { throw 'version after update' }
