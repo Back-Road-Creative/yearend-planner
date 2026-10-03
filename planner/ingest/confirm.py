@@ -70,4 +70,4 @@ def reject(lay: Layout, conn: sqlite3.Connection, doc_id: int) -> str:
         "with planner enter\n",
         encoding="utf-8",
     )
-    return str(target.relative_to(lay.data))
+    return target.relative_to(lay.data).as_posix()
