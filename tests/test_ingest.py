@@ -9,7 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from planner.cli import app
-from planner.ingest import ingest
+from planner.ingest import MAX_ZIP_DEPTH, ingest
 from planner.ingest.pdf import Unmatched, load_templates, parse_amount, parse_pdf
 from planner.ledger import db
 from planner.paths import Layout
@@ -178,6 +178,151 @@ def test_zip_scanned_and_garbage_land_in_unmatched(lay: Layout) -> None:
     assert "not a readable PDF" in reasons["garbage.pdf"]
     assert "OCR" in reasons["photo.jpg"]
     assert not (inbox(lay) / "drop.zip").exists()
+
+
+def zip_of(path: Path, entries: dict[str, bytes]) -> Path:
+    with zipfile.ZipFile(path, "w") as zf:
+        for name, data in entries.items():
+            zf.writestr(name, data)
+    return path
+
+
+def left_in_inbox(lay: Layout) -> list[str]:
+    """Everything still in the inbox, apart from the UNMATCHED folder."""
+    return sorted(p.name for p in inbox(lay).iterdir() if p.name != "UNMATCHED")
+
+
+def pdf_bytes(lay: Layout, lines: list[str]) -> bytes:
+    return make_pdf(lay.root / "scratch.pdf", [lines]).read_bytes()
+
+
+def test_zip_with_subfolder_imports(lay: Layout) -> None:
+    zip_of(
+        inbox(lay) / "stmts.zip",
+        {
+            "stmts/1099-div.pdf": pdf_bytes(lay, DIV_2025),
+            "stmts/deep/1099-int.pdf": pdf_bytes(lay, INT_2025),
+        },
+    )
+    rep = ingest(lay)
+    assert sorted(i.file_name for i in rep.imported) == ["1099-div.pdf", "1099-int.pdf"]
+    assert rep.unmatched == []
+    assert (lay.data / "archive" / "2025" / "1099-div.pdf").exists()
+    assert left_in_inbox(lay) == []  # the emptied folders are tidied away
+
+
+def test_loose_subfolders_in_the_inbox_are_read(lay: Layout) -> None:
+    (inbox(lay) / "from-bank").mkdir()
+    make_pdf(inbox(lay) / "from-bank" / "int.pdf", [INT_2025])
+    rep = ingest(lay)
+    assert [i.file_name for i in rep.imported] == ["int.pdf"]
+    assert left_in_inbox(lay) == []
+
+
+def test_corrupt_zip_goes_to_unmatched_once_with_a_reason(lay: Layout) -> None:
+    (inbox(lay) / "broken.zip").write_bytes(b"PK\x03\x04 this is not a zip")
+    make_pdf(inbox(lay) / "int.pdf", [INT_2025])
+    rep = ingest(lay)
+    assert [i.file_name for i in rep.imported] == ["int.pdf"]
+    ((name, why),) = rep.unmatched
+    assert name == "broken.zip" and "not a readable ZIP" in why
+    um = inbox(lay) / "UNMATCHED"
+    assert (um / "broken.zip").exists()
+    assert "not a readable ZIP" in (um / "broken.zip.reason.txt").read_text()
+    assert not (inbox(lay) / "broken.zip").exists()
+    assert ingest(lay).unmatched == []  # not retried or re-reported every run
+
+
+def test_a_bad_zip_does_not_hold_back_a_good_one(lay: Layout) -> None:
+    zip_of(
+        inbox(lay) / "evil.zip",
+        {"ok.pdf": pdf_bytes(lay, INT_2025), "../escape.pdf": b"x"},
+    )
+    zip_of(inbox(lay) / "good.zip", {"div.pdf": pdf_bytes(lay, DIV_2025)})
+    rep = ingest(lay)
+    assert [i.file_name for i in rep.imported] == ["div.pdf"]
+    ((name, why),) = rep.unmatched
+    assert name == "evil.zip" and "escapes" in why
+    assert (inbox(lay) / "UNMATCHED" / "evil.zip").exists()
+    assert not (lay.data / "escape.pdf").exists()  # nothing from it was extracted
+    assert not (lay.data / "archive" / "2025" / "ok.pdf").exists()
+
+
+def test_a_password_protected_zip_is_unmatched_with_that_reason(lay: Layout) -> None:
+    path = zip_of(inbox(lay) / "locked.zip", {"secret.pdf": b"ciphertext"})
+    data = bytearray(path.read_bytes())
+    for signature, offset in ((b"PK\x03\x04", 6), (b"PK\x01\x02", 8)):
+        at = data.index(signature)
+        data[at + offset] |= 0x1  # general-purpose flag bit 0: encrypted
+    path.write_bytes(bytes(data))
+    ((name, why),) = ingest(lay).unmatched
+    assert name == "locked.zip" and "password" in why
+
+
+def test_zip_name_clash_does_not_overwrite(lay: Layout) -> None:
+    make_pdf(inbox(lay) / "stmt.pdf", [INT_2025])
+    zip_of(inbox(lay) / "more.zip", {"stmt.pdf": pdf_bytes(lay, DIV_2025)})
+    rep = ingest(lay)
+    assert len(rep.imported) == 2 and rep.unmatched == []
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    assert db.facts_for(conn, 2025, "1099-INT") and db.facts_for(conn, 2025, "1099-DIV")
+
+
+def test_unreadable_files_of_one_name_keep_each_reason(lay: Layout) -> None:
+    for folder, text in (("a", "first"), ("b", "second"), ("c", "third"), ("d", "4th")):
+        (inbox(lay) / folder).mkdir()
+        (inbox(lay) / folder / "notes.txt").write_text(text)
+    rep = ingest(lay)
+    assert sorted(n for n, _ in rep.unmatched) == [
+        "a/notes.txt",
+        "b/notes.txt",
+        "c/notes.txt",
+        "d/notes.txt",
+    ]
+    um = inbox(lay) / "UNMATCHED"
+    kept = [p.name for p in um.glob("notes*.txt") if "reason" not in p.name]
+    assert sorted(kept) == [
+        "notes (2).txt",
+        "notes (3).txt",
+        "notes (4).txt",
+        "notes.txt",
+    ]
+    reasons = {p.name: p.read_text() for p in um.glob("*.reason.txt")}
+    assert len(reasons) == 4 and all("from " in r for r in reasons.values())
+
+
+def test_nested_zip_is_unpacked(lay: Layout) -> None:
+    inner = zip_of(lay.root / "inner.zip", {"q/div.pdf": pdf_bytes(lay, DIV_2025)})
+    zip_of(inbox(lay) / "outer.zip", {"wrap/inner.zip": inner.read_bytes()})
+    rep = ingest(lay)
+    assert [i.file_name for i in rep.imported] == ["div.pdf"]
+    assert rep.unmatched == []
+
+
+def test_zip_nested_too_deep_is_unmatched(lay: Layout) -> None:
+    data = pdf_bytes(lay, DIV_2025)
+    name = "pdf"
+    for depth in range(MAX_ZIP_DEPTH + 1):
+        data = zip_of(lay.root / f"z{depth}.zip", {f"in.{name}": data}).read_bytes()
+        name = "zip"
+    (inbox(lay) / "deep.zip").write_bytes(data)
+    rep = ingest(lay)
+    assert rep.imported == []
+    assert len(rep.unmatched) == 1 and "nested" in rep.unmatched[0][1]
+
+
+def test_mac_zip_debris_is_ignored(lay: Layout) -> None:
+    zip_of(
+        inbox(lay) / "mac.zip",
+        {
+            "div.pdf": pdf_bytes(lay, DIV_2025),
+            "__MACOSX/._div.pdf": b"resource fork",
+            ".DS_Store": b"x",
+        },
+    )
+    rep = ingest(lay)
+    assert [i.file_name for i in rep.imported] == ["div.pdf"] and rep.unmatched == []
+    assert left_in_inbox(lay) == []
 
 
 def test_cli_ingest_and_facts(lay: Layout) -> None:

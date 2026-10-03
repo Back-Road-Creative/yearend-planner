@@ -8,14 +8,14 @@ the models shipped in its wheel; nothing is uploaded.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from planner.ingest.pdf import Unmatched, normalize
 
-PageTexts = Callable[[Path], list[str]]
+PageTexts = Callable[[Path], Sequence[str]]
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 NOT_INSTALLED = "OCR engine (rapidocr-onnxruntime) is not installed"
 
@@ -66,21 +66,65 @@ def _read(image: Any) -> str:
     return lines_from(result)
 
 
-def page_texts(path: Path) -> list[str]:
-    """One OCR text per page for an image file or a scanned PDF."""
+class ScannedPages(Sequence[str]):
+    """A PDF's pages, each read by OCR the first time it is asked for. A PDF with
+    a few scanned pages among text pages costs one read per scanned page, not
+    one per page."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._done: dict[int, str] = {}
+        try:
+            import pdfplumber
+
+            with pdfplumber.open(path) as pdf:
+                self._count = len(pdf.pages)
+        except Exception as exc:  # a bad PDF; the reason goes to UNMATCHED
+            raise Unmatched(
+                f"OCR could not read the file ({type(exc).__name__})"
+            ) from exc
+
+    def __len__(self) -> int:
+        return self._count
+
+    def __iter__(self) -> Iterator[str]:
+        return (self[i] for i in range(self._count))
+
+    def __getitem__(self, index: int | slice) -> Any:
+        if isinstance(index, slice):
+            return [self[i] for i in range(*index.indices(self._count))]
+        if not -self._count <= index < self._count:
+            raise IndexError(index)
+        index %= self._count
+        if index not in self._done:
+            self._done[index] = self._read_page(index)
+        return self._done[index]
+
+    def _read_page(self, index: int) -> str:
+        try:
+            import pdfplumber
+
+            with pdfplumber.open(self.path) as pdf:
+                return _read(pdf.pages[index].to_image(resolution=200).original)
+        except Exception as exc:
+            raise Unmatched(
+                f"OCR could not read the file ({type(exc).__name__})"
+            ) from exc
+
+
+def page_texts(path: Path) -> Sequence[str]:
+    """One OCR text per page for an image file or a scanned PDF. A PDF's pages
+    are read when asked for, so a caller that needs only some pays only for them."""
     if not available():
         raise Unmatched(NOT_INSTALLED)
+    if path.suffix.lower() not in IMAGE_SUFFIXES:
+        return ScannedPages(path)
     try:
-        if path.suffix.lower() in IMAGE_SUFFIXES:
-            from PIL import Image
+        from PIL import Image
 
-            with Image.open(path) as im:
-                return [_read(im)]
-        import pdfplumber
-
-        with pdfplumber.open(path) as pdf:
-            return [_read(page.to_image(resolution=200).original) for page in pdf.pages]
+        with Image.open(path) as im:
+            return [_read(im)]
     except Unmatched:
         raise
-    except Exception as exc:  # a bad image or PDF; the reason goes to UNMATCHED
+    except Exception as exc:  # a bad image; the reason goes to UNMATCHED
         raise Unmatched(f"OCR could not read the file ({type(exc).__name__})") from exc

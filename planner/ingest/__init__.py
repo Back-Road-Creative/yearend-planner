@@ -9,12 +9,14 @@ is archived without a second import.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import shutil
 import zipfile
+import zlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from planner.ingest import ocr as ocr_engine
 from planner.ingest.csvfile import load_csv_templates, parse_csv
@@ -33,6 +35,9 @@ from planner.taxprep import capgains, hsa, schedule_c
 # Templates ship with the code (swapped by ``planner update``), not under data/.
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "forms"
 CSV_TEMPLATES_DIR = TEMPLATES_DIR.parent / "csv"
+# ZIPs inside ZIPs are opened this many levels deep; past it the outer file is
+# set aside rather than unpacked without end (a ZIP bomb nests on purpose).
+MAX_ZIP_DEPTH = 5
 KINDS = {
     ".pdf": "pdf",
     ".csv": "csv",
@@ -55,6 +60,7 @@ class IngestReport:
     imported: list[Imported] = field(default_factory=list)
     duplicates: list[str] = field(default_factory=list)
     unmatched: list[tuple[str, str]] = field(default_factory=list)
+    notes: list[tuple[str, str]] = field(default_factory=list)  # read, with a caveat
     pending: list[Imported] = field(default_factory=list)  # OCR, awaiting confirm
     derived: dict[int, int] = field(default_factory=dict)  # year -> YTD facts
 
@@ -67,31 +73,143 @@ def fingerprint(path: Path) -> str:
     return h.hexdigest()
 
 
-def unpack_zips(inbox: Path) -> None:
-    """A dropped ZIP is unpacked in place and removed; entries may not escape."""
-    for z in sorted(inbox.glob("*.zip")):
-        base = inbox.resolve()
+def _free_name(target: Path) -> Path:
+    """``target``, or ``stem (2).ext``, ``stem (3).ext`` … when it is taken."""
+    stem, suffix = target.stem, target.suffix
+    n = 2
+    while target.exists():
+        target = target.with_name(f"{stem} ({n}){suffix}")
+        n += 1
+    return target
+
+
+def _hidden(rel: PurePosixPath | Path) -> bool:
+    """A dotted name or ``__MACOSX`` (a Mac ZIP's resource forks) is not a document."""
+    return any(part.startswith(".") or part == "__MACOSX" for part in rel.parts)
+
+
+def _label(path: Path, inbox: Path) -> str:
+    """The file as the person dropped it: its path inside the inbox."""
+    return path.relative_to(inbox).as_posix()
+
+
+def _zip_members(zf: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
+    """The files worth extracting; ``BadZipFile`` for an entry that must not be."""
+    keep: list[zipfile.ZipInfo] = []
+    for member in zf.infolist():
+        name = PurePosixPath(member.filename.replace("\\", "/"))
+        if name.is_absolute() or ".." in name.parts or ":" in (name.parts or ("",))[0]:
+            raise zipfile.BadZipFile(f"entry escapes the folder: {member.filename}")
+        if member.is_dir() or _hidden(name):
+            continue
+        if member.flag_bits & 0x1:
+            raise zipfile.BadZipFile(
+                f"{member.filename} is password-protected; unlock it and drop it again"
+            )
+        keep.append(member)
+    return keep
+
+
+def _extract(z: Path) -> list[Path]:
+    """Unpack ``z`` beside itself; all of it, or none of it. Never overwrites."""
+    made: list[Path] = []
+    try:
         with zipfile.ZipFile(z) as zf:
-            for member in zf.infolist():
-                target = (inbox / member.filename).resolve()
-                if target != base and base not in target.parents:
-                    raise Unmatched(f"{z.name}: entry escapes inbox: {member.filename}")
-            zf.extractall(inbox)
-        z.unlink()
+            for member in _zip_members(zf):
+                rel = PurePosixPath(member.filename.replace("\\", "/"))
+                target = _free_name(z.parent.joinpath(*rel.parts))
+                target.parent.mkdir(parents=True, exist_ok=True)
+                made.append(target)
+                with zf.open(member) as src, target.open("wb") as dst:
+                    shutil.copyfileobj(src, dst)
+    except BaseException:
+        for f in made:
+            f.unlink(missing_ok=True)
+        raise
+    return made
+
+
+def inbox_zips(inbox: Path) -> list[Path]:
+    return [p for p in inbox_files(inbox) if p.suffix.lower() == ".zip"]
+
+
+def unpack_zips(inbox: Path) -> list[tuple[str, str]]:
+    """Unpack every ZIP in the inbox, subfolders and ZIPs inside ZIPs included,
+    and remove it. A ZIP that cannot be read whole (corrupt, password-protected,
+    an entry that would escape, nested past ``MAX_ZIP_DEPTH``) moves to
+    ``UNMATCHED`` with a reason, extracts nothing, and does not stop the others.
+    Returns ``(name, reason)`` for each ZIP set aside."""
+    failed: list[tuple[str, str]] = []
+    for depth in range(MAX_ZIP_DEPTH + 1):
+        zips = inbox_zips(inbox)
+        if not zips:
+            break
+        for z in zips:
+            label = _label(z, inbox)
+            if depth >= MAX_ZIP_DEPTH:
+                reason = f"ZIPs nested more than {MAX_ZIP_DEPTH} deep"
+            else:
+                try:
+                    _extract(z)
+                except (
+                    zipfile.BadZipFile,
+                    zlib.error,
+                    EOFError,
+                    NotImplementedError,
+                    RuntimeError,
+                    OSError,
+                ) as exc:
+                    reason = _zip_reason(exc)
+                else:
+                    z.unlink()
+                    continue
+            to_unmatched(z, inbox, reason)
+            failed.append((label, reason))
+    return failed
+
+
+def _zip_reason(exc: Exception) -> str:
+    if isinstance(exc, zipfile.BadZipFile) and "entry escapes" in str(exc):
+        return f"unsafe ZIP: {exc}"
+    if isinstance(exc, zipfile.BadZipFile) and "password" in str(exc):
+        return f"password-protected ZIP: {exc}"
+    return f"not a readable ZIP ({type(exc).__name__}: {exc})"
 
 
 def inbox_files(inbox: Path) -> list[Path]:
-    return sorted(
-        p for p in inbox.iterdir() if p.is_file() and not p.name.startswith(".")
-    )
+    """Every file under the inbox, folders included, except ``UNMATCHED`` and
+    dotted names; a folder of statements is read like a pile of them."""
+    found: list[Path] = []
+    for p in inbox.rglob("*"):
+        rel = p.relative_to(inbox)
+        if rel.parts[0] == "UNMATCHED" or _hidden(rel) or not p.is_file():
+            continue
+        found.append(p)
+    return sorted(found, key=lambda p: p.relative_to(inbox).as_posix())
+
+
+def prune_empty_folders(inbox: Path) -> None:
+    """Remove the folders a ZIP or a dropped folder left empty."""
+    for d in sorted(
+        (p for p in inbox.rglob("*") if p.is_dir()),
+        key=lambda p: len(p.parts),
+        reverse=True,
+    ):
+        if d.relative_to(inbox).parts[0] == "UNMATCHED":
+            continue
+        with contextlib.suppress(OSError):  # not empty: leave it
+            d.rmdir()
 
 
 def to_unmatched(path: Path, inbox: Path, reason: str) -> None:
     dest = inbox / "UNMATCHED"
     dest.mkdir(exist_ok=True)
-    target = dest / path.name
+    target = _free_name(dest / path.name)
+    where = _label(path, inbox)
+    if "/" in where:
+        reason = f"{reason} (from {where})"
     shutil.move(str(path), str(target))
-    (dest / f"{path.name}.reason.txt").write_text(reason + "\n", encoding="utf-8")
+    (dest / f"{target.name}.reason.txt").write_text(reason + "\n", encoding="utf-8")
 
 
 def archive(path: Path, archive_root: Path, year: int, fp: str) -> Path:
@@ -141,16 +259,14 @@ def ingest(
     csv_templates = load_csv_templates(CSV_TEMPLATES_DIR)
     report = IngestReport(batch=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     conn = db.connect(lay.data / "ledger" / "planner.db")
-    try:
-        unpack_zips(inbox)
-    except (Unmatched, zipfile.BadZipFile) as exc:
-        report.unmatched.append(("zip", str(exc)))
+    report.unmatched.extend(unpack_zips(inbox))
     for path in inbox_files(inbox):
         kind = KINDS.get(path.suffix.lower())
         fp = fingerprint(path)
+        label = _label(path, inbox)
         if kind is None:
             to_unmatched(path, inbox, f"unknown file type {path.suffix!r}")
-            report.unmatched.append((path.name, f"unknown file type {path.suffix!r}"))
+            report.unmatched.append((label, f"unknown file type {path.suffix!r}"))
             continue
         if db.has_fingerprint(conn, fp):
             row = conn.execute(
@@ -167,16 +283,18 @@ def ingest(
         rows: list[db.Row] = []
         try:
             if kind == "pdf":
-                forms = parse_pdf(path, templates, ocr)
+                notes: list[str] = []
+                forms = parse_pdf(path, templates, ocr, notes)
+                report.notes.extend((label, n) for n in notes)
             elif kind == "csv":
                 rows = parse_csv(path, csv_templates)
             elif ocr is None:
                 raise Unmatched(f"image: {ocr_engine.NOT_INSTALLED}")
             else:
-                forms = parse_texts(ocr(path), templates, ocr=True)
+                forms = parse_texts(list(ocr(path)), templates, ocr=True)
         except Unmatched as exc:
             to_unmatched(path, inbox, str(exc))
-            report.unmatched.append((path.name, str(exc)))
+            report.unmatched.append((label, str(exc)))
             continue
         doc_id = db.add_document(
             conn,
@@ -202,6 +320,7 @@ def ingest(
             archived_as=str(archived.relative_to(lay.data)),
         )
         (report.pending if any(f.ocr for f in forms) else report.imported).append(item)
+    prune_empty_folders(inbox)
     if report.imported:
         for year in row_years(conn):
             n = derive(conn, year, report.batch)

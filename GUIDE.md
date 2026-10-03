@@ -41,6 +41,15 @@ moves to `data/inbox/UNMATCHED/` beside a `.reason.txt`. The same file dropped t
 a no-op. A corrected form supersedes the earlier one by form, payer and year. No value
 is ever inferred: a required box that does not parse unmatches the whole file.
 
+A ZIP is unpacked in place, folders and ZIPs inside it included, and a folder of
+statements dropped as it is gets the same reading. Nothing in the inbox is overwritten:
+a file whose name is taken keeps both. A ZIP that cannot be read whole (corrupt,
+password-protected, an entry that would write outside the inbox, or ZIPs nested more
+than 5 deep) extracts nothing, moves to `data/inbox/UNMATCHED/` with a reason file, is
+reported once, and does not hold back the other files. Mac resource-fork debris
+(`__MACOSX`, dotted names) is ignored. A file in a folder is reported by its path, such
+as `stmts/1099-div.pdf`, and the folders it leaves empty are removed.
+
 `planner facts --year 2025 --form 1099-DIV` lists what the ledger holds. Scanned pages
 and photos go through OCR with confirm (Phase 2e, below).
 
@@ -145,6 +154,19 @@ drop would. `planner confirm --doc 3 --reject` drops the values, forgets the doc
 (so a clearer scan or the same file can be dropped again) and returns the file to
 `data/inbox/UNMATCHED/` with a reason file. Without the OCR engine installed, scans and
 photos go to `UNMATCHED` with that reason and the values can still be typed with
+`planner enter`.
+
+A PDF that has text on some pages and none on others (a consolidated 1099 with a
+scanned page) is read both ways: the text pages from the text layer, as accepted, and
+only the bare pages by OCR, as pending. The file shows as `pending` until the scanned
+values are confirmed; accepting them leaves the text pages' values as they were. If the
+two disagree on a box, the file goes to `UNMATCHED`. Without the OCR engine the text
+pages are still imported and `planner ingest` prints a `note` naming the pages that
+were not read; if OCR reads nothing from a bare page, the same note says so (or, if
+no text page matched a form either, the `UNMATCHED` reason does). Rejecting such a file at
+`planner confirm` drops only the scanned pages' values and keeps the document, its
+text-page values (already in the ledger, and possibly superseding an earlier copy) and its
+archived copy, so nothing already counted is lost; type the scanned values with
 `planner enter`.
 
 ## The ledger as a portfolio (Phase 3)

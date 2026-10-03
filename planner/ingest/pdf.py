@@ -14,8 +14,8 @@ with the reason. Nothing is inferred.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -197,28 +197,123 @@ def page_texts(path: Path) -> list[str]:
 def parse_pdf(
     path: Path,
     templates: list[Template],
-    ocr: Callable[[Path], list[str]] | None = None,
+    ocr: Callable[[Path], Sequence[str]] | None = None,
+    notes: list[str] | None = None,
 ) -> list[ParsedForm]:
-    """Every form found on every page, or ``Unmatched`` with the reason. A PDF
-    with no text layer goes through ``ocr`` when one is given; its forms are
-    marked so their facts wait for confirm."""
+    """Every form found on every page, or ``Unmatched`` with the reason. A page
+    with no text layer goes through ``ocr`` when one is given (the whole file
+    when none of its pages has text, only the bare pages when some do); the
+    forms read that way are marked so their facts wait for confirm. ``ocr``
+    returns one text per page of the file. A page that stays unread is added to
+    ``notes`` when the rest of the file is accepted."""
     texts = page_texts(path)
-    if any(t.strip() for t in texts):
+    bare = [n for n, t in enumerate(texts, start=1) if not t.strip()]
+    if not bare:
         return parse_texts(texts, templates)
+    if len(bare) == len(texts):
+        if ocr is None:
+            raise Unmatched("no text layer (scanned); OCR engine is not installed")
+        texts = list(ocr(path))
+        if not any(t.strip() for t in texts):
+            raise Unmatched("no text layer (scanned) and OCR read nothing from it")
+        return parse_texts(texts, templates, ocr=True)
+    return _parse_mixed(
+        path, templates, texts, bare, ocr, [] if notes is None else notes
+    )
+
+
+def _pages(numbers: Sequence[int]) -> str:
+    """``page 2 has`` / ``pages 2, 3 have``, ready to precede a predicate."""
+    one = len(numbers) == 1
+    return (
+        ("page " if one else "pages ")
+        + ", ".join(map(str, numbers))
+        + (" has" if one else " have")
+    )
+
+
+def _parse_mixed(
+    path: Path,
+    templates: list[Template],
+    texts: list[str],
+    bare: list[int],
+    ocr: Callable[[Path], Sequence[str]] | None,
+    notes: list[str],
+) -> list[ParsedForm]:
+    """Text pages from the text layer, bare pages (a scan inside a text PDF)
+    from ``ocr``; each page's forms keep the trust of how they were read."""
+    typed = [(n, t) for n, t in enumerate(texts, start=1) if n not in bare]
     if ocr is None:
-        raise Unmatched("no text layer (scanned); OCR engine is not installed")
-    texts = ocr(path)
-    if not any(t.strip() for t in texts):
-        raise Unmatched("no text layer (scanned) and OCR read nothing from it")
-    return parse_texts(texts, templates, ocr=True)
+        skipped = f"{_pages(bare)} no text layer and the OCR engine is not installed"
+        try:
+            forms, template_notes = _parse_pages(typed, templates, False)
+        except Unmatched as exc:
+            raise Unmatched(f"{exc}; {skipped}") from exc
+        if not forms:
+            why = "; ".join(template_notes) or "no form template matched"
+            raise Unmatched(f"{why}; {skipped}")
+        notes.append(f"{skipped}; not read")
+        return forms
+    scans = ocr(path)
+    if len(scans) != len(texts):
+        raise Unmatched(f"OCR read {len(scans)} pages of a {len(texts)}-page file")
+    read = [(n, scans[n - 1]) for n in bare]
+    empty = [n for n, t in read if not t.strip()]
+    forms, template_notes = _parse_pages(typed, templates, False)
+    scanned, scan_notes = _parse_pages(
+        [(n, t) for n, t in read if t.strip()], templates, True
+    )
+    unread = f"{_pages(empty)} no text layer and OCR read nothing; not read"
+    if not forms and not scanned:
+        why = "; ".join(template_notes + scan_notes) or "no form template matched"
+        raise Unmatched(f"{why}; {unread}" if empty else why)
+    if empty:
+        notes.append(unread)
+    return forms + _scan_only(forms, scanned)
+
+
+def _scan_only(typed: list[ParsedForm], scanned: list[ParsedForm]) -> list[ParsedForm]:
+    """The scanned forms, minus any box a text page already supplied. One
+    document holds a box once, and a text page outranks a scan, but the two
+    must not disagree."""
+    kept: list[ParsedForm] = []
+    for new in scanned:
+        boxes = dict(new.boxes)
+        for old in typed:
+            if (old.form, old.tax_year, old.issuer) != (
+                new.form,
+                new.tax_year,
+                new.issuer,
+            ):
+                continue
+            for box in [b for b in boxes if b in old.boxes]:
+                if old.boxes[box][1] != boxes[box][1]:
+                    raise Unmatched(
+                        f"{new.form} {new.tax_year} box {box}: page {old.page} says "
+                        f"{old.boxes[box][1]} but page {new.page} says {boxes[box][1]}"
+                    )
+                del boxes[box]
+        if boxes:
+            kept.append(replace(new, boxes=boxes))
+    return kept
 
 
 def parse_texts(
     texts: list[str], templates: list[Template], ocr: bool = False
 ) -> list[ParsedForm]:
+    forms, notes = _parse_pages(list(enumerate(texts, start=1)), templates, ocr)
+    if not forms:
+        raise Unmatched("; ".join(notes) if notes else "no form template matched")
+    return forms
+
+
+def _parse_pages(
+    pages: list[tuple[int, str]], templates: list[Template], ocr: bool
+) -> tuple[list[ParsedForm], list[str]]:
+    """Forms on the numbered pages, and a note for each form with no template."""
     forms: list[ParsedForm] = []
     notes: list[str] = []
-    for page_no, text in enumerate(texts, start=1):
+    for page_no, text in pages:
         for tpl in templates:
             if not tpl.matches(text):
                 continue
@@ -241,9 +336,7 @@ def parse_texts(
                 forms,
                 ParsedForm(tpl.form, year, tpl.find_issuer(text), page_no, boxes, ocr),
             )
-    if not forms:
-        raise Unmatched("; ".join(notes) if notes else "no form template matched")
-    return forms
+    return forms, notes
 
 
 def _merge(forms: list[ParsedForm], new: ParsedForm) -> None:
