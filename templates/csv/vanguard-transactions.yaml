@@ -1,0 +1,15 @@
+# Vanguard "Download center" CSV, second block: every transaction in the range.
+# Dividends, interest and capital-gain distributions arrive here too
+# (Transaction Type), so one download covers transactions and income.
+source: vanguard_transactions
+kind: transaction
+match: [Account Number, Trade Date, Transaction Type, Net Amount]
+columns:
+  account: Account Number
+  date: Trade Date
+  type: Transaction Type
+  description: Transaction Description
+  symbol: Symbol
+  quantity: Shares
+  price: Share Price
+  amount: Net Amount

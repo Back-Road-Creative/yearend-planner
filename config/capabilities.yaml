@@ -14,4 +14,6 @@ se_health_insurance_deduction: partial
 # Intake (not engine rules): what the templates read today.
 pdf_text_1099_int_div_b_r_1095a: verified  # tests/test_ingest.py
 pdf_scanned_ocr_confirm: unsupported  # lands in Phase 2d; file goes to UNMATCHED
-csv_import: unsupported  # lands in Phase 2b; file goes to UNMATCHED
+csv_vanguard_download: verified  # tests/test_csv.py (holdings + transactions blocks)
+csv_vanguard_cost_basis_realized_income: partial  # synthetic headers; real export confirms
+csv_bank: verified  # tests/test_csv.py (signed Amount; Debit/Credit)

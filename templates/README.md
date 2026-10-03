@@ -8,3 +8,15 @@ the capture when a row holds several amounts). A page is accepted only when
 every `required` box parses; otherwise the file lands in `data/inbox/UNMATCHED/`
 with the reason. A payer whose layout differs is a new template, not a code
 change. Dashboard page templates land in Phase 5.
+
+## CSV templates (`templates/csv/`)
+
+One YAML per export layout. `match` lists the header names that must all be
+present (case-insensitive) for the template to claim a block; `columns` maps the
+planner's field names (`account`, `date`, `type`, `description`, `symbol`,
+`quantity`, `price`, `amount`, `basis`, `acquired`, `term`, `txn_id`, or
+`debit`/`credit` in place of `amount`) to the export's column names.
+`date_format` defaults to `%m/%d/%Y`. A file with several header-led blocks
+(Vanguard's download) matches each block on its own. A block no template claims
+sends the file to UNMATCHED with the headers it found: add or edit a template,
+drop the file again.

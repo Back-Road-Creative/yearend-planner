@@ -1,0 +1,10 @@
+source: bank
+kind: bank
+match: [Date, Description, Debit, Credit]
+columns:
+  account: Account
+  date: Date
+  description: Description
+  debit: Debit
+  credit: Credit
+  txn_id: Transaction ID

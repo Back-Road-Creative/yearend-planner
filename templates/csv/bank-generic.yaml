@@ -1,0 +1,12 @@
+# Any bank export with Date, Description and a signed Amount column
+# (deposits positive). A bank with Debit/Credit columns: copy this file,
+# drop `amount:` and set `debit:` / `credit:` instead.
+source: bank
+kind: bank
+match: [Date, Description, Amount]
+columns:
+  account: Account
+  date: Date
+  description: Description
+  amount: Amount
+  txn_id: Transaction ID

@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS documents (
@@ -40,6 +40,28 @@ CREATE TABLE IF NOT EXISTS facts (
     UNIQUE (document_id, form, tax_year, issuer, box)
 );
 CREATE INDEX IF NOT EXISTS facts_by_year ON facts (tax_year, form, status);
+CREATE TABLE IF NOT EXISTS rows (
+    id INTEGER PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES documents(id),
+    source TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    row_key TEXT NOT NULL UNIQUE,
+    account TEXT NOT NULL,
+    date TEXT,
+    tax_year INTEGER,
+    type TEXT NOT NULL,
+    description TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    quantity REAL,
+    price_cents INTEGER,
+    amount_cents INTEGER,
+    basis_cents INTEGER,
+    acquired TEXT,
+    term TEXT,
+    line INTEGER NOT NULL,
+    raw TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS rows_by_year ON rows (tax_year, source, kind);
 """
 
 
@@ -70,6 +92,36 @@ class FactRow(Fact):
     file_name: str = ""
 
 
+@dataclass(frozen=True)
+class Row:
+    """One normalized CSV row: a holding, lot, transaction, realized sale, income
+    item or bank line. Money in cents; ``raw`` keeps the source row verbatim."""
+
+    source: str
+    kind: str
+    row_key: str
+    account: str
+    date: str | None
+    tax_year: int | None
+    type: str
+    description: str
+    symbol: str
+    quantity: float | None
+    price_cents: int | None
+    amount_cents: int | None
+    basis_cents: int | None
+    acquired: str | None
+    term: str | None
+    line: int
+    raw: str
+
+
+@dataclass(frozen=True)
+class LedgerRow(Row):
+    document_id: int = 0
+    file_name: str = ""
+
+
 def connect(path: Path) -> sqlite3.Connection:
     """Open (creating if needed) the ledger; schema is applied idempotently."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -79,7 +131,8 @@ def connect(path: Path) -> sqlite3.Connection:
     conn.executescript(SCHEMA)
     if conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 0:
         conn.execute("INSERT INTO schema_version VALUES (?)", (SCHEMA_VERSION,))
-        conn.commit()
+    conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
+    conn.commit()
     return conn
 
 
@@ -98,13 +151,18 @@ def add_document(
     kind: str,
     pages: int,
     batch: str,
-    facts: list[Fact],
+    facts: list[Fact] | None = None,
+    rows: list[Row] | None = None,
 ) -> int:
-    """Insert one document and its facts in a single transaction.
+    """Insert one document with its facts and rows in a single transaction.
 
     A newer document for the same (form, issuer, year) supersedes the older
-    one's accepted facts: a corrected 1099 replaces the original.
+    one's accepted facts: a corrected 1099 replaces the original. A row whose
+    key is already in the ledger (a broker transaction id seen in an earlier
+    export) is skipped, so overlapping exports do not double-count.
     """
+    facts = facts or []
+    rows = rows or []
     with conn:
         cur = conn.execute(
             "INSERT INTO documents (fingerprint, file_name, kind, pages, "
@@ -141,6 +199,35 @@ def add_document(
                     f.status,
                 )
                 for f in facts
+            ],
+        )
+        conn.executemany(
+            "INSERT OR IGNORE INTO rows (document_id, source, kind, row_key, account, "
+            "date, tax_year, type, description, symbol, quantity, price_cents, "
+            "amount_cents, basis_cents, acquired, term, line, raw) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    doc_id,
+                    r.source,
+                    r.kind,
+                    r.row_key,
+                    r.account,
+                    r.date,
+                    r.tax_year,
+                    r.type,
+                    r.description,
+                    r.symbol,
+                    r.quantity,
+                    r.price_cents,
+                    r.amount_cents,
+                    r.basis_cents,
+                    r.acquired,
+                    r.term,
+                    r.line,
+                    r.raw,
+                )
+                for r in rows
             ],
         )
     return doc_id
@@ -181,6 +268,48 @@ def facts_for(
             value=from_cents(r["value_cents"]),
             page=r["page"],
             status=r["status"],
+            document_id=r["document_id"],
+            file_name=r["file_name"],
+        )
+        for r in conn.execute(sql, args)
+    ]
+
+
+def rows_for(
+    conn: sqlite3.Connection,
+    tax_year: int | None = None,
+    source: str | None = None,
+    kind: str | None = None,
+) -> list[LedgerRow]:
+    sql = "SELECT r.*, d.file_name FROM rows r JOIN documents d ON d.id = r.document_id"
+    clauses: list[str] = []
+    args: list[object] = []
+    for col, val in (("tax_year", tax_year), ("source", source), ("kind", kind)):
+        if val is not None:
+            clauses.append(f"r.{col} = ?")
+            args.append(val)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY r.date, r.source, r.line"
+    return [
+        LedgerRow(
+            source=r["source"],
+            kind=r["kind"],
+            row_key=r["row_key"],
+            account=r["account"],
+            date=r["date"],
+            tax_year=r["tax_year"],
+            type=r["type"],
+            description=r["description"],
+            symbol=r["symbol"],
+            quantity=r["quantity"],
+            price_cents=r["price_cents"],
+            amount_cents=r["amount_cents"],
+            basis_cents=r["basis_cents"],
+            acquired=r["acquired"],
+            term=r["term"],
+            line=r["line"],
+            raw=r["raw"],
             document_id=r["document_id"],
             file_name=r["file_name"],
         )

@@ -1,0 +1,15 @@
+# Vanguard "Cost basis" page, realized gains/losses export, one row per closed lot.
+source: vanguard_realized
+kind: realized
+match: [Account Number, Symbol, Date Acquired, Date Sold, Proceeds, Cost Basis]
+columns:
+  account: Account Number
+  description: Investment Name
+  symbol: Symbol
+  acquired: Date Acquired
+  date: Date Sold
+  quantity: Shares
+  amount: Proceeds
+  basis: Cost Basis
+  term: Term
+term_values: { short-term: short, long-term: long, st: short, lt: long }

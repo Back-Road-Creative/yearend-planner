@@ -1,0 +1,11 @@
+# Vanguard "Download center" CSV, first block (positions as of the download).
+source: vanguard_holdings
+kind: holding
+match: [Account Number, Investment Name, Symbol, Shares, Share Price, Total Value]
+columns:
+  account: Account Number
+  description: Investment Name
+  symbol: Symbol
+  quantity: Shares
+  price: Share Price
+  amount: Total Value

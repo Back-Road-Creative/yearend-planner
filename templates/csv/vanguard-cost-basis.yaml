@@ -1,0 +1,16 @@
+# Vanguard "Cost basis" page, unrealized gains/losses export, one row per lot.
+# Headers below are the planner's expectation; if your export names a column
+# differently, change the name here (the UNMATCHED reason lists what it found).
+source: vanguard_cost_basis
+kind: lot
+match: [Account Number, Symbol, Date Acquired, Shares, Total Cost]
+columns:
+  account: Account Number
+  description: Investment Name
+  symbol: Symbol
+  acquired: Date Acquired
+  quantity: Shares
+  basis: Total Cost
+  amount: Market Value
+  term: Term
+term_values: { short-term: short, long-term: long, st: short, lt: long }

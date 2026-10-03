@@ -69,6 +69,25 @@ moves to `data/inbox/UNMATCHED/` beside a `.reason.txt`. The same file dropped t
 a no-op. A corrected form supersedes the earlier one by form, payer and year. No value
 is ever inferred: a required box that does not parse unmatches the whole file.
 
-`planner facts --year 2025 --form 1099-DIV` lists what the ledger holds. CSV importers,
-the filed-return templates, the Needed panel and OCR confirm land in the next three
-Phase 2 PRs.
+`planner facts --year 2025 --form 1099-DIV` lists what the ledger holds. The
+filed-return templates, the Needed panel and OCR confirm land in the next two Phase 2
+PRs.
+
+## CSV intake (Phase 2b)
+
+CSV exports go in the same inbox. Each header-led block is matched against
+`templates/csv/` (Vanguard download: holdings and transactions in one file; Vanguard
+cost basis by lot; realized gains; dividends and interest; bank exports with a signed
+Amount or Debit/Credit columns) and lands in the ledger's `rows` table: one row per
+line, money in cents, the source line kept verbatim. A row's identity is the broker's
+transaction ID when the export carries one, else a hash of the row plus file name and
+line, so the same file twice is a no-op, an overlapping export does not double-count a
+transaction ID, and two identical real trades on one day stay two rows. A holdings
+export is a snapshot stamped with the import date. Headers the templates do not
+recognise send the file to UNMATCHED with the headers listed, and the fix is a template
+edit, never a code change. `planner rows --year 2025 --kind transaction` lists rows.
+
+Vanguard's cost-basis, realized-gains and income exports are matched on the column
+names in `templates/csv/`; they are verified against synthetic files in the test suite,
+and your own export is the check that the names are right (the UNMATCHED reason shows
+what differs).

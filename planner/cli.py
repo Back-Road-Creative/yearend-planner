@@ -189,6 +189,28 @@ def facts(
     typer.echo(f"{len(rows)} facts")
 
 
+@app.command()
+def rows(
+    year: int | None = typer.Option(None, help="tax year"),
+    source: str | None = typer.Option(None, help="e.g. vanguard_transactions, bank"),
+    kind: str | None = typer.Option(
+        None, help="holding, lot, transaction, realized, income or bank"
+    ),
+) -> None:
+    """List imported CSV rows (holdings, lots, transactions, income, bank lines)."""
+    from planner.ledger import db
+
+    conn = db.connect(layout().data / "ledger" / "planner.db")
+    out = db.rows_for(conn, year, source, kind)
+    for r in out:
+        amount = f"{r.amount_cents / 100:>14,.2f}" if r.amount_cents is not None else ""
+        typer.echo(
+            f"{r.date or '':10} {r.source:22} {r.type[:14]:14} {r.symbol[:8]:8} "
+            f"{amount:>14}  {r.file_name}:{r.line}"
+        )
+    typer.echo(f"{len(out)} rows")
+
+
 def main() -> int:
     app()
     return 0

@@ -1,0 +1,11 @@
+# Vanguard dividends-and-interest export (income summary by payment).
+source: vanguard_income
+kind: income
+match: [Account Number, Payment Date, Income Type, Amount]
+columns:
+  account: Account Number
+  date: Payment Date
+  type: Income Type
+  description: Investment Name
+  symbol: Symbol
+  amount: Amount
