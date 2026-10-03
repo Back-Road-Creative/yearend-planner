@@ -179,6 +179,82 @@ def update(
 
 
 @app.command()
+def backup(
+    dest: Path | None = typer.Argument(
+        None, help="zip to write; default out/backups/planner-backup-<stamp>.zip"
+    ),
+    encrypt: bool = typer.Option(
+        True, "--encrypt/--plain", help="ask for a password (AES-256)"
+    ),
+) -> None:
+    """Zip data/ and config/ into one file you can copy to a USB drive. With a
+    password (asked twice, never shown) it is AES-256; --plain skips it."""
+    from planner import backup as bk
+
+    password = ""
+    if encrypt:
+        password = typer.prompt(
+            "Backup password (Enter for none)",
+            default="",
+            hide_input=True,
+            confirmation_prompt=True,
+            show_default=False,
+        )
+    lay = layout()
+    lay.ensure()
+    path = bk.backup(lay, dest, password)
+    typer.echo(f"written {path}")
+    typer.echo(
+        "encrypted with AES-256: keep the password; it cannot be recovered"
+        if password
+        else "NOT encrypted: anyone with this file can read your figures"
+    )
+
+
+@app.command()
+def restore(
+    src: Path | None = typer.Argument(None, help="a zip made by planner backup"),
+    undo: bool = typer.Option(
+        False, "--undo", help="put data-previous/ back (before the next run)"
+    ),
+) -> None:
+    """Check a backup (paths, size, every file against its manifest), then swap
+    its data/ in. The current data/ is kept as data-previous/ until the next
+    clean planner run; --undo puts it back."""
+    from planner import backup as bk
+
+    lay = layout()
+    try:
+        if undo:
+            typer.echo(
+                "data-previous/ is data/ again"
+                if bk.undo(lay)
+                else "nothing to undo (no data-previous/)"
+            )
+            return
+        if src is None:
+            typer.echo("restore needs a backup zip (or --undo)", err=True)
+            raise typer.Exit(code=2)
+        password = ""
+        if bk.encrypted(src):
+            password = typer.prompt("Backup password", hide_input=True)
+        res = bk.restore(lay, src, password)
+    except bk.BackupError as exc:
+        typer.echo(f"restore refused: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"restored {res.files} files from {src.name}")
+    if res.carried:
+        typer.echo(
+            f"limits carried into config/thresholds.yaml: {', '.join(res.carried)}"
+        )
+    if res.previous:
+        typer.echo(
+            f"the data it replaced is in {res.previous.name}/ until the next "
+            "planner run; planner restore --undo puts it back"
+        )
+
+
+@app.command()
 def ingest() -> None:
     """Read every file in data/inbox/ into the ledger; archive or mark UNMATCHED."""
     from planner.ingest import ingest as _ingest
@@ -1231,6 +1307,7 @@ def run(
     static page."""
     from datetime import date
 
+    from planner import backup as backup_
     from planner.dashboard import page, render, serve
     from planner.engine import feed, limits
     from planner.engine import update as upd
@@ -1259,6 +1336,8 @@ def run(
     pg = page.gather(lay, active, today)
     typer.echo(f"written {render.write_static(lay, pg)}")
     typer.echo(f"{pg.needed_count} needed, {len(pg.alerts)} alert(s)")
+    if backup_.settle(lay):
+        typer.echo("restore kept: data-previous/ removed")
     if quiet:
         if update_check and (line := feed.check(lay)):
             typer.echo(line)

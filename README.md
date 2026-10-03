@@ -668,3 +668,31 @@ Running it again changes nothing. If a corrected form arrives later, or the
 filed return is closed, the next `planner run` (or `planner rollover`)
 reopens the year and records it as a new version with a fresh snapshot. The
 new year's plan then reads the new figures, and the earlier snapshots stay.
+
+## Backup and restore (Phase 8a)
+
+`planner backup` writes one zip of `data/` and `config/` to
+`out/backups/planner-backup-<date>.zip` (or a path you give it, such as a USB
+drive). It asks for a password twice and never shows it. With a password, the
+zip is AES-256 encrypted. If you press Enter instead, the zip is not encrypted
+and the command says so. `--plain` skips the question. The ledger is copied
+safely even while the dashboard is open.
+
+`planner restore <zip>` asks for the password if the zip has one. It checks
+the whole archive before touching anything:
+
+- every entry sits under `data/` or `config/` (no absolute paths, drive
+  letters, `..` or links)
+- the unpacked size is under 4 GiB
+- every file matches the sha256 recorded at backup time
+- the ledger passes sqlite's integrity check
+
+Only then does it swap the backup's `data/` in. Your current `data/` is kept
+as `data-previous/` until the next clean `planner run`. Until then,
+`planner restore --undo` puts it back. A second restore is refused while
+`data-previous/` exists.
+
+`config/` belongs to the release you are running. Only limits you typed into
+the backed-up `thresholds.yaml` that the current one lacks are copied over.
+If a planner window has `data/` open, the restore stops and asks you to
+close it.
