@@ -19,7 +19,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import date
 
-from planner.ingest.needs import MANUAL_VALUES, load_manual
+from planner.ingest.needs import MANUAL_VALUES, load_manual, need_values
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import washsale
@@ -209,11 +209,18 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> CapGains:
             "sales are reported as taxable (planner enter account:<number> <type>)"
         )
     facts = db.facts_for(conn, year)
-    _lines(cg, facts, load_manual(lay, year)[MANUAL_VALUES])
+    typed = load_manual(lay, year)[MANUAL_VALUES]
+    carried = need_values(conn, lay, year, tuple(CARRYOVER.values()))
+    _lines(cg, facts, typed, carried)
     return cg
 
 
-def _lines(cg: CapGains, facts: list[db.FactRow], typed: dict[str, object]) -> None:
+def _lines(
+    cg: CapGains,
+    facts: list[db.FactRow],
+    typed: dict[str, object],
+    carried: dict[str, object],
+) -> None:
     b = [f for f in facts if f.form == "1099-B"]
 
     def summary(box: str) -> float:
@@ -256,9 +263,11 @@ def _lines(cg: CapGains, facts: list[db.FactRow], typed: dict[str, object]) -> N
         cg.lines["13"] = round(sum(f.value for f in dist), 2)
         cg.sources["13"] = "1099-DIV box 2a (" + ", ".join(f.issuer for f in dist) + ")"
     for line, key in CARRYOVER.items():
-        if typed.get(key) is not None:
-            cg.lines[line] = -abs(float(str(typed[key])))
-            cg.sources[line] = f"{key} (typed)"
+        value = carried.get(key)
+        if value is not None and (float(str(value)) or key in typed):
+            cg.lines[line] = -abs(float(str(value)))
+            how = "typed" if key in typed else "carried by planner rollover"
+            cg.sources[line] = f"{key} ({how})"
     if not cg.lines:
         return
     get = cg.lines.get

@@ -465,6 +465,60 @@ def close(year: int = typer.Option(..., help="tax year")) -> None:
 
 
 @app.command()
+def rollover(
+    year: int | None = typer.Option(
+        None, help="the year that ended; default last year"
+    ),
+    as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
+    ask: bool | None = typer.Option(
+        None,
+        "--ask/--no-ask",
+        help="prompt for next year's figures (default: when run in a console)",
+    ),
+) -> None:
+    """Roll the year that ended into the next: carry AGI, total tax, NC tax and
+    the capital loss carryforward (filed figures once closed, else the draft's),
+    keep a snapshot of the ledger and the year's dashboard, make next year the
+    active one, refresh its limits and print the checklist. Running it again
+    changes nothing unless a corrected form or the filed return changed what
+    the year carries; then it records a new version."""
+    import sys
+    from datetime import date
+
+    from planner.ingest import needs
+    from planner.plan import rollover as roll
+
+    lay = layout()
+    lay.ensure()
+    today = date.fromisoformat(as_of) if as_of else date.today()
+    target = year or today.year - 1
+    try:
+        ro = roll.roll(lay, target, today)
+    except roll.NotEndedError as exc:
+        typer.echo(f"blocked: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(roll.render(ro), nl=False)
+    if not (sys.stdin.isatty() if ask is None else ask):
+        return
+    nxt = target + 1
+    typer.echo(f"next year's figures for {nxt} (Enter keeps the value shown):")
+    report = {s.need.key: s for s in needs.needed(lay, nxt).items}
+    for key in roll.ASK:
+        st = report.get(key)
+        if st is None:
+            continue
+        shown = "" if st.value is None else str(st.value)
+        text = typer.prompt(
+            f"  {st.need.label} [{st.need.source}]", default=shown, show_default=True
+        ).strip()
+        if text and text != shown:
+            try:
+                typer.echo(f"  saved {key} = {needs.enter(lay, nxt, key, text)}")
+            except (KeyError, ValueError) as exc:
+                typer.echo(f"  not saved: {exc}")
+
+
+@app.command()
 def enter(
     key: str = typer.Argument(..., help="item name from `planner needed`"),
     value: str = typer.Argument(..., help="the typed answer"),
@@ -1141,11 +1195,12 @@ def dashboard(
 
     from planner.dashboard import page, render
     from planner.engine import limits
+    from planner.plan import rollover
 
     lay = layout()
     lay.ensure()
     today = date.fromisoformat(as_of) if as_of else date.today()
-    active = year or page.default_year(today)
+    active = year or rollover.active_year(lay, today)
     typer.echo(f"limits: {limits.summary(limits.refresh(lay, active))}")
     pg = page.gather(lay, active, today)
     typer.echo(f"written {render.write_static(lay, pg)}")
@@ -1180,6 +1235,7 @@ def run(
     from planner.engine import feed, limits
     from planner.engine import update as upd
     from planner.ingest import ingest as _ingest
+    from planner.plan import rollover
 
     lay = layout()
     lay.ensure()
@@ -1195,7 +1251,10 @@ def run(
         f"confirm, {len(rep.duplicates)} duplicate, {len(rep.unmatched)} not read"
     )
     today = date.fromisoformat(as_of) if as_of else None
-    active = year or page.default_year(today or date.today())
+    ro = rollover.refresh(lay, today)
+    if ro is not None and ro.new:
+        typer.echo(rollover.render(ro), nl=False)
+    active = year or rollover.active_year(lay, today or date.today())
     typer.echo(f"limits: {limits.summary(limits.refresh(lay, active))}")
     pg = page.gather(lay, active, today)
     typer.echo(f"written {render.write_static(lay, pg)}")
@@ -1205,6 +1264,8 @@ def run(
             typer.echo(line)
         return
     app_ = serve.App(lay, active, today)
+    if ro is not None and ro.new:
+        app_.message = rollover.render(ro).splitlines()[0]
     srv = serve.server(app_, port)
     if update_check:
         # in the background, so a slow download never holds up the page

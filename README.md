@@ -635,3 +635,36 @@ year and next from the installed policyengine-us. It needs no network.
   `python-previous/`, and `planner update --check` looks for one now. `data/`
   and `out/` are never touched.
 - `scripts/build_release.py` writes the `.sha256` file beside the zip.
+
+## Rolling over to the new year (Phase 7)
+
+When a year ends, the dashboard shows "2026 has ended" with a **Roll over to
+2027** button. From the command line, run `planner rollover` (it rolls last
+year by default). Rolling over:
+
+- **Carries forward what next year needs.** AGI, total tax and NC tax feed
+  the safe-harbor estimates, and the capital loss carried forward lands on
+  next year's Schedule D. Until `planner close` records the filed return,
+  these come from the draft and show as estimates. After that, they come
+  from the filed figures.
+- **Keeps a snapshot** of the ledger and of that year's dashboard in
+  `data/snapshots/<year>-v<n>/`. The all-time peak and older snapshots are
+  never changed.
+- **Switches to the new year.** The dashboard and `planner dashboard` plan
+  next year from then on, refresh its limits, and list any Roth conversions
+  that become penalty-free during it.
+- **Writes a checklist** to `out/rollover-<next>.txt` and prints it:
+  - update the engine
+  - confirm the new limits
+  - re-check the form templates
+  - re-enter the ACA plan
+  - turn dividend reinvestment off
+  - use specific-ID cost basis
+  - answer anything still missing
+- **Asks for next year's figures** when run in a console (`--ask`), such as
+  the new Social Security estimates. Pressing Enter keeps the value shown.
+
+Running it again changes nothing. If a corrected form arrives later, or the
+filed return is closed, the next `planner run` (or `planner rollover`)
+reopens the year and records it as a new version with a fresh snapshot. The
+new year's plan then reads the new figures, and the earlier snapshots stay.
