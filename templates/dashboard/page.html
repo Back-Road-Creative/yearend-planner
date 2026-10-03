@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Year-end planner {{ p.year }}</title>
+<style>
+:root { --ink:#1d2329; --muted:#5b6670; --line:#d5dbe0; --bg:#f7f8f9; --card:#fff;
+  --actual:#1b6e3a; --estimate:#8a5a00; --unavailable:#a12a2a; --accent:#1f5f9e; }
+@media (prefers-color-scheme: dark) { :root { --ink:#e6e9ec; --muted:#9aa5ae; --line:#38414a;
+  --bg:#15191d; --card:#1d2328; --actual:#5cc485; --estimate:#e0ad4c; --unavailable:#f07b7b; --accent:#7db4ea; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui, sans-serif; }
+header { padding:16px; border-bottom:1px solid var(--line); background:var(--card); }
+header h1 { margin:0 0 4px; font-size:20px; }
+header p { margin:0; color:var(--muted); }
+main { max-width:1100px; margin:0 auto; padding:16px; }
+section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 16px; margin:0 0 14px; }
+section h2 { margin:0 0 8px; font-size:16px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.tag { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; padding:1px 6px; border-radius:4px; border:1px solid currentColor; }
+.tag.actual { color:var(--actual); } .tag.estimate { color:var(--estimate); } .tag.unavailable { color:var(--unavailable); }
+pre { margin:0; white-space:pre-wrap; word-break:break-word; font:13px/1.4 ui-monospace, Consolas, monospace; }
+ul.notes { margin:6px 0 0; padding-left:18px; color:var(--muted); font-size:13px; }
+.need { border-top:1px solid var(--line); padding:10px 0; }
+.need:first-of-type { border-top:0; }
+.need b { display:block; }
+.need small { display:block; color:var(--muted); }
+form.inline { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+input, select, button { font:inherit; padding:4px 8px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--ink); }
+button { cursor:pointer; background:var(--accent); color:#fff; border-color:var(--accent); }
+button.plain { background:transparent; color:var(--accent); }
+#drop { border:2px dashed var(--line); border-radius:8px; padding:14px; text-align:center; color:var(--muted); margin:0 0 14px; }
+#drop.over { border-color:var(--accent); color:var(--accent); }
+table { border-collapse:collapse; width:100%; font-size:13px; }
+td, th { text-align:left; padding:3px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.scroll { overflow-x:auto; }
+.done { color:var(--actual); font-weight:600; }
+@media print { #drop, form, button { display:none !important; } body { background:#fff; } section { break-inside:avoid; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Year-end tax &amp; retirement plan {{ p.year }}</h1>
+  <p>as of {{ p.as_of }} · policyengine-us {{ p.engine }} ·
+  {% if p.needed_count %}<a href="#needed">{{ p.needed_count }} needed</a>{% else %}<span class="done">nothing needed</span>{% endif %}
+  · <a href="#alerts">{{ p.alerts|length }} alert(s)</a>
+  {% if not live %} · static copy: run <code>planner run</code> to answer questions here{% endif %}</p>
+</header>
+<main>
+{% if live %}
+<div id="drop">
+  <form method="post" action="/upload?token={{ token }}" enctype="multipart/form-data" class="inline" style="justify-content:center">
+    <span>Drop your tax and account documents anywhere on this page, or</span>
+    <input type="file" name="file" multiple>
+    <button type="submit">Add</button>
+  </form>
+</div>
+{% endif %}
+
+<section id="needed">
+  <h2>Needed <span class="tag {{ 'actual' if not p.needed_count else 'unavailable' }}">{{ p.needed_count }} open</span></h2>
+  {% if not p.needed_count %}<p class="done">Nothing more is needed: every input is on hand.</p>{% endif %}
+  {% for st in p.needed %}
+  <div class="need">
+    <b>{{ st.need.label }}</b>
+    <small>why: {{ st.need.why }}</small>
+    <small>from: {{ st.need.source }}</small>
+    {% if live %}
+    <form method="post" action="/enter?token={{ token }}" class="inline">
+      <input type="hidden" name="key" value="{{ st.need.key }}">
+      {% if st.need.choices %}
+      <select name="value">{% for c in st.need.choices %}<option>{{ c }}</option>{% endfor %}</select>
+      {% else %}
+      <input name="value" placeholder="{{ st.need.kind }}" aria-label="{{ st.need.label }}">
+      {% endif %}
+      <button type="submit">Save</button>
+    </form>
+    <form method="post" action="/dont-have?token={{ token }}" class="inline">
+      <input type="hidden" name="key" value="{{ st.need.key }}">
+      <button type="submit" class="plain">I don't have this</button>
+    </form>
+    {% else %}
+    <small>type: <code>planner enter --year {{ p.year }} {{ st.need.key }} &lt;value&gt;</code></small>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% for e in p.late_forms %}
+  <div class="need">
+    <b>{{ e.form }} from {{ e.issuer }} (due {{ e.due }})</b>
+    <small>why: {{ e.reason }}</small>
+    <small>from: {{ e.where }}; drop it on this page</small>
+  </div>
+  {% endfor %}
+  {% if p.loose_rows %}
+  <div class="need">
+    <b>{{ p.loose_rows }} bank row(s) with no Schedule C category</b>
+    <small>why: Schedule C counts only categorised rows</small>
+    <small>type: <code>planner categorize --year {{ p.year }}</code></small>
+  </div>
+  {% endif %}
+  {% if p.estimates %}
+  <ul class="notes">{% for st in p.estimates %}<li>standing in from YTD until the form arrives: {{ st.need.key }} {{ '{:,.2f}'.format(st.value) }} ({{ st.origin }})</li>{% endfor %}</ul>
+  {% endif %}
+</section>
+
+{% if p.pending %}
+<section id="confirm">
+  <h2>Values read by OCR, awaiting confirm <span class="tag estimate">unconfirmed</span></h2>
+  {% for d in p.pending %}
+  <div class="need">
+    <b>{{ d.file_name }} ({{ d.form }})</b>
+    <table>{% for box, label, value in d.values %}<tr><td>{{ box }}</td><td>{{ label }}</td><td class="num">{{ '{:,.2f}'.format(value) }}</td></tr>{% endfor %}</table>
+    {% if live %}
+    <form method="post" action="/confirm?token={{ token }}" class="inline">
+      <input type="hidden" name="doc" value="{{ d.document_id }}">
+      <button type="submit" name="action" value="accept">Accept</button>
+      <button type="submit" name="action" value="reject" class="plain">Reject (rescan)</button>
+    </form>
+    {% else %}
+    <small>type: <code>planner confirm</code></small>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% for panel in p.panels %}
+<section id="{{ panel.name }}">
+  <h2>{{ panel.title }} <span class="tag {{ panel.tag }}">{{ panel.tag }}</span></h2>
+  <pre>{{ panel.lines|join('\n') }}</pre>
+  {% if panel.notes %}<ul class="notes">{% for n in panel.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+  {% if panel.name == 'forms' %}
+  <h2 style="margin-top:12px">Draft return <span class="tag {{ 'unavailable' if not p.draft else ('estimate' if p.draft.estimates or p.draft.unknown or p.draft.missing else 'actual') }}">{{ 'unavailable' if not p.draft else ('estimate' if p.draft.estimates or p.draft.unknown or p.draft.missing else 'actual') }}</span></h2>
+  {% if p.draft %}
+  <details><summary>{{ p.draft.lines|length }} lines across the federal and state forms</summary>
+  <div class="scroll"><table>
+    <tr><th>Form</th><th>Line</th><th>Label</th><th>Amount</th><th>Source</th></tr>
+    {% for ln in p.draft.lines %}<tr><td>{{ ln.form }}</td><td>{{ ln.line }}</td><td>{{ ln.label }}</td><td class="num">{{ '{:,.2f}'.format(ln.value) }}</td><td>{{ ln.source }}</td></tr>{% endfor %}
+  </table></div></details>
+  {% if p.draft.notes %}<ul class="notes">{% for n in p.draft.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+  {% else %}
+  <pre>needs: {{ p.draft_blocked }}</pre>
+  {% endif %}
+  {% if live %}
+  <form method="post" action="/taxpack?token={{ token }}" class="inline">
+    <button type="submit">Build the tax package (out/tax-{{ p.year }})</button>
+  </form>
+  {% else %}
+  <ul class="notes"><li>tax package: <code>planner taxpack --year {{ p.year }}</code></li></ul>
+  {% endif %}
+  {% endif %}
+</section>
+{% endfor %}
+
+<section id="alerts">
+  <h2>Alerts <span class="tag {{ 'actual' if not p.alerts else 'estimate' }}">{{ p.alerts|length }}</span></h2>
+  {% if p.alerts %}<ul>{% for a in p.alerts %}<li><b>{{ a.kind }}</b>: {{ a.text }}</li>{% endfor %}</ul>{% else %}<p>none</p>{% endif %}
+</section>
+{% if message %}<section id="message"><h2>Last action</h2><pre>{{ message }}</pre></section>{% endif %}
+</main>
+{% if live %}
+<script>
+(function () {
+  var zone = document.getElementById("drop");
+  var url = "/upload?token={{ token|urlencode }}";
+  function stop(e) { e.preventDefault(); e.stopPropagation(); }
+  ["dragenter", "dragover"].forEach(function (t) {
+    document.addEventListener(t, function (e) { stop(e); zone.classList.add("over"); });
+  });
+  ["dragleave", "drop"].forEach(function (t) {
+    document.addEventListener(t, function (e) { stop(e); zone.classList.remove("over"); });
+  });
+  document.addEventListener("drop", function (e) {
+    var files = e.dataTransfer && e.dataTransfer.files;
+    if (!files || !files.length) { return; }
+    var body = new FormData();
+    for (var i = 0; i < files.length; i++) { body.append("file", files[i]); }
+    zone.textContent = "Reading " + files.length + " file(s)...";
+    fetch(url, { method: "POST", body: body }).then(function () { window.location.reload(); });
+  });
+})();
+</script>
+{% endif %}
+</body>
+</html>

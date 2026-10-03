@@ -46,3 +46,4 @@ form_8889: verified  # tests/test_hsa.py; planner hsa; limit by coverage and mon
 nc_d400_draft: verified  # tests/test_d400.py; planner draft; Schedule S 16/18/19/20-40/41, D-400 6-34 for a full-year resident; Schedule PN, D-400TC, D-422 named, not drafted
 taxpack: verified  # tests/test_package.py; planner taxpack writes out/tax-<year>/ (draft txt+html, 8949 csv, Sch C, carryforward, basis, payments, forms, originals zip)
 close_year: verified  # tests/test_close.py; planner close; filed 1040/schedules/D-400 vs draft delta, data/private/returns/<year>-closed.yaml, amended = new version
+dashboard_page: verified  # tests/test_dashboard.py; planner dashboard writes out/index.html; panels tagged actual/estimate/unavailable, alerts, escaped, no external assets

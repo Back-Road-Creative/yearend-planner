@@ -516,3 +516,36 @@ D-400 into the inbox, run `planner ingest`, then `planner close --year 2025`.
   - A D-400 the draft expects but that is not on file is named.
   - Values read by OCR still waiting for `planner confirm` are named and left
     out of the record.
+
+## The dashboard page (Phase 5a)
+
+`planner dashboard --year 2026` writes `out/index.html`, one page with the
+whole year. It is a static copy for printing and backup. `planner run` (Phase
+5b) serves the same page live, with the forms that answer it.
+
+- **Top to bottom:**
+  1. Needed: each missing item, why it is needed and which document supplies
+     it, forms past their due date, and uncategorised bank rows. Inputs
+     standing in from year-to-date figures are listed under it.
+  2. OCR values awaiting confirm, if any.
+  3. The planners: glide path, spending band, MAGI headroom, levers, the
+     conversion, tax-prep forms with the draft return, estimated tax, cash
+     buffer, wash sales and deadlines.
+  4. Alerts.
+- **Every panel is tagged.**
+  - *Estimate*: a projection made before the year ends, or one resting on
+    year-to-date stand-ins.
+  - *Unavailable*: the planner could not run, and the panel says what it
+    needs.
+  - *Actual*: everything else.
+- **Alerts:**
+  - files the intake could not read (with the reason)
+  - wash sales
+  - OCR values to confirm
+  - no document imported yet, or none in the last 90 days
+  - `config/thresholds.yaml` missing the year, or, from October, missing
+    next year
+  - any planner that could not run
+- **Self-contained.** Everything the page shows is escaped, including issuer
+  names, file names and OCR text. It loads nothing from the internet. It
+  prints cleanly, with the forms hidden.
