@@ -249,9 +249,17 @@ def needed(
     from datetime import date
 
     from planner.ingest.needs import needed as _needed
+    from planner.ledger import db
+    from planner.taxprep import schedule_c
     from planner.taxprep.expected import inventory
 
     rep = _needed(layout(), year)
+    conn = db.connect(layout().data / "ledger" / "planner.db")
+    try:
+        sc = schedule_c.build(conn, layout(), year)
+    finally:
+        conn.close()
+    loose = len(sc.uncategorised) if sc.business or sc.receipts_forms else 0
     late = inventory(layout(), year, date.fromisoformat(as_of) if as_of else None).late
     for st in rep.items:
         if st.state == "missing":
@@ -271,8 +279,52 @@ def needed(
         typer.echo(f"form      {e.form} from {e.issuer} (due {e.due})")
         typer.echo(f"          why: {e.reason}")
         typer.echo(f"          from: {e.where}; drop it in the inbox")
-    n = len(rep.by_state("missing")) + len(late)
+    if loose:
+        typer.echo(f"categorize {loose} bank row(s) with no Schedule C category")
+        typer.echo("          why: Schedule C counts only categorised rows")
+        typer.echo(f"          type: planner categorize --year {year}")
+    n = len(rep.by_state("missing")) + len(late) + (1 if loose else 0)
     typer.echo("nothing needed" if n == 0 else f"{n} needed")
+
+
+@app.command()
+def categorize(
+    year: int = typer.Option(..., help="tax year"),
+    rule: str | None = typer.Option(None, help="description text to match"),
+    row: str | None = typer.Option(None, help="one row's key, as listed"),
+    as_: str | None = typer.Option(None, "--as", help="the category"),
+) -> None:
+    """Schedule C from the bank rows: categorise them by a rule (a piece of the
+    description) or one row at a time, then see the lines and what is left.
+    Nothing is categorised by guess."""
+    from planner.ledger import db
+    from planner.taxprep import schedule_c
+
+    lay = layout()
+    if (rule or row) and not as_:
+        typer.echo("error: --rule and --row need --as CATEGORY")
+        raise typer.Exit(2)
+    try:
+        if rule and as_:
+            schedule_c.add_rule(lay, rule, as_)
+        elif row and as_:
+            schedule_c.assign(lay, row, as_)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}")
+        raise typer.Exit(2) from exc
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    try:
+        sc = schedule_c.store(conn, lay, year)
+    finally:
+        conn.close()
+    if rule and as_:
+        caught = sum(
+            1
+            for r in sc.rows.get(as_, [])
+            if rule.lower() in f"{r.type} {r.description}".lower()
+        )
+        typer.echo(f"rule {rule!r} -> {as_}: {caught} row(s) this year")
+    typer.echo(schedule_c.render(sc), nl=False)
 
 
 @app.command()

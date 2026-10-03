@@ -28,6 +28,7 @@ from planner.ingest.pdf import (
 )
 from planner.ledger import db
 from planner.paths import Layout
+from planner.taxprep import schedule_c
 
 # Templates ship with the code (swapped by ``planner update``), not under data/.
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "forms"
@@ -205,5 +206,6 @@ def ingest(
             n = derive(conn, year, report.batch)
             if n:
                 report.derived[year] = n
+            schedule_c.store(conn, lay, year)
     conn.close()
     return report

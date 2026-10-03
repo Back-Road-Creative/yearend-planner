@@ -41,6 +41,7 @@ def test_registry_keys_are_unique_and_every_box_names_a_template(
         t = yaml.safe_load(p.read_text(encoding="utf-8"))
         forms.setdefault(str(t["form"]), {}).update(t["boxes"])
     forms["YTD"] = {}
+    forms["SCH-C"] = {}  # stored by planner categorize, not read from a PDF
     for n in NEEDS:
         for form, box in n.boxes:
             assert form in forms, (n.key, form)
