@@ -177,7 +177,8 @@ def add_document(
             ),
         )
         doc_id = int(cur.lastrowid or 0)
-        for key in {(f.form, f.tax_year, f.issuer) for f in facts}:
+        accepted = [f for f in facts if f.status == "accepted"]
+        for key in {(f.form, f.tax_year, f.issuer) for f in accepted}:
             conn.execute(
                 "UPDATE facts SET status = 'superseded' WHERE form = ? AND "
                 "tax_year = ? AND issuer = ? AND status = 'accepted'",
