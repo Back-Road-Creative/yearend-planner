@@ -84,6 +84,9 @@ Write-Host '== 6. cloud-sync folder refused'
 $cloud = Join-Path $base 'OneDrive\planner'
 New-Item -ItemType Directory -Force -Path $cloud | Out-Null
 Copy-Item -Path (Join-Path $moved '*') -Destination $cloud -Recurse
+# Steps 1-5 already created data/ and out/ in the source folder; the check below is
+# that the refused run creates nothing, so start the copy without them.
+Remove-Item -Recurse -Force -Path (Join-Path $cloud 'data'), (Join-Path $cloud 'out') -ErrorAction SilentlyContinue
 Invoke-Planner $cloud 'paths' 2 | Out-Null
 if (Test-Path (Join-Path $cloud 'data')) { throw 'data/ was created inside OneDrive' }
 
