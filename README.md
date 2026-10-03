@@ -354,3 +354,26 @@ categorised the 1099 forms stand in as an estimate. An uncategorised row is
 listed and left out, never guessed into a line, and while any remain
 `planner needed` asks for them. Depreciation and the home office are not built
 from bank rows.
+
+## The draft return (Phase 4i)
+
+`planner draft --year 2025` lays the year onto Form 1040, Schedules 1, 2, 3 and
+SE and Form 8962 (line numbers follow the 2025 forms), and every line names
+where its figure came from: the form and box, a YTD estimate, a typed answer,
+an engine variable, or the arithmetic of other lines. `--json` gives the same
+lines for other tools. The engine prices the tax; the draft adds what it does
+not see: withholding from W-2 box 2 and box 4 of the 1099s (box 6 of the
+SSA-1099), the federal estimated payments recorded for the year, and tax-exempt
+interest from 1099-INT box 8 and 1099-DIV box 12.
+
+Form 8962 is reconciled month by month from the 1095-A (premium, benchmark and
+advance columns summed across policies): each month's credit is the smaller of
+the premium and the benchmark less the monthly contribution, and a shortfall
+against the advance is repaid up to the 2025 cap (Rev. Proc. 2024-35; no cap
+from 2026 under P.L. 119-21). Without a 1095-A no credit is claimed and the
+draft says what the engine would allow. Four totals (gross income, AGI,
+taxable income, income tax) are checked against the engine and any gap is
+printed as `CHECK:`. Unknown inputs, YTD estimates and forms still to come are
+listed under the lines. Social Security benefits now come from SSA-1099 box 5
+(`planner needed` asks for them), and the 1040 template reads the 2025 form's
+7a, 11a, 12e and 13a lines.

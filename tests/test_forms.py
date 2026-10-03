@@ -162,6 +162,31 @@ def test_1040_two_pages_merge_into_one_form(tmp_path: Path) -> None:
     assert f.boxes["26"][1] == 4000.0 and f.boxes["25d"][1] == 14000.0
 
 
+F1040_2025 = [
+    "Form 1040 (2025) U.S. Individual Income Tax Return",
+    "7a Capital gain or (loss). Attach Schedule D if required . . . 7a 2,500.00",
+    "11a Subtract line 10 from line 9. This is your adjusted gross income 11a 62,161.13",
+    "12e Standard deduction or itemized deductions (from Schedule A) . 12e 15,750.00",
+    "13a Qualified business income deduction from Form 8995 or Form 8995-A 13a 8,112.23",
+]
+SSA1099 = [
+    "FORM SSA-1099 - SOCIAL SECURITY BENEFIT STATEMENT",
+    "Box 3. Benefits Paid in 2025 $ 24,000.00",
+    "Box 4. Benefits Repaid to SSA in 2025 $ 0.00",
+    "Box 5. Net Benefits for 2025 (Box 3 minus Box 4) $ 24,000.00",
+    "Box 6. Voluntary Federal Income Tax Withholding $ 1,200.00",
+]
+
+
+def test_1040_2025_line_numbers_and_ssa_1099(tmp_path: Path) -> None:
+    (f,) = one(tmp_path, "1040-2025", [F1040_2025])
+    assert f.boxes["7"][1] == 2500.0 and f.boxes["11"][1] == 62161.13
+    assert f.boxes["12"][1] == 15750.0 and f.boxes["13"][1] == 8112.23
+    (s,) = one(tmp_path, "ssa1099", [SSA1099])
+    assert (s.form, s.issuer, s.tax_year) == ("SSA-1099", "SSA", 2025)
+    assert s.boxes["5"][1] == 24000.0 and s.boxes["6"][1] == 1200.0
+
+
 def test_schedules_parse_with_dot_leaders(tmp_path: Path) -> None:
     forms = one(tmp_path, "sched", [SCH1, SCH2, SCH3, SCHC, SCHD, SCHSE])
     got = {f.form: f for f in forms}

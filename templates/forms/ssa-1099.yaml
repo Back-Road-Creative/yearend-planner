@@ -1,0 +1,12 @@
+# Form SSA-1099, Social Security Benefit Statement. Box 5 (net benefits) is
+# Form 1040 line 6a; box 6 is voluntary federal withholding (line 25b).
+form: SSA-1099
+years: [2024, 2025, 2026]
+match: ["SSA-1099", "Benefit Statement"]
+year_pattern: 'Benefits Paid in\s*(20\d\d)'
+issuer: SSA
+boxes:
+  "3": {label: "Benefits paid", pattern: 'Box 3\.?\s*Benefits Paid in 20\d\d[^\n$\d]*AMOUNT'}
+  "4": {label: "Benefits repaid to SSA", pattern: 'Box 4\.?\s*Benefits Repaid to SSA in 20\d\d[^\n$\d]*AMOUNT'}
+  "5": {label: "Net benefits", pattern: 'Box 5\.?\s*Net Benefits for 20\d\d\s*(?:\(Box 3 minus Box 4\))?[^\n$\d]*AMOUNT', required: true}
+  "6": {label: "Voluntary federal income tax withheld", pattern: 'Box 6\.?\s*Voluntary Federal Income Tax Withholding[^\n$\d]*AMOUNT'}
