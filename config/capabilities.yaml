@@ -18,7 +18,8 @@ pdf_nc_d400: partial  # lines 6, 12b, 15, 20a verified; payment lines optional, 
 pdf_ssa_statement: verified  # tests/test_forms.py
 pdf_1099_nec_k_1098_5498_5498sa_1099sa: verified  # tests/test_forms.py
 ytd_facts_from_rows: verified  # tests/test_derive.py; planner derive / ingest
-pdf_scanned_ocr_confirm: unsupported  # lands in Phase 2d; file goes to UNMATCHED
+pdf_scanned_ocr_confirm: unsupported  # lands in Phase 2e; file goes to UNMATCHED
+needed_panel_registry_diff: verified  # tests/test_needs.py; planner needed / enter / dont-have
 csv_vanguard_download: verified  # tests/test_csv.py (holdings + transactions blocks)
 csv_vanguard_cost_basis_realized_income: partial  # synthetic headers; real export confirms
 csv_bank: verified  # tests/test_csv.py (signed Amount; Debit/Credit)
