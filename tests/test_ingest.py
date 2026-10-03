@@ -114,6 +114,7 @@ def test_1095a_monthly_columns(tmp_path: Path) -> None:
     assert f.issuer == "NC-synthetic"
     assert f.boxes["slcsp_01"][1] == 520.0 and f.boxes["aptc_01"][1] == 300.0
     assert f.boxes["slcsp_annual"][1] == 6240.0
+    assert f.boxes["premium_01"][1] == 450.0 and f.boxes["premium_annual"][1] == 5400.0
 
 
 def test_ingest_commits_archives_and_is_idempotent(lay: Layout) -> None:

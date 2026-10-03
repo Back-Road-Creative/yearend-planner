@@ -344,6 +344,30 @@ def forms(
 
 
 @app.command()
+def draft(
+    year: int = typer.Option(..., help="tax year"),
+    as_json: bool = typer.Option(False, "--json", help="machine-readable"),
+) -> None:
+    """The draft federal return: Form 1040, Schedules 1, 2, 3 and SE and Form
+    8962, every line priced by the engine and naming its source."""
+    import json
+    from dataclasses import asdict
+
+    from planner.engine.household import MissingInputError
+    from planner.taxprep.draft import build, render
+
+    try:
+        d = build(layout(), year)
+    except MissingInputError as exc:
+        typer.echo(f"blocked: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    if as_json:
+        typer.echo(json.dumps(asdict(d), indent=2))
+    else:
+        typer.echo(render(d), nl=False)
+
+
+@app.command()
 def enter(
     key: str = typer.Argument(..., help="item name from `planner needed`"),
     value: str = typer.Argument(..., help="the typed answer"),

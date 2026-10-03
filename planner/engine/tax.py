@@ -6,6 +6,7 @@ from the engine's taxable income to report headroom.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
@@ -189,6 +190,23 @@ def _compute(year: int, household: Household) -> TaxResult:
         room_to_12pct_top=r(th["bracket_12pct_top"] - v["taxable_income"]),
         fpg=r(fpg),
     )
+
+
+def values(
+    year: int,
+    household: Household,
+    names: Iterable[str],
+    prior: Iterable[str] = (),
+) -> dict[str, float]:
+    """Named engine variables for one household-year, in one run (the draft
+    return reads its lines from these). Unrounded; one person, so entry 0.
+    ``prior`` names are read for the year before, keyed ``<name>@prior``
+    (Form 8962 uses the prior year's poverty line)."""
+    sim = _sim(year, household)
+    out = {name: float(_calc(sim, name, year)[0]) for name in names}
+    for name in prior:
+        out[f"{name}@prior"] = float(_calc(sim, name, year - 1)[0])
+    return out
 
 
 def compute_sweep(

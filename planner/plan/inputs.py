@@ -37,6 +37,7 @@ MONEY = {
     "long_term_gains": "long_term_gains",
     "ira_distributions": "ira_distributions",
     "roth_conversion": "roth_conversion",
+    "social_security": "social_security",
     "traditional_ira_contribution": "traditional_ira_contribution",
     "se_health_premiums": "se_health_premiums",
     "slcsp_monthly": "slcsp_monthly",

@@ -380,6 +380,15 @@ NEEDS: tuple[Need, ...] = (
         boxes=(("1099-R", "2a"),),
     ),
     Need(
+        "social_security",
+        "Social Security benefits",
+        "up to 85% taxable; all of it counts in ACA MAGI",
+        "SSA-1099 box 5 (ssa.gov/myaccount > replacement documents); type 0 "
+        "before you claim",
+        "money",
+        boxes=(("SSA-1099", "5"),),
+    ),
+    Need(
         "roth_conversion",
         "Roth conversion this year",
         "the conversion ledger",
