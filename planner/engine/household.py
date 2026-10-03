@@ -30,6 +30,7 @@ class Household:
     wages: int = 0
     se_income: int = 0
     interest: int = 0
+    tax_exempt_interest: int = 0  # 1040 line 2a: in ACA MAGI and Social Security
     non_qualified_dividends: int = 0
     qualified_dividends: int = 0
     short_term_gains: int = 0
@@ -75,6 +76,7 @@ class Household:
             "employment_income": {y: self.wages},
             "self_employment_income": {y: self.se_income},
             "taxable_interest_income": {y: self.interest},
+            "tax_exempt_interest_income": {y: self.tax_exempt_interest},
             "non_qualified_dividend_income": {y: self.non_qualified_dividends},
             "qualified_dividend_income": {y: self.qualified_dividends},
             "short_term_capital_gains": {y: self.short_term_gains},

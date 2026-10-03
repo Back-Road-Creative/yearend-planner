@@ -81,7 +81,6 @@ WITHHELD = (
     ("1099-B", "4"),
     ("SSA-1099", "6"),
 )
-EXEMPT_INTEREST = (("1099-INT", "8"), ("1099-DIV", "12"))
 # Form 8962 line 28: the cap on repaying excess advance credit, by household
 # income as a percent of the poverty line (under 200, 300, 400; none at 400 and
 # over). Rev. Proc. 2024-35 for 2025; P.L. 119-21 sec. 71305 removes the cap
@@ -262,11 +261,7 @@ def build(lay: Layout, year: int) -> Draft:
         hh = dataclasses.replace(
             hh, hsa_contribution=int(round(h.lines.get("13", 0.0))), other=other
         )
-    exempt = _sum(facts, EXEMPT_INTEREST)
-    if exempt:
-        hh = dataclasses.replace(
-            hh, other={**hh.other, "tax_exempt_interest_income": int(round(exempt))}
-        )
+    exempt = float(hh.tax_exempt_interest)  # the Needed panel: boxes, then typed
     us = _sum(facts, d400.US_INTEREST)
     if us:  # taxable federally, subtracted on NC Schedule S line 18
         hh = dataclasses.replace(
@@ -440,7 +435,7 @@ def build(lay: Layout, year: int) -> Draft:
     # Form 1040 income
     f = "1040"
     l1z = add(f, "1z", "Wages", v["employment_income"], origin("wages"))
-    add(f, "2a", "Tax-exempt interest", exempt, _cited(facts, EXEMPT_INTEREST))
+    add(f, "2a", "Tax-exempt interest", exempt, origin("tax_exempt_interest"))
     l2b = add(
         f, "2b", "Taxable interest", v["taxable_interest_income"], origin("interest")
     )
@@ -632,8 +627,8 @@ def build(lay: Layout, year: int) -> Draft:
             d.notes.append(f"CHECK: {what}: {got:,.2f} vs {want:,.2f}")
     if exempt:
         d.notes.append(
-            "tax-exempt interest (1040 line 2a) is added to the household: it "
-            "counts toward Social Security taxation and ACA MAGI"
+            "tax-exempt interest (1040 line 2a) counts toward Social Security "
+            "taxation and ACA MAGI"
         )
     return d
 

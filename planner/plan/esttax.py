@@ -251,8 +251,11 @@ def estimate(
         res.agi > 0 and lump / res.agi > 1 - LUMPY_SHARE
     )
     et = EstTax(year, today.isoformat(), res.agi, lumpy)
+    # Form 2210 Part I and the 1040-ES worksheet test the 90% leg on line 24 less
+    # the refundable credits (EIC, additional child tax credit, refundable AOTC);
+    # compute's fed_total_tax is the gross line 24.
     for name, current, prior_key in (
-        ("fed", res.fed_total_tax, "prior_total_tax"),
+        ("fed", r(res.fed_total_tax - res.refundable_credits), "prior_total_tax"),
         ("nc", res.state_tax, "prior_nc_tax"),
     ):
         pri = prior[prior_key]

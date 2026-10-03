@@ -133,3 +133,33 @@ def test_cli_draft_json(lay: Layout) -> None:
     lines = {(ln["form"], ln["line"]): ln for ln in data["lines"]}
     assert lines[("1040", "2b")]["source"]
     assert lines[("1040", "26")]["value"] == 1500.0
+
+
+@pytest.mark.engine
+def test_exempt_interest_reaches_line_2a_and_aca_magi(lay: Layout) -> None:
+    before = draft.build(lay, YEAR)
+    assert before.get("1040", "2a") == 0.0
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    db.add_document(
+        conn,
+        fingerprint="synthetic-exempt",
+        file_name="synthetic-exempt.pdf",
+        kind="pdf",
+        pages=1,
+        batch="b2",
+        facts=[
+            db.Fact(
+                "1099-INT", YEAR, "Example Credit Union (synthetic)", "8", "x", 700.0, 1
+            ),
+            db.Fact("1099-DIV", YEAR, "Example Fund (synthetic)", "12", "x", 300.0, 1),
+        ],
+    )
+    conn.close()
+    d = draft.build(lay, YEAR)
+    assert d.get("1040", "2a") == 1000.0
+    assert d.get("1040", "9") == before.get("1040", "9")  # not taxable income
+    assert d.get("1040", "11a") == before.get("1040", "11a")
+    line = next(ln for ln in d.lines if (ln.form, ln.line) == ("1040", "2a"))
+    assert "1099-INT 2025" in line.source and "1099-DIV 2025" in line.source
+    assert any("tax-exempt interest (1040 line 2a)" in n for n in d.notes)
+    assert not [n for n in d.notes if n.startswith("CHECK")], d.notes

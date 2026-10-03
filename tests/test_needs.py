@@ -123,6 +123,31 @@ def test_enter_profile_and_year_answers_then_dont_have(lay: Layout) -> None:
     assert states(lay)["county"] == "actual"
 
 
+def test_tax_exempt_interest_sums_int_box_8_and_div_box_12(lay: Layout) -> None:
+    need = need_for("tax_exempt_interest")
+    assert need.boxes == (("1099-INT", "8"), ("1099-DIV", "12"))
+    assert states(lay)["tax_exempt_interest"] == "missing"
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    db.add_document(
+        conn,
+        fingerprint="synthetic-exempt",
+        file_name="synthetic-exempt.pdf",
+        kind="pdf",
+        pages=1,
+        batch="b1",
+        facts=[
+            db.Fact("1099-INT", 2026, "Example Bank (synthetic)", "8", "x", 150.0, 1),
+            db.Fact("1099-DIV", 2026, "Example Fund (synthetic)", "12", "x", 250.0, 1),
+            db.Fact("1099-INT", 2026, "Example Bank (synthetic)", "1", "x", 999.0, 1),
+        ],
+    )
+    conn.close()
+    item = next(s for s in needed(lay, 2026).items if s.need.key == need.key)
+    assert item.state == "actual" and item.value == 400.0
+    assert "1099-INT 2026" in item.origin and "1099-DIV 2026" in item.origin
+    assert enter(lay, 2026, "tax_exempt_interest", "0") == 0
+
+
 def test_bad_answers_are_refused_not_guessed(lay: Layout) -> None:
     with pytest.raises(ValueError):
         parse_value(need_for("filing_status"), "married")
@@ -320,6 +345,7 @@ def test_vanguard_items_group_into_one_download(lay: Layout) -> None:
     vg = by_doc["vg_tax"]
     assert [s.need.key for s in vg.items] == [
         "interest",
+        "tax_exempt_interest",
         "ordinary_dividends",
         "qualified_dividends",
     ]

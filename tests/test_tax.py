@@ -4,12 +4,17 @@ The engine must land within $1 of every figure."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from planner.engine.household import Household
 from planner.engine.tax import compute, compute_sweep, engine_slcsp, thresholds
+from planner.ingest.needs import enter
+from planner.paths import Layout
+from planner.plan import inputs
+from planner.taxprep import draft
 
 pytestmark = pytest.mark.engine
 BASE: dict[str, Any] = {"age": 55, "filing_status": "SINGLE", "state": "NC"}
@@ -122,3 +127,57 @@ def test_the_county_moves_the_benchmark() -> None:
     )
     wake = engine_slcsp(2026, Household(**BASE, wages=30_000, county="WAKE_COUNTY_NC"))
     assert macon != wake and min(macon, wake) > 0
+
+
+@pytest.mark.parametrize(
+    ("se", "investment", "taxes"),
+    [
+        (30_000, 0, ("4",)),  # SE tax only
+        (250_000, 0, ("4", "11")),  # SE tax and the 0.9% additional Medicare tax
+        (0, 250_000, ("12",)),  # NIIT on investment income, no SE
+        (150_000, 250_000, ("4", "12")),  # SE tax and NIIT together
+        (12_345, 0, ("4",)),  # low-income SE: the EITC is a refundable credit
+    ],
+)
+def test_fed_total_tax_matches_draft_line_24(
+    planner_home: Path, se: int, investment: int, taxes: tuple[str, ...]
+) -> None:
+    """Form 1040 line 24 is the draft's own line 22 + Schedule 2 line 21. The
+    engine's income tax already holds the NIIT; self-employment tax and the
+    additional Medicare tax sit outside it, and refundable credits are payments
+    (lines 27-31), not a cut in line 24."""
+    lay = Layout(planner_home)
+    lay.ensure()
+    for key, text in (
+        ("birth_date", "1971-06-15"),
+        ("filing_status", "single"),
+        ("state", "NC"),
+        ("wages", "0"),
+        ("se_income", str(se)),
+        ("interest", "20,000" if investment else "0"),
+        ("ordinary_dividends", "30,000" if investment else "0"),
+        ("qualified_dividends", "30,000" if investment else "0"),
+        ("long_term_gains", "200,000" if investment else "0"),
+    ):
+        enter(lay, 2025, key, text)
+    d = draft.build(lay, 2025)
+    line_24 = d.get("1040", "24")
+    assert line_24 is not None
+    for line in taxes:  # the household really owes the tax this case is about
+        assert (d.get("Sch 2", line) or 0) > 0, line
+    got = compute(2025, inputs.build(lay, 2025).household)
+    # the draft rounds each line to cents, the engine only the total: a cent apart
+    assert got.fed_total_tax == pytest.approx(line_24, abs=0.015)
+    # the credit is real in the low-income case, and line 24 is still gross of it
+    assert (got.refundable_credits > 0) == (se == 12_345)
+
+
+def test_total_tax_fields_are_rounded_like_every_other_field() -> None:
+    """Line 22 and line 24 come from engine floats (1744.29296875): both are
+    rounded to cents like the rest of the result."""
+    r = compute(2025, Household(**{**BASE, "age": 40}, se_income=12_345))
+    assert r.fed_total_tax == round(r.fed_total_tax, 2) == 1_744.29
+    assert r.fed_income_tax_after_credits == round(r.fed_income_tax_after_credits, 2)
+    r = compute(2026, Household(**BASE, long_term_gains=100_000, interest=1_234))
+    for v in (r.fed_total_tax, r.fed_income_tax_after_credits):
+        assert v == round(v, 2)
