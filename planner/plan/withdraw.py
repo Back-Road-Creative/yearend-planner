@@ -64,6 +64,38 @@ def _key(lot: portfolio.Lot) -> str:
     return f"{lot.account}:{lot.symbol}:{lot.acquired}"
 
 
+def sellable(st: portfolio.Status) -> list[portfolio.Lot]:
+    """The lots in accounts typed as ones the plan may sell from."""
+    typed = {p.account: p.type for p in st.positions}
+    return [lot for lot in st.lots if typed.get(lot.account) in SELLABLE]
+
+
+def proceeds_for_gain(
+    lots: list[portfolio.Lot], gain: float, term: str
+) -> tuple[float, float]:
+    """The cash a planned gain (or loss, if negative) of one term brings in, and
+    the part of it no lot can supply. The lots drawn first are those with the
+    most gain per dollar (the most loss per dollar for a loss), so the cash
+    counted is the least the plan can rely on, never more."""
+    if not gain:
+        return 0.0, 0.0
+    short = term == "short"
+    pool = [
+        lot
+        for lot in lots
+        if (lot.term == "short") == short and lot.value > 0 and lot.gain * gain > 0
+    ]
+    pool.sort(key=lambda lot: abs(lot.gain) / lot.value, reverse=True)
+    left, proceeds = abs(gain), 0.0
+    for lot in pool:
+        take = min(left, abs(lot.gain))
+        proceeds += lot.value * take / abs(lot.gain)
+        left -= take
+        if left <= 0:
+            break
+    return r(proceeds), r(max(left, 0.0))
+
+
 def order(lots: list[portfolio.Lot], specific: list[str]) -> list[portfolio.Lot]:
     """Specific-ID lots first in the order given, then by gain per dollar."""
     first = [lot for key in specific for lot in lots if _key(lot) == key]
@@ -90,8 +122,7 @@ def pick(
     cash = r(sum(p.value for p in st.positions if p.type == "cash"))
     need = r(max(want - cash, 0.0))
     w = Withdrawal(year, today.isoformat(), want, cash, need, r(min(cash, want)))
-    typed = {p.account: p.type for p in st.positions}
-    lots = [lot for lot in st.lots if typed.get(lot.account) in SELLABLE]
+    lots = sellable(st)
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
         recent = {

@@ -284,9 +284,20 @@ through `ira_access_age`), three stress rows (a 30% drop in year one, 5%
 inflation, floor returns), and the month-by-month cash line for this year and
 next: SE deposits and dividends from the ledger's rows for the months already
 run and their run-rate after, living cost at the band, `mortgage_monthly`,
-`premium_monthly`, estimated payments as a quarter of the projected year's tax
-on the four due dates, the profile's `irregular` items (`label`, `month`,
-`amount`, optional `year`) and any `--cash-in 2026-11:25000`. The cash bucket
+`premium_monthly`, estimated payments from `planner esttax` (payments already
+made, in the month they were paid; each later installment at what its safe-harbor
+figure still lacks, so a missed quarter is made up at the next due date; next
+year's April, June and September installments at 90% of this year's tax less
+withholding; and the tax the installments leave unpaid in the month the return
+is due, as `tax due`), the planned sales and conversion (below), the profile's
+`irregular` items (`label`, `month`,
+`amount`, optional `year`) and any `--cash-in 2026-11:25000`. A planned sale
+(`--sales-st`, `--sales-lt`) brings its proceeds into the `sales` column in
+December (the plan's year-end cut-off), priced from the taxable lots with the
+most gain per dollar, which is the least cash for that gain; a gain no lot can
+supply counts nothing and is named in the notes. A planned conversion moves no
+cash itself; its tax is in the estimated payments and the `tax due` month, and
+a note gives the tax it adds. None of this needs `--cash-in`. The cash bucket
 is carried month by month and the first month under `cash_target` is named.
 
 ## Planners: raising cash and wash sales (Phase 4c)
@@ -333,7 +344,9 @@ watched line, the Roth conversion candidates and the recommended one, the
 spending band, the glide path with its stresses and the first month the cash
 line goes negative, the cash to raise and the lots to sell, estimated tax by
 agency with the next payment, wash-sale flags and open windows, and the
-deadline calendar from October through next September. The same `--as-of`
+deadline calendar from October through next September (the June and September
+estimated payments are marked "if required" and name the agencies whose
+`planner esttax` result owes them, resting on this year's tax after withholding). The same `--as-of`
 and override options as the planners it composes. A planner whose required
 input is still unknown reports what it needs and the rest of the page still
 renders; nothing is estimated in its place. The page is also written to

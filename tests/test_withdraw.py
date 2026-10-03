@@ -117,3 +117,48 @@ def test_cash_projection_keeps_the_typed_total_income(lots: Layout) -> None:  # 
     # a sale still lands on top of the typed total
     w = withdraw.pick(lots, 2026, target=500_000.0, as_of=AS_OF, overrides=ov)
     assert w.sales and w.magi_after != w.magi_before
+
+
+def test_proceeds_for_a_planned_gain_use_the_most_gain_per_dollar_first(
+    lots: Layout,  # noqa: F811
+) -> None:
+    sellable = withdraw.sellable(portfolio.status(lots, 2026, AS_OF))
+    assert {lot.account for lot in sellable} == {"11111111"}
+    # long term: the 2019 lot carries 260,000 of gain in 560,000 of value
+    assert withdraw.proceeds_for_gain(sellable, 20_000.0, "long") == (
+        round(20_000 * 560 / 260, 2),
+        0.0,
+    )
+    # past that lot's gain the next one is drawn on: 2022 carries 60,000 of gain
+    got, left = withdraw.proceeds_for_gain(sellable, 290_000.0, "long")
+    assert got == round(560_000 + 30_000 * 560 / 60, 2) and left == 0.0
+    # more gain than the lots hold comes back as unmatched
+    got, left = withdraw.proceeds_for_gain(sellable, 400_000.0, "long")
+    assert got == 1_120_000.0 and left == 80_000.0
+    # short term: only a loss lot, so a gain finds nothing and a loss finds it
+    assert withdraw.proceeds_for_gain(sellable, 5_000.0, "short") == (0.0, 5_000.0)
+    assert withdraw.proceeds_for_gain(sellable, -5_000.0, "short") == (
+        round(5_000 * 280 / 10, 2),
+        0.0,
+    )
+    assert withdraw.proceeds_for_gain(sellable, 0.0, "long") == (0.0, 0.0)
+
+
+def _lot(symbol: str, basis: float, value: float, term: str = "short") -> portfolio.Lot:
+    return portfolio.Lot("acct", symbol, "2026-01-02", term, 1.0, basis, value)
+
+
+def test_proceeds_for_a_planned_loss_use_the_most_loss_per_dollar_first() -> None:
+    # A loses 1.0 per dollar of value, B 0.1: drawing a 1,000 loss from A takes
+    # 1,000 of value, from B 10,000. The plan may rely only on the smaller cash.
+    lots = [_lot("B", 11_000.0, 10_000.0), _lot("A", 20_000.0, 10_000.0)]
+    assert withdraw.proceeds_for_gain(lots, -1_000.0, "short") == (1_000.0, 0.0)
+    assert withdraw.proceeds_for_gain(lots[::-1], -1_000.0, "short") == (1_000.0, 0.0)
+    # past A's 10,000 of loss, B is drawn on at its own rate
+    assert withdraw.proceeds_for_gain(lots, -10_500.0, "short") == (
+        10_000.0 + 5_000.0,
+        0.0,
+    )
+    # the same order holds for a gain: most gain per dollar first
+    gains = [_lot("B", 9_000.0, 10_000.0, "long"), _lot("A", 0.0, 10_000.0, "long")]
+    assert withdraw.proceeds_for_gain(gains, 1_000.0, "long") == (1_000.0, 0.0)

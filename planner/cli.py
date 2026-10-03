@@ -1181,7 +1181,9 @@ def glide(
 ) -> None:
     """The age/year table to 95 under the planning return, the accessible-bucket
     floor through the IRA access age, three stress rows, and the month-by-month
-    cash line for this year and next."""
+    cash line for this year and next. Estimated payments come from the
+    ``esttax`` installments, and the planned sales (``--sales-st``,
+    ``--sales-lt``) and conversion reach the line without ``--cash-in``."""
     from datetime import date
 
     from planner.plan.glidepath import HORIZON_AGE as HORIZON
@@ -1221,15 +1223,17 @@ def glide(
             f"stress {s.name:22} {end}; at {HORIZON} {s.balance_at_horizon:,.2f}"
         )
     typer.echo(
-        f"{'month':>8} {'SE':>10} {'div':>9} {'in':>9} {'living':>9} {'mortg':>9} "
-        f"{'prem':>8} {'est tax':>9} {'irreg':>9} {'net':>10} {'cash':>12}"
+        f"{'month':>8} {'SE':>10} {'div':>9} {'in':>9} {'sales':>11} {'living':>9} "
+        f"{'mortg':>9} {'prem':>8} {'est tax':>9} {'tax due':>10} {'irreg':>9} "
+        f"{'net':>10} {'cash':>12}"
     )
     for m in g.months:
         typer.echo(
             f"{m.year}-{m.month:02d}{'*' if m.actual else ' '} {m.se:>10,.2f} "
-            f"{m.dividends:>9,.2f} {m.cash_in:>9,.2f} {m.living:>9,.2f} "
-            f"{m.mortgage:>9,.2f} {m.premiums:>8,.2f} {m.est_tax:>9,.2f} "
-            f"{m.irregular:>9,.2f} {m.net:>10,.2f} {m.cash:>12,.2f}"
+            f"{m.dividends:>9,.2f} {m.cash_in:>9,.2f} {m.planned_in:>11,.2f} "
+            f"{m.living:>9,.2f} {m.mortgage:>9,.2f} {m.premiums:>8,.2f} "
+            f"{m.est_tax:>9,.2f} {m.balance_due:>10,.2f} {m.irregular:>9,.2f} "
+            f"{m.net:>10,.2f} {m.cash:>12,.2f}"
         )
     typer.echo("* income columns from ledger rows; others at the run-rate")
     for note in g.notes:

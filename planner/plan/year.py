@@ -247,13 +247,50 @@ def _washsales(lay: Layout, year: int, today: date, _ov: Overrides) -> Section:
     return Section("washsales", True, lines or ["none"])
 
 
-def _calendar(_lay: Layout, year: int, today: date, _ov: Overrides) -> Section:
+def _calendar(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
+    notes: list[str] = []
+    owing: dict[int, list[str]] | None = None
+    why_none: str | None = None
+    try:
+        et = esttax.estimate(lay, year, today, ov)
+    except (MissingInputError, OverrideError) as exc:
+        notes.append(f"Q2 and Q3 left as 'if required': {exc}")
+    else:
+        # June and September fall in the next year, which has no projection of
+        # its own: this year's tax repeated stands in for it, by the same figure
+        # the cash line pays installments from (esttax.next_year_required)
+        owe = [
+            ag.name for ag in et.agencies if esttax.next_year_required(ag, et.agi) > 0
+        ]
+        owing = {n: list(owe) for n in (2, 3)}
+        if not owe:
+            # two reasons leave nothing to pay: the de minimis test, or
+            # withholding that already covers the safe harbor (IRC 6654(d)(1)(B))
+            reasons = {
+                ag.name: (
+                    "tax after withholding under the de minimis"
+                    if ag.de_minimis
+                    else "withholding covers the safe harbor"
+                )
+                for ag in et.agencies
+            }
+            if len(set(reasons.values())) == 1:
+                why_none = next(iter(reasons.values()))
+            else:
+                why_none = "; ".join(
+                    f"{calendar.AGENCY_NAMES.get(a, a)}: {t}"
+                    for a, t in reasons.items()
+                )
+        notes.append(
+            f"Q2 and Q3 fall in {year + 1}; whether they are required rests on "
+            f"{year}'s projected tax repeated, less withholding (planner esttax)"
+        )
     lines = []
-    for d in calendar.deadlines(year):
+    for d in calendar.deadlines(year, owing, why_none):
         when = d.date if d.date == d.nominal else f"{d.date} (from {d.nominal})"
         past = "  done?" if date.fromisoformat(d.date) < today else ""
         lines.append(f"{when:28} {d.item}{past}")
-    return Section("calendar", True, lines)
+    return Section("calendar", True, lines, notes)
 
 
 BUILDERS = {

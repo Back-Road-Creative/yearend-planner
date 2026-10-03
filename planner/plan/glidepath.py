@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
@@ -23,12 +23,10 @@ from planner.ingest.derive import _classify_income
 from planner.ingest.needs import load_profile
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.plan import spending
+from planner.plan import calendar, esttax, spending, withdraw
 from planner.plan.inputs import Overrides, age_at_year_end
-from planner.plan.magi import project
 
 HORIZON_AGE = 95
-INSTALLMENT_MONTHS = (4, 6, 9)  # plus January of the next year
 SS_AGES = (62, 67, 70)
 STRESS_DROP = 0.30
 STRESS_INFLATION = 0.05
@@ -62,10 +60,12 @@ class MonthRow:
     living: float
     mortgage: float
     premiums: float
-    est_tax: float
+    est_tax: float  # estimated payments made or due this month (esttax)
     irregular: float
     cash: float  # end-of-month cash bucket
     actual: bool  # income columns from rows (True) or run-rate (False)
+    planned_in: float = 0.0  # proceeds of the planned sales, at year-end settlement
+    balance_due: float = 0.0  # tax the installments leave unpaid, due with the return
 
     @property
     def net(self) -> float:
@@ -73,10 +73,12 @@ class MonthRow:
             self.se
             + self.dividends
             + self.cash_in
+            + self.planned_in
             - self.living
             - self.mortgage
             - self.premiums
             - self.est_tax
+            - self.balance_due
             - self.irregular
         )
 
@@ -214,6 +216,94 @@ def _irregular(
     return out
 
 
+def _tax_by_month(
+    lay: Layout,
+    year: int,
+    as_of: date,
+    overrides: Overrides | None,
+    notes: list[str],
+) -> dict[tuple[int, int], tuple[float, float]]:
+    """(estimated payments, balance due) by (year, month), from esttax's own
+    installments and payments made, with the planned sales and conversion in
+    the tax. Left empty, and said so, when the projection lacks an input."""
+    try:
+        et = esttax.estimate(lay, year, as_of, overrides)
+    except MissingInputError as exc:
+        notes.append(f"estimated payments left at zero: {exc}")
+        return {}
+    flows, flow_notes = esttax.cash_flows(et)
+    out: dict[tuple[int, int], list[float]] = defaultdict(lambda: [0.0, 0.0])
+    for f in flows:
+        when = date.fromisoformat(f.when)
+        if when.year in (year, year + 1):
+            out[(when.year, when.month)][1 if f.kind == "balance due" else 0] += (
+                f.amount
+            )
+    total = sum(ag.current_tax for ag in et.agencies)
+    due = sum(f.amount for f in flows if f.kind == "balance due")
+    notes.append(
+        "estimated payments are esttax's: payments made on their dates, each "
+        "later installment at what its safe-harbor figure still lacks, and "
+        "next year's at 90% of this year's tax less withholding; "
+        f"{due:,.2f} of the projected {total:,.2f} falls due with the return"
+    )
+    notes.extend(flow_notes)
+    notes.extend(n for ag in et.agencies for n in ag.notes if "were short" in n)
+    ov = overrides or Overrides()
+    if ov.planned_conversion:
+        try:
+            without = esttax.estimate(
+                lay, year, as_of, replace(ov, planned_conversion=0.0)
+            )
+        except MissingInputError:
+            without = None
+        if without is not None:
+            added = r(total - sum(ag.current_tax for ag in without.agencies))
+            notes.append(
+                f"the planned conversion {ov.planned_conversion:,.2f} adds "
+                f"{added:,.2f} of federal and NC tax to the year, paid through "
+                "the installments and the balance due above"
+            )
+    return {k: (r(v[0]), r(v[1])) for k, v in out.items()}
+
+
+def _planned_sales(
+    lay: Layout,
+    year: int,
+    as_of: date,
+    overrides: Overrides | None,
+    notes: list[str],
+) -> dict[tuple[int, int], float]:
+    """Proceeds of the planned sales by (year, month): they settle on the
+    plan's year-end cut-off (the last business day of December). The overrides
+    carry gains, so the cash comes from the taxable lots that would produce
+    them; a gain no lot can supply brings in nothing and is named."""
+    ov = overrides or Overrides()
+    st = portfolio.status(lay, year, as_of)
+    lots = withdraw.sellable(st)
+    total = 0.0
+    for name, term in (("planned_st_sales", "short"), ("planned_lt_sales", "long")):
+        gain = float(getattr(ov, name))
+        if not gain:
+            continue
+        got, left = withdraw.proceeds_for_gain(lots, gain, term)
+        total += got
+        if left:
+            notes.append(
+                f"{name} {gain:,.2f}: no taxable lot supplies {left:,.2f} of it "
+                f"(planner withdraw); {got:,.2f} of proceeds counted"
+            )
+        else:
+            notes.append(
+                f"{name} {gain:,.2f} brings in {got:,.2f}, priced from the taxable "
+                "lots with the most gain per dollar (the least cash for the gain)"
+            )
+    if not total:
+        return {}
+    settle = calendar.shift(date(year, 12, 31), calendar.PRIOR)
+    return {(settle.year, settle.month): r(total)}
+
+
 def months(
     lay: Layout,
     year: int,
@@ -239,17 +329,8 @@ def months(
         notes.append("no bank deposits in the ledger: SE income by month is unknown")
     if not div_act:
         notes.append("no dividend or interest rows in the ledger for the year")
-    try:
-        res = project(lay, year, overrides).result
-        tax = res.fed_total_tax - res.refundable_credits + res.state_tax
-        est = r(tax / 4)
-        notes.append(
-            f"estimated payments are a quarter of the projected year's tax "
-            f"({tax:,.2f}); the next year repeats it"
-        )
-    except MissingInputError as exc:
-        est = 0.0
-        notes.append(f"estimated payments left at zero: {exc}")
+    taxes = _tax_by_month(lay, year, as_of, overrides, notes)
+    planned = _planned_sales(lay, year, as_of, overrides, notes)
     mortgage = float(profile.get("mortgage_monthly") or 0)
     premiums = float(profile.get("premium_monthly") or 0)
     for key in ("mortgage_monthly", "premium_monthly"):
@@ -265,40 +346,26 @@ def months(
             actual = y == year and m in done
             se = se_act.get(m, 0.0) if actual else se_rate
             div = div_act.get(m, 0.0) if actual else div_last.get(m, div_rate)
-            tax = est if m in INSTALLMENT_MONTHS or (m == 1 and y == year + 1) else 0.0
             irr = sum(a for yy, mm, a, _ in irregular if mm == m and yy in (None, y))
-            extra = cash_in.get(f"{y}-{m:02d}", 0.0)
+            ym = (y, m)
             row = MonthRow(
                 y,
                 m,
                 r(se),
                 r(div),
-                r(extra),
+                r(cash_in.get(f"{y}-{m:02d}", 0.0)),
                 r(living_annual / 12),
                 mortgage,
                 premiums,
-                tax,
+                taxes.get(ym, (0.0, 0.0))[0],
                 r(irr),
                 0.0,
                 actual,
+                planned.get(ym, 0.0),
+                taxes.get(ym, (0.0, 0.0))[1],
             )
             cash = r(cash + row.net)
-            rows.append(
-                MonthRow(
-                    y,
-                    m,
-                    row.se,
-                    row.dividends,
-                    row.cash_in,
-                    row.living,
-                    row.mortgage,
-                    row.premiums,
-                    row.est_tax,
-                    row.irregular,
-                    cash,
-                    actual,
-                )
-            )
+            rows.append(replace(row, cash=cash))
     return rows
 
 

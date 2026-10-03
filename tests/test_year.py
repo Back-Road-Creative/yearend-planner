@@ -12,7 +12,15 @@ from typer.testing import CliRunner
 from planner.cli import app
 from planner.ingest.needs import enter, profile_path
 from planner.paths import Layout
-from planner.plan import calendar, conversion, esttax, magi, spending, year
+from planner.plan import (
+    calendar,
+    conversion,
+    esttax,
+    glidepath,
+    magi,
+    spending,
+    year,
+)
 from planner.plan.inputs import OverrideError, Overrides
 from tests.test_spending import AS_OF, lay  # noqa: F401
 from tests.test_withdraw import lots  # noqa: F401
@@ -245,3 +253,139 @@ def test_cli_plan_flags_and_prompts(lots: Layout) -> None:  # noqa: F811
     )
     assert r.exit_code == 0, r.output
     assert "not a number" in r.output and "total income" not in r.output
+
+
+def test_calendar_q2_q3_are_conditional_on_esttax() -> None:
+    def q(ds: list[calendar.Deadline], n: int) -> str:
+        return next(d.item for d in ds if d.item.startswith(f"Q{n} estimated"))
+
+    # nothing known: the dates stay, marked "if required"
+    unknown = calendar.deadlines(2026)
+    assert q(unknown, 2) == "Q2 estimated payments (federal and NC) if required"
+    assert q(unknown, 3) == "Q3 estimated payments (federal and NC) if required"
+    # esttax says who owes: federal only in Q2, nobody in Q3
+    known = calendar.deadlines(2026, {2: ("fed",), 3: ()})
+    assert q(known, 2).endswith("if required: required for federal")
+    assert "if required: not required" in q(known, 3)
+    # nobody owes and the reason is given: the line states it
+    why = "withholding covers the safe harbor"
+    reasoned = calendar.deadlines(2026, {2: (), 3: ()}, why)
+    assert q(reasoned, 3).endswith(f"if required: not required ({why})")
+    assert "de minimis" not in q(reasoned, 2)
+    both = calendar.deadlines(2026, {2: ("fed", "nc"), 3: ("fed", "nc")})
+    assert q(both, 3).endswith("if required: required for federal and NC")
+    # Q1 and Q4 are not conditional
+    assert q(known, 4) == "Q4 estimated payments (federal and NC)"
+    assert "if required" not in next(
+        d.item for d in known if d.item.startswith("Q1 estimated")
+    )
+    # the dates themselves do not move
+    assert [d.date for d in known] == [d.date for d in unknown]
+
+
+@pytest.mark.engine
+def test_plan_calendar_marks_q2_q3_from_the_esttax_result(lots: Layout) -> None:  # noqa: F811
+    cal = year.assemble(lots, 2026, AS_OF).section("calendar").lines
+    q2 = next(ln for ln in cal if "Q2 estimated" in ln)
+    assert q2.endswith("if required: required for federal and NC"), q2
+    # tax after withholding under 1,000 for both: nothing is required
+    enter(lots, 2026, "se_income", "6,000")
+    enter(lots, 2026, "fed_withheld", "500")
+    enter(lots, 2026, "nc_withheld", "500")
+    sec = year.assemble(lots, 2026, AS_OF).section("calendar")
+    q3 = next(ln for ln in sec.lines if "Q3 estimated" in ln)
+    assert "if required: not required" in q3, q3
+    assert "under the de minimis" in q3 and "safe harbor" not in q3, q3
+    assert any("rests on 2026" in n for n in sec.notes)
+
+
+@pytest.mark.engine
+def test_calendar_q2_q3_skip_an_agency_whose_withholding_covers_next_year(
+    lots: Layout,  # noqa: F811
+) -> None:
+    enter(lots, 2026, "se_income", "120,000")
+    fed = esttax.estimate(lots, 2026, AS_OF).agencies[0]
+    assert fed.current_tax >= 15_000.0, fed.current_tax
+    # 1,500 left to pay is not under the de minimis, yet the withholding is over
+    # 90% of the tax, so next year's installments are zero (cash_flows agrees)
+    enter(lots, 2026, "fed_withheld", f"{fed.current_tax - 1_500.0:.2f}")
+    et = esttax.estimate(lots, 2026, AS_OF)
+    assert not et.agencies[0].de_minimis
+    assert esttax.next_year_required(et.agencies[0], et.agi) == 0.0
+    flows, _ = esttax.cash_flows(et)
+    assert [
+        f.amount for f in flows if f.agency == "fed" and f.kind.startswith("next year")
+    ] == [0.0] * 3
+    cal = year.assemble(lots, 2026, AS_OF).section("calendar").lines
+    for n in (2, 3):
+        line = next(ln for ln in cal if f"Q{n} estimated" in ln)
+        assert line.endswith("if required: required for NC"), line
+
+
+@pytest.mark.engine
+def test_calendar_names_withholding_when_every_agency_is_covered_not_de_minimis(
+    lots: Layout,  # noqa: F811
+) -> None:
+    enter(lots, 2026, "se_income", "400,000")
+    et = esttax.estimate(lots, 2026, AS_OF)
+    for key, ag in zip(("fed_withheld", "nc_withheld"), et.agencies, strict=True):
+        assert ag.current_tax >= 12_000.0, ag.current_tax
+        # 1,100 left to pay: over the 1,000 de minimis, under 10% of the tax
+        enter(lots, 2026, key, f"{ag.current_tax - 1_100.0:.2f}")
+    et = esttax.estimate(lots, 2026, AS_OF)
+    for ag in et.agencies:
+        assert not ag.de_minimis
+        assert esttax.next_year_required(ag, et.agi) == 0.0
+    cal = year.assemble(lots, 2026, AS_OF).section("calendar").lines
+    for n in (2, 3):
+        line = next(ln for ln in cal if f"Q{n} estimated" in ln)
+        assert "if required: not required" in line, line
+        assert "withholding covers the safe harbor" in line, line
+        assert "de minimis" not in line, line
+
+
+@pytest.mark.engine
+def test_planned_sales_and_conversion_tax_reach_the_cash_line(lots: Layout) -> None:  # noqa: F811
+    base = glidepath.glide(lots, 2026, AS_OF)
+    assert all(m.planned_in == 0.0 for m in base.months)
+    ov = Overrides(planned_lt_sales=20_000.0, planned_conversion=30_000.0)
+    g = glidepath.glide(lots, 2026, AS_OF, overrides=ov)
+    # no --cash-in typed; the sale settles in the last business month of the year
+    assert all(m.cash_in == 0.0 for m in g.months)
+    dec = g.months[11]
+    assert (dec.year, dec.month) == (2026, 12)
+    # the 2019 lot carries 260,000 of gain in 560,000 of value: the most gain per
+    # dollar, so the least cash for the planned gain
+    assert dec.planned_in == round(20_000 * 560 / 260, 2)
+    assert sum(m.planned_in for m in g.months) == dec.planned_in
+    assert dec.net == round(
+        base.months[11].net + dec.planned_in - (dec.est_tax - base.months[11].est_tax),
+        2,
+    )
+    # the year's whole tax, conversion included, reaches the line: installments
+    # through January plus the balance due with the return
+    et = esttax.estimate(lots, 2026, AS_OF, ov)
+    through_jan = sum(m.est_tax for m in g.months if (m.year, m.month) <= (2027, 1))
+    due = sum(m.balance_due for m in g.months if m.year == 2027 and m.month == 4)
+    assert through_jan + due == pytest.approx(
+        sum(ag.current_tax - ag.withheld for ag in et.agencies), abs=0.02
+    )
+    base_et = esttax.estimate(lots, 2026, AS_OF)
+    assert through_jan + due > sum(
+        ag.current_tax - ag.withheld for ag in base_et.agencies
+    )
+    assert any("planned conversion" in n and "adds" in n for n in g.notes)
+    assert any("planned_lt_sales" in n and "20,000" in n for n in g.notes)
+
+
+@pytest.mark.engine
+def test_planned_sale_without_a_lot_to_price_is_named(lots: Layout) -> None:  # noqa: F811
+    # the only short-term lot sits at a loss: a planned short-term gain has no
+    # lot to come from, so no proceeds are counted and the note says so
+    g = glidepath.glide(
+        lots, 2026, AS_OF, overrides=Overrides(planned_st_sales=5_000.0)
+    )
+    assert all(m.planned_in == 0.0 for m in g.months)
+    assert any("planned_st_sales" in n and "no taxable lot" in n for n in g.notes), (
+        g.notes
+    )

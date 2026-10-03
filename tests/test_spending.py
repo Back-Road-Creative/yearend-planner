@@ -150,7 +150,10 @@ def test_glide_path_table_stresses_and_monthly_cash(lay: Layout) -> None:
     assert g.months[12].irregular == 0.0 or g.months[20].irregular == 2_400.0
     assert jan.mortgage == 1_500.0 and jan.premiums == 300.0
     assert jan.living == round(63_000 / 12, 2)
-    assert g.months[3].est_tax > 0 and jan.est_tax == 0.0 and g.months[12].est_tax > 0
+    # estimated tax is esttax's: nothing was paid by April, so April shows none and
+    # the September installment makes up the first three quarters (tests/test_esttax.py)
+    assert g.months[3].est_tax == 0.0 and jan.est_tax == 0.0
+    assert sep.est_tax > 0 and g.months[12].est_tax > 0
     assert g.months[7].se == round(12_000 / 7, 2)  # seven months done, two deposits
     assert jan.cash == round(200_000 + jan.net, 2)
     assert g.first_short_month is None
