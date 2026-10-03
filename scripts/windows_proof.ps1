@@ -12,17 +12,31 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Expand-Archive -LiteralPath $Zip -DestinationPath $dest -Force
 
 function Invoke-Planner([string]$Dir, [string]$Cmd, [int]$Expect = 0) {
-    # The redirection stays on the PowerShell side: cmd.exe drops a batch file's
-    # `exit /b` code when the /c line itself carries a redirection, so
-    # `cmd /c "planner.cmd ... 2>&1"` reported 0 for every step (PR #1 proof).
+    # PowerShell runs the launcher itself and takes the batch file's exit code;
+    # going through `cmd.exe /c "..."` reported 0 for every exit (PR #1 proof).
     $ErrorActionPreference = 'Continue'
-    $out = & cmd.exe /c "`"$Dir\planner.cmd`" $Cmd" 2>&1 | ForEach-Object { "$_" }
-    $out | ForEach-Object { "  | $_" }
-    if ($LASTEXITCODE -ne $Expect) { throw "planner.cmd $Cmd exited $LASTEXITCODE, expected $Expect" }
+    $out = & "$Dir\planner.cmd" $Cmd.Split(' ') 2>&1 | ForEach-Object { "$_" }
+    $code = $LASTEXITCODE
+    $out | ForEach-Object { Write-Host "  | $_" }
+    if ($code -ne $Expect) { throw "planner.cmd $Cmd exited $code, expected $Expect" }
     return ($out -join "`n")
 }
 
 Write-Host "== 0. a failing command reports its exit code"
+# Diagnostics first: every launcher style and the bare interpreter, so a wrong
+# code is explained by this log rather than by another run.
+$ErrorActionPreference = 'Continue'
+& cmd.exe /c "`"$dest\planner.cmd`" no-such-command" *> $null
+Write-Host "  cmd /c `"planner.cmd`"      -> $LASTEXITCODE"
+& cmd.exe /c "call `"$dest\planner.cmd`" no-such-command" *> $null
+Write-Host "  cmd /c call planner.cmd   -> $LASTEXITCODE"
+& "$dest\planner.cmd" no-such-command *> $null
+Write-Host "  & planner.cmd             -> $LASTEXITCODE"
+$env:PLANNER_HOME = "$dest\"
+& "$dest\python\python.exe" -m planner no-such-command *> $null
+Write-Host "  python -m planner         -> $LASTEXITCODE"
+Remove-Item Env:PLANNER_HOME
+$ErrorActionPreference = 'Stop'
 Invoke-Planner $dest 'no-such-command' 2 | Out-Null
 
 Write-Host "== 1. version / paths / config in '$dest'"
