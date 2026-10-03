@@ -284,7 +284,8 @@ def finish(root: Path) -> str:
         shutil.rmtree(root / PREVIOUS, ignore_errors=True)
         msg = f"rolled back to {now}"
     pending_file.unlink()
-    (folder / "swap.cmd").unlink(missing_ok=True)
+    # swap.cmd stays: cmd is still running it (the rerun follows this call)
+    # and reads each line from the file; write_swap rewrites it next time
     return msg
 
 
