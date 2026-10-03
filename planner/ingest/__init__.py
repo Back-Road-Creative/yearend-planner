@@ -16,12 +16,14 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from planner.ingest.csvfile import load_csv_templates, parse_csv
 from planner.ingest.pdf import ParsedForm, Unmatched, load_templates, parse_pdf
 from planner.ledger import db
 from planner.paths import Layout
 
 # Templates ship with the code (swapped by ``planner update``), not under data/.
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "forms"
+CSV_TEMPLATES_DIR = TEMPLATES_DIR.parent / "csv"
 KINDS = {
     ".pdf": "pdf",
     ".csv": "csv",
@@ -115,6 +117,7 @@ def ingest(lay: Layout, templates_dir: Path | None = None) -> IngestReport:
     inbox = lay.data / "inbox"
     archive_root = lay.data / "archive"
     templates = load_templates(templates_dir or TEMPLATES_DIR)
+    csv_templates = load_csv_templates(CSV_TEMPLATES_DIR)
     report = IngestReport(batch=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
@@ -130,18 +133,22 @@ def ingest(lay: Layout, templates_dir: Path | None = None) -> IngestReport:
             continue
         if db.has_fingerprint(conn, fp):
             row = conn.execute(
-                "SELECT MIN(tax_year) AS y FROM facts f JOIN documents d "
-                "ON d.id = f.document_id WHERE d.fingerprint = ?",
-                (fp,),
+                "SELECT MIN(y) AS y FROM (SELECT f.tax_year AS y FROM facts f "
+                "JOIN documents d ON d.id = f.document_id WHERE d.fingerprint = ? "
+                "UNION ALL SELECT r.tax_year FROM rows r JOIN documents d "
+                "ON d.id = r.document_id WHERE d.fingerprint = ?)",
+                (fp, fp),
             ).fetchone()
             archive(path, archive_root, int(row["y"] or 0), fp)
             report.duplicates.append(path.name)
             continue
+        forms: list[ParsedForm] = []
+        rows: list[db.Row] = []
         try:
             if kind == "pdf":
                 forms = parse_pdf(path, templates)
             elif kind == "csv":
-                raise Unmatched("CSV importers are not available yet")
+                rows = parse_csv(path, csv_templates)
             else:
                 raise Unmatched("image: OCR with confirm is not available yet")
         except Unmatched as exc:
@@ -153,17 +160,23 @@ def ingest(lay: Layout, templates_dir: Path | None = None) -> IngestReport:
             fingerprint=fp,
             file_name=path.name,
             kind=kind,
-            pages=max(f.page for f in forms),
+            pages=max((f.page for f in forms), default=1),
             batch=report.batch,
             facts=_facts(forms),
+            rows=rows,
         )
-        year = min(f.tax_year for f in forms)
+        years = [f.tax_year for f in forms] + [r.tax_year for r in rows if r.tax_year]
+        year = min(years) if years else datetime.now(UTC).year
         archived = archive(path, archive_root, year, fp)
         db.set_archived(conn, doc_id, str(archived.relative_to(lay.data)))
+        labels = [f"{f.form} {f.tax_year} ({f.issuer})" for f in forms]
+        for source in dict.fromkeys(r.source for r in rows):
+            n = sum(1 for r in rows if r.source == source)
+            labels.append(f"{source} {n} rows")
         report.imported.append(
             Imported(
                 file_name=path.name,
-                forms=tuple(f"{f.form} {f.tax_year} ({f.issuer})" for f in forms),
+                forms=tuple(labels),
                 archived_as=str(archived.relative_to(lay.data)),
             )
         )
