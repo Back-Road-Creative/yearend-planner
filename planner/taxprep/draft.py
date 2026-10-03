@@ -125,8 +125,16 @@ ENGINE_LINE = {
     "30": "auto_loan_interest_deduction",
     "37": "additional_senior_deduction",
 }
+SS_WAGES = (("W-2", "3"), ("W-2", "7"))  # Social Security wages and tips
+# The Needed-panel keys behind Schedule 1-A Parts II to IV.
+PART_KEYS = ("qualified_tips", "qualified_overtime", "car_loan_interest")
 # The Needed-panel keys a return reads (the others drive the plan, not the 1040).
-TAX_KEYS = (*inputs.MONEY, "ordinary_dividends", "qualified_dividends")
+TAX_KEYS = (
+    *inputs.MONEY,
+    *inputs.CODES,
+    "ordinary_dividends",
+    "qualified_dividends",
+)
 
 
 @dataclass(frozen=True)
@@ -276,7 +284,11 @@ def build(lay: Layout, year: int) -> Draft:
         conn.close()
     paid = [p for p in pays if p.agency == "fed"]
     nc_paid = [(p.date, p.amount, p.origin) for p in pays if p.agency == "nc"]
-    hh = inp.household
+    # The draft is a tax return: a filer born January 1 is 65 for the year
+    # before (Pub. 501), which the standard deduction and Part V both count.
+    hh = dataclasses.replace(
+        inp.household, age=inp.tax_age if inp.tax_age is not None else inp.household.age
+    )
     if h.lines:
         other = dict(hh.other)
         if h.lines.get("16"):
@@ -291,6 +303,23 @@ def build(lay: Layout, year: int) -> Draft:
     if us:  # taxable federally, subtracted on NC Schedule S line 18
         hh = dataclasses.replace(
             hh, other={**hh.other, "us_govt_interest_person": int(round(us))}
+        )
+    # Schedule SE line 8a is W-2 boxes 3 and 7, which pre-tax 401(k) deferrals
+    # put above box 1. The engine takes box 1 as the wage base's earnings unless
+    # told: give it the form's figure so its SE tax is the line 12 below.
+    ss_wages = (
+        _sum(facts, SS_WAGES)
+        if any((f.form, f.box) in SS_WAGES for f in facts)
+        else None
+    )
+    if ss_wages is not None:
+        cap = tax.self_employment_parameters(year)["wage_base"]
+        hh = dataclasses.replace(
+            hh,
+            other={
+                **hh.other,
+                "taxable_earnings_for_social_security": int(round(min(ss_wages, cap))),
+            },
         )
     # Tips and overtime need a joint return if married (Schedule 1-A lines
     # 4-5 and 14-15; P.L. 119-21 secs. 70201-70202). The engine does not apply
@@ -367,7 +396,7 @@ def build(lay: Layout, year: int) -> Draft:
                 "a 1099 estimate, or Schedule C facts out of date: run "
                 f"planner categorize --year {year})"
             )
-    se = _schedule_se(sheet, d, v, profit, profit_src) if profit else None
+    se = _schedule_se(sheet, d, v, profit, profit_src, ss_wages) if profit else None
 
     # Schedule 1
     s1_3 = add("Sch 1", "3", "Business income", profit, profit_src)
@@ -703,12 +732,18 @@ def build(lay: Layout, year: int) -> Draft:
 
 
 def _schedule_se(
-    sheet: _Sheet, d: Draft, v: dict[str, float], profit: float, profit_src: str
+    sheet: _Sheet,
+    d: Draft,
+    v: dict[str, float],
+    profit: float,
+    profit_src: str,
+    ss_wages: float | None,
 ) -> tuple[float, float]:
     """Schedule SE Part I, line by line: (self-employment tax on line 12, the
     deduction for half of it on line 13). The Social Security wage base, the
     rates and the $400 floor are the engine's own parameters; the engine's
-    totals are checked against the lines."""
+    totals are checked against the lines. ``ss_wages`` is the sum of the W-2
+    boxes 3 and 7 on file, or None."""
     p = tax.self_employment_parameters(d.year)
     add = sheet.add
     share = p["net_earnings_share"]
@@ -745,8 +780,10 @@ def _schedule_se(
             "Sch SE",
             "8a",
             "Social Security wages and tips",
-            v["employment_income"],
-            "wages: W-2 box 1 stands in for boxes 3 and 7, which are not read",
+            v["employment_income"] if ss_wages is None else ss_wages,
+            "wages: W-2 box 1 stands in for boxes 3 and 7 (no W-2 box 3 or 7 on file)"
+            if ss_wages is None
+            else "W-2 boxes 3 and 7",
         )
         l8d = add(
             "Sch SE",
@@ -923,12 +960,12 @@ def _schedule_1a(
             up=True,
             what="car loan interest",
         )
-    if not (hh.qualified_tips or hh.qualified_overtime or hh.car_loan_interest):
+    unasked = [k for k in PART_KEYS if k in d.unknown]
+    if unasked:
         d.notes.append(
-            "Schedule 1-A Parts II to IV (tips, overtime, car loan interest) are "
-            "drafted only for figures the household carries, and the Needed panel "
-            "does not ask for them: if you had qualified tips or overtime pay, or "
-            "paid interest on a new car loan, add them with a preparer"
+            "Schedule 1-A Parts II to IV (tips, overtime, car loan interest) leave "
+            f"out {', '.join(unasked)}: no figure is on file, so none is deducted; "
+            "type each (0 if none) in the Needed panel"
         )
     if hh.age >= SENIOR_AGE and not separate:
         add(SCH_1A, "31", "Modified AGI", magi, "line 3")
@@ -954,7 +991,7 @@ def _schedule_1a(
             "36a",
             "Your deduction",
             l35,
-            f"line 35 (age {hh.age} at year end; a valid SSN is assumed)",
+            f"line 35 (65 by year end, age {hh.age}; a valid SSN is assumed)",
         )
         form["37"] = add(
             SCH_1A,
@@ -963,14 +1000,14 @@ def _schedule_1a(
             l36a,
             "36a (line 36b is not drafted)",
         )
-        if k:
-            d.notes.append(
-                "Schedule 1-A line 36b: a joint return adds the spouse's $6,000 "
-                "(born before January 2, 1961); the household holds one person, so "
-                "it is not drafted"
-            )
     elif hh.age >= SENIOR_AGE:
         skipped.add("37")
+    if k:  # the spouse may be 65 whatever the filer's age
+        d.notes.append(
+            f"Schedule 1-A line 36b: a joint return adds the spouse's "
+            f"${SENIOR_AMOUNT:,.0f} (born before January 2, {d.year - 64}); the "
+            "household holds one person, so it is not drafted"
+        )
     if skipped:
         d.notes.append(
             "Schedule 1-A: tips, overtime and the senior deduction need a joint "

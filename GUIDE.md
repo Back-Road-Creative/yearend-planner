@@ -527,17 +527,22 @@ taxable income, income tax) are checked against the engine and any gap is
 printed as `CHECK:`. Unknown inputs, YTD estimates and forms still to come are
 listed under the lines. Schedule SE is drawn line by line (2, 3, 4a, 4c, 6, 7, 8a, 8d, 9, 10, 11, 12,
 13): the wage base, the 12.4% and 2.9% rates and the $400 floor are the
-engine's own parameters, W-2 wages use up the wage base, and net earnings under
+engine's own parameters, W-2 wages (boxes 3 and 7 when a W-2 gives them, else
+box 1 as a stand-in, said on the line) use up the wage base, and net earnings under
 $400 owe nothing. Lines 12 and 13 feed Schedule 2 line 4 and Schedule 1 line 15,
 and are checked against the engine's totals.
 
 Schedule 1-A (tax years 2025 to 2028) is its own sheet, and its line 38 is
 1040 line 13b. Part I takes AGI from line 11b. Part V, the $6,000 senior
 deduction, is drawn for a filer 65 by year end (6% of the AGI over $75,000,
-$150,000 joint). Parts II to IV (tips, overtime, car loan interest) are drawn
-for the figures a household carries (`qualified_tips` with a
-`tipped_occupation_code`, `qualified_overtime`, `car_loan_interest`); the Needed
-panel does not ask for them yet, so without them the draft says so. The form
+$150,000 joint); a filer born January 1 counts as 65 for the year before
+(Pub. 501: 65 on the day before the birthday), which also gives the extra
+standard deduction. Parts II to IV (tips, overtime, car loan interest) are
+drawn from four Needed-panel items, each naming its document: `qualified_tips`
+with its Treasury `tipped_occupation_code`, `qualified_overtime` and
+`car_loan_interest` (`planner enter` takes 0 for none). An item still unanswered
+is listed under the draft's unknowns and a note says so; tips without a code
+carry no deduction. The form
 cuts the tips and overtime deductions by $100 for each whole $1,000 of income
 over the start and the car loan interest by $200 for each $1,000 or part of
 one; the engine cuts tips and overtime smoothly, so the draft follows the form

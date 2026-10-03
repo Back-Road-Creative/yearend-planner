@@ -55,7 +55,7 @@ threshold_drift: verified  # tests/test_levers.py; planner thresholds; config ro
 expected_forms: verified  # tests/test_expected.py; planner forms; late forms join planner needed
 schedule_c: verified  # tests/test_schedule_c.py + tests/test_draft.py; planner categorize; rules and row choices, never guessed; its sheet is in the draft, Sch 1 line 3 and Sch SE line 2 read line 31
 draft_return: verified  # tests/test_draft.py; planner draft; 1040 + Sch 1/1-A/2/3/C/SE + 8962, each line sourced, engine totals cross-checked; Sch SE Part I every line
-schedule_1a: partial  # tests/test_draft.py; planner draft; senior deduction (Part V) and tips, overtime, car loan interest drawn as the form for figures the household carries, line 38 = 1040 line 13b; the Needed panel does not ask for tips, overtime or loan interest yet
+schedule_1a: verified  # tests/test_draft.py; planner draft; Part V senior deduction (January 1 births count as 65) and tips, overtime, car loan interest from Needed-panel items (planner needed asks for them), line 38 = 1040 line 13b; a joint return holds one person, so line 36b (the spouse) is noted, not drafted
 schedule_d: verified  # tests/test_capgains.py; planner gains; 8949 lots, cross-account wash sales (W), 1099-DIV 2a, carryover in and out
 form_8889: verified  # tests/test_hsa.py; planner hsa; limit by coverage and months, 55+ catch-up, W-2 code W, excess named, taxable distributions + 20%
 nc_d400_draft: verified  # tests/test_d400.py; planner draft; Schedule S 16/18/19/20-40/41, D-400 6-34 for a full-year resident; Schedule PN, D-400TC, D-422 named, not drafted
