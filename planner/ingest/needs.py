@@ -119,6 +119,22 @@ NEEDS: tuple[Need, ...] = (
         PROFILE,
     ),
     Need(
+        "mortgage_monthly",
+        "Mortgage P&I and escrow per month ($)",
+        "the month-by-month cash line",
+        "the mortgage statement",
+        "money",
+        PROFILE,
+    ),
+    Need(
+        "premium_monthly",
+        "Health premium per month ($, net of the advance credit)",
+        "the month-by-month cash line",
+        "the marketplace invoice",
+        "money",
+        PROFILE,
+    ),
+    Need(
         "withdrawal_rate",
         "Withdrawal rate",
         "the glide path, e.g. 0.035",
