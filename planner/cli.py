@@ -161,6 +161,11 @@ def ingest() -> None:
     report = _ingest(lay)
     for item in report.imported:
         typer.echo(f"imported  {item.file_name}: {', '.join(item.forms)}")
+    for item in report.pending:
+        typer.echo(
+            f"pending   {item.file_name}: {', '.join(item.forms)} "
+            "(OCR; planner confirm)"
+        )
     for name in report.duplicates:
         typer.echo(f"duplicate {name} (already in the ledger; archived)")
     for name, reason in report.unmatched:
@@ -169,7 +174,8 @@ def ingest() -> None:
         typer.echo(f"derived   {year}: {n} YTD facts from rows")
     typer.echo(
         f"batch {report.batch}: {len(report.imported)} imported, "
-        f"{len(report.duplicates)} duplicate, {len(report.unmatched)} unmatched"
+        f"{len(report.pending)} pending, {len(report.duplicates)} duplicate, "
+        f"{len(report.unmatched)} unmatched"
     )
 
 
@@ -288,6 +294,62 @@ def dont_have(
         typer.echo(f"refused: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(f"marked {key}: don't have")
+
+
+@app.command()
+def confirm(
+    doc: int | None = typer.Option(None, help="document id from the list"),
+    accept: bool = typer.Option(
+        False, "--accept", help="take the values into the ledger"
+    ),
+    reject: bool = typer.Option(
+        False, "--reject", help="drop them; file goes to UNMATCHED"
+    ),
+    set_: list[str] = typer.Option(
+        [], "--set", help="correct a box before accepting, e.g. --set 1a=1234.56"
+    ),
+) -> None:
+    """Values read by OCR wait here. No options: list them. --doc N --accept
+    (with any --set corrections) or --doc N --reject decides one document."""
+    from planner.ingest.confirm import accept as _accept
+    from planner.ingest.confirm import pending
+    from planner.ingest.confirm import reject as _reject
+    from planner.ledger import db
+
+    lay = layout()
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    if doc is None:
+        last = None
+        for f in pending(conn):
+            if f.document_id != last:
+                typer.echo(
+                    f"doc {f.document_id}  {f.file_name}  "
+                    f"{f.form} {f.tax_year} ({f.issuer})"
+                )
+                last = f.document_id
+            typer.echo(
+                f"    page {f.page}  {f.box:10} {f.label[:40]:40} {f.value:>14,.2f}"
+            )
+        if last is None:
+            typer.echo("nothing awaiting confirm")
+        return
+    if accept == reject:
+        typer.echo("refused: give exactly one of --accept / --reject", err=True)
+        raise typer.Exit(code=2)
+    try:
+        if reject:
+            where = _reject(lay, conn, doc)
+            typer.echo(f"rejected doc {doc}; file at {where}")
+            return
+        edits: dict[str, float] = {}
+        for item in set_:
+            box, _, raw = item.partition("=")
+            edits[box.strip()] = float(raw.replace(",", "").replace("$", ""))
+        facts = _accept(conn, doc, edits)
+    except (KeyError, ValueError) as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"accepted doc {doc}: {len(facts)} facts")
 
 
 def main() -> int:

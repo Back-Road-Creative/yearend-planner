@@ -16,9 +16,16 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from planner.ingest import ocr as ocr_engine
 from planner.ingest.csvfile import load_csv_templates, parse_csv
 from planner.ingest.derive import derive, row_years
-from planner.ingest.pdf import ParsedForm, Unmatched, load_templates, parse_pdf
+from planner.ingest.pdf import (
+    ParsedForm,
+    Unmatched,
+    load_templates,
+    parse_pdf,
+    parse_texts,
+)
 from planner.ledger import db
 from planner.paths import Layout
 
@@ -47,6 +54,7 @@ class IngestReport:
     imported: list[Imported] = field(default_factory=list)
     duplicates: list[str] = field(default_factory=list)
     unmatched: list[tuple[str, str]] = field(default_factory=list)
+    pending: list[Imported] = field(default_factory=list)  # OCR, awaiting confirm
     derived: dict[int, int] = field(default_factory=dict)  # year -> YTD facts
 
 
@@ -109,13 +117,22 @@ def _facts(forms: list[ParsedForm]) -> list[db.Fact]:
             label=label,
             value=value,
             page=f.page,
+            status="pending" if f.ocr else "accepted",
         )
         for f in forms
         for box, (label, value) in sorted(f.boxes.items())
     ]
 
 
-def ingest(lay: Layout, templates_dir: Path | None = None) -> IngestReport:
+def ingest(
+    lay: Layout,
+    templates_dir: Path | None = None,
+    ocr: ocr_engine.PageTexts | None = None,
+) -> IngestReport:
+    """``ocr`` reads pages the PDF text layer cannot; by default the installed
+    engine, or none when it is missing (those files go to UNMATCHED)."""
+    if ocr is None and ocr_engine.available():
+        ocr = ocr_engine.page_texts
     inbox = lay.data / "inbox"
     archive_root = lay.data / "archive"
     templates = load_templates(templates_dir or TEMPLATES_DIR)
@@ -148,11 +165,13 @@ def ingest(lay: Layout, templates_dir: Path | None = None) -> IngestReport:
         rows: list[db.Row] = []
         try:
             if kind == "pdf":
-                forms = parse_pdf(path, templates)
+                forms = parse_pdf(path, templates, ocr)
             elif kind == "csv":
                 rows = parse_csv(path, csv_templates)
+            elif ocr is None:
+                raise Unmatched(f"image: {ocr_engine.NOT_INSTALLED}")
             else:
-                raise Unmatched("image: OCR with confirm is not available yet")
+                forms = parse_texts(ocr(path), templates, ocr=True)
         except Unmatched as exc:
             to_unmatched(path, inbox, str(exc))
             report.unmatched.append((path.name, str(exc)))
@@ -175,13 +194,12 @@ def ingest(lay: Layout, templates_dir: Path | None = None) -> IngestReport:
         for source in dict.fromkeys(r.source for r in rows):
             n = sum(1 for r in rows if r.source == source)
             labels.append(f"{source} {n} rows")
-        report.imported.append(
-            Imported(
-                file_name=path.name,
-                forms=tuple(labels),
-                archived_as=str(archived.relative_to(lay.data)),
-            )
+        item = Imported(
+            file_name=path.name,
+            forms=tuple(labels),
+            archived_as=str(archived.relative_to(lay.data)),
         )
+        (report.pending if any(f.ocr for f in forms) else report.imported).append(item)
     if report.imported:
         for year in row_years(conn):
             n = derive(conn, year, report.batch)

@@ -69,8 +69,8 @@ moves to `data/inbox/UNMATCHED/` beside a `.reason.txt`. The same file dropped t
 a no-op. A corrected form supersedes the earlier one by form, payer and year. No value
 is ever inferred: a required box that does not parse unmatches the whole file.
 
-`planner facts --year 2025 --form 1099-DIV` lists what the ledger holds. OCR confirm
-for scanned pages lands in Phase 2e.
+`planner facts --year 2025 --form 1099-DIV` lists what the ledger holds. Scanned pages
+and photos go through OCR with confirm (Phase 2e, below).
 
 ## CSV intake (Phase 2b)
 
@@ -133,3 +133,19 @@ assumptions, SS estimates) go to `data/profile/assumptions.yaml`, which is creat
 `data/manual/<year>.yaml`. `planner dont-have <item> --year 2026` takes an item off the
 list and the plan shows it as unavailable. The loop is done when `planner needed` prints
 `nothing needed`; `--all` shows the covered items with their source.
+
+## Scanned pages and photos (Phase 2e)
+
+A PDF with no text layer and any `.png`/`.jpg` in the inbox is read by OCR
+(`rapidocr-onnxruntime`, offline, models inside the wheel; nothing is uploaded) and
+matched by the same templates as a text PDF. OCR is never trusted on its own: the
+values land in the ledger as *pending* and count for nothing until a person confirms
+them. `planner import` reports such a file as `pending`, and `planner confirm` lists
+every pending document with its boxes, page and value. `planner confirm --doc 3
+--accept` takes a document's values in, after any corrections typed as `--set
+1a=1234.56`; accepting supersedes an earlier accepted copy of the same form, as a fresh
+drop would. `planner confirm --doc 3 --reject` drops the values, forgets the document
+(so a clearer scan or the same file can be dropped again) and returns the file to
+`data/inbox/UNMATCHED/` with a reason file. Without the OCR engine installed, scans and
+photos go to `UNMATCHED` with that reason and the values can still be typed with
+`planner enter`.
