@@ -58,6 +58,27 @@ def _param(path: str, year: int) -> float:
     return float(node(f"{year}-01-01"))
 
 
+# config/thresholds.yaml rows the engine also carries, checked against it.
+CONFIG_PARAMS = {
+    "std_deduction_single": "gov.irs.deductions.standard.amount.SINGLE",
+    "ltcg_0pct_top_single": "gov.irs.capital_gains.thresholds.1.SINGLE",
+    "bracket_12pct_top_single": "gov.irs.income.bracket.thresholds.2.SINGLE",
+    "ira_contribution_limit": "gov.irs.gross_income.retirement_contributions.limit.ira",
+    "ira_catchup_50plus": (
+        "gov.irs.gross_income.retirement_contributions.catch_up.limit.ira"
+    ),
+}
+
+
+def drift(year: int, rows: dict[str, Any]) -> list[tuple[str, float, float]]:
+    """(name, config value, engine value) for each config row the engine has."""
+    return [
+        (name, float(rows[name]["value"]), _param(path, year))
+        for name, path in CONFIG_PARAMS.items()
+        if name in rows
+    ]
+
+
 def thresholds(year: int, filing_status: str) -> dict[str, float]:
     """Bracket edges from the engine's own parameters, for the headroom fields."""
     fs = filing_status
@@ -96,7 +117,24 @@ def r(x: float) -> float:
     return round(x, ROUND)
 
 
+# One engine run per distinct household: the planners on the plan page price the
+# same base household many times. The engine is deterministic and TaxResult is
+# frozen, so a repeat is returned from here.
+_MEMO: dict[tuple[int, str], TaxResult] = {}
+MEMO_SIZE = 256
+
+
 def compute(year: int, household: Household) -> TaxResult:
+    key = (year, repr(household))
+    hit = _MEMO.get(key)
+    if hit is None:
+        if len(_MEMO) >= MEMO_SIZE:
+            _MEMO.clear()
+        hit = _MEMO[key] = _compute(year, household)
+    return hit
+
+
+def _compute(year: int, household: Household) -> TaxResult:
     sim = _sim(year, household)
     v = {
         name: float(_calc(sim, name, year)[0])

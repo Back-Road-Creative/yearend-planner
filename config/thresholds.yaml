@@ -35,3 +35,36 @@
   nc_std_deduction_single:
     value: 12750
     source: "N.C.G.S. 105-153.5"
+  hsa_limit_self:
+    value: 4400
+    source: "Rev. Proc. 2025-19 (self-only HDHP coverage)"
+  hsa_limit_family:
+    value: 8750
+    source: "Rev. Proc. 2025-19 (family HDHP coverage)"
+  hsa_catchup_55plus:
+    value: 1000
+    source: "IRC 223(b)(3)(B) (not indexed)"
+  ira_phaseout_single_start:
+    value: 81000
+    source: "IRS Notice 2025-67 (covered by a workplace plan; single / head of household)"
+  ira_phaseout_single_width:
+    value: 10000
+    source: "IRC 219(g)(2)(A)(ii)"
+  ira_phaseout_joint_start:
+    value: 129000
+    source: "IRS Notice 2025-67 (covered by a workplace plan; married filing jointly)"
+  ira_phaseout_joint_width:
+    value: 20000
+    source: "IRC 219(g)(2)(A)(i)"
+  roth_phaseout_single_start:
+    value: 153000
+    source: "IRS Notice 2025-67 (Roth IRA contribution phase-out; single / head of household)"
+  roth_phaseout_single_width:
+    value: 15000
+    source: "IRC 408A(c)(3)(A)"
+  roth_phaseout_joint_start:
+    value: 242000
+    source: "IRS Notice 2025-67 (Roth IRA contribution phase-out; married filing jointly)"
+  roth_phaseout_joint_width:
+    value: 10000
+    source: "IRC 408A(c)(3)(A)"

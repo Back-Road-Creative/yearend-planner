@@ -276,3 +276,32 @@ rule in `planner/plan/calendar.py` (a due date to the next business day, a
 year-end cut-off to the one before, an opening not at all); the holidays are
 computed, including DC Emancipation Day, which the IRS counts. Estimated-tax
 installments use the same shift.
+
+## Levers (Phase 4f)
+
+`planner levers --year 2026` lists every move left this year that changes the
+tax bill or the ACA credit, each sized from the ledger, priced through the
+engine and shown beside its deadline and friction (automatic, a trade, a
+trade inside a wash-sale window, needs outside cash, irreversible). Net is
+federal tax (income + SE) plus NC tax minus the ACA credit, saved or spent
+against doing nothing; friction is never folded into the number.
+
+- **Get under a line**: a loss harvest, deferring a planned sale (`--st`,
+  `--lt`), an HSA contribution, the SE health insurance deduction, a
+  deductible traditional IRA contribution and last year's capital-loss
+  carryforward. Each is worth what it adds inside the combined set (all of
+  them, against all but this one), so overlapping moves are not double
+  counted; a "together" row says whether the set reaches under the nearest
+  line you are over. Medicaid tests income month by month when you apply, so
+  it is never the year-end target.
+
+A lever missing an input names it: `hsa_coverage` (none, self or family) and
+`workplace_plan` (W-2 box 13) are Needed-panel questions; limits, catch-ups
+and IRA/Roth phase-outs come from `config/thresholds.yaml`, each with its
+source. The plan page shows the top three moves.
+
+`planner thresholds --year 2026` prints the sourced limits and checks the ones
+the engine also carries; a mismatch (the engine's 2026 IRA limit is still 7,000
+against Notice 2025-67's 7,500) means the engine prices with its own value
+until policyengine-us updates. Engine runs are
+memoized per household, so the page prices each household once.

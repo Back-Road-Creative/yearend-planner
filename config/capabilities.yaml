@@ -35,3 +35,5 @@ estimated_tax: verified
 underpayment_penalty: unsupported
 deadline_calendar: verified  # tests/test_year.py; federal holidays and DC Emancipation Day computed, never typed
 year_end_plan_page: verified  # tests/test_year.py; planner plan; a missing input blocks one section, never the page
+lever_optimizer: verified  # tests/test_levers.py; planner levers; combined-set pricing, unknown inputs named
+threshold_drift: verified  # tests/test_levers.py; planner thresholds; config rows checked against engine parameters

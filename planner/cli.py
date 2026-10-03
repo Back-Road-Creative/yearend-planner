@@ -930,6 +930,59 @@ def plan(
         typer.echo(f"written {year_plan.write(layout(), yp)}")
 
 
+@app.command()
+def levers(
+    year: int = typer.Option(..., help="plan year"),
+    as_of: str | None = AS_OF,
+    q4_dividends: float = Q4,
+    sales_st: float = ST,
+    sales_lt: float = LT,
+    hsa: float | None = HSA,
+) -> None:
+    """Every move left this year that changes the tax bill or the ACA credit,
+    sized from the ledger, priced through the engine and ranked: moves that
+    get you under a line, and moves that use the room below the next one."""
+    from datetime import date
+
+    from planner.plan import levers as lv
+
+    m = lv.menu(
+        layout(),
+        year,
+        date.fromisoformat(as_of) if as_of else None,
+        _overrides(q4_dividends, sales_st, sales_lt, 0.0, hsa),
+    )
+    typer.echo(lv.render_menu(m), nl=False)
+
+
+@app.command()
+def thresholds(year: int = typer.Option(..., help="tax year")) -> None:
+    """The sourced limits in config/thresholds.yaml for a year, checked against
+    the engine's own parameters. A mismatch means one side is stale: the config
+    row names its source; the engine updates with policyengine-us."""
+    from planner.config import load_thresholds
+    from planner.engine.tax import drift, engine_version
+
+    rows = load_thresholds(layout().config / "thresholds.yaml").get(year)
+    if rows is None:
+        typer.echo(f"no {year} rows in config/thresholds.yaml", err=True)
+        raise typer.Exit(1)
+    engine = {name: e for name, _, e in drift(year, rows)}
+    stale = 0
+    for name, row in rows.items():
+        mark = ""
+        if name in engine:
+            same = float(row["value"]) == engine[name]
+            stale += not same
+            mark = "  engine agrees" if same else f"  ENGINE HAS {engine[name]:,.0f}"
+        typer.echo(f"{name:28} {row['value']!s:>12}  {row['source']}{mark}")
+    if stale:
+        typer.echo(
+            f"{stale} row(s) differ from policyengine-us {engine_version()}: the "
+            "engine prices tax with its own value until it is updated"
+        )
+
+
 def main() -> int:
     app()
     return 0
