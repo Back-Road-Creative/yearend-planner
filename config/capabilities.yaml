@@ -31,3 +31,5 @@ spending_band: verified
 glide_path_and_monthly_cash: verified
 withdraw_lots: verified
 wash_sales: verified
+estimated_tax: verified
+underpayment_penalty: unsupported

@@ -838,6 +838,68 @@ def withdraw(
         typer.echo(f"note: {note}")
 
 
+@app.command()
+def esttax(
+    year: int = typer.Option(..., help="plan year"),
+    as_of: str | None = AS_OF,
+    q4_dividends: float = Q4,
+    sales_st: float = ST,
+    sales_lt: float = LT,
+    conversion: float = CONV,
+    hsa: float | None = HSA,
+) -> None:
+    """The safe harbor and the four installments, federal and NC: what was
+    paid (bank rows to the IRS or NCDOR, plus `planner paid`), each due
+    date's shortfall, and the next payment."""
+    from datetime import date
+
+    from planner.plan.esttax import estimate
+
+    et = estimate(
+        layout(),
+        year,
+        date.fromisoformat(as_of) if as_of else None,
+        _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa),
+    )
+    typer.echo(f"{year} as of {et.as_of}; projected AGI {et.agi:,.2f}")
+    for ag in et.agencies:
+        prior = f"{ag.prior_tax:,.2f}" if ag.prior_tax is not None else "unknown"
+        typer.echo(
+            f"{ag.name}: projected tax {ag.current_tax:,.2f}, prior {prior}; "
+            f"safe harbor {ag.required:,.2f} ({ag.basis}; withheld {ag.withheld:,.2f})"
+        )
+        for i in ag.installments:
+            state = "short" if i.shortfall else "met"
+            typer.echo(
+                f"  {i.n} due {i.due}  required {i.required:>10,.2f}  "
+                f"paid {i.paid:>10,.2f}  {state} {i.shortfall:,.2f}"
+            )
+        for p in ag.payments:
+            typer.echo(f"  paid {p.date} {p.amount:>10,.2f}  ({p.origin})")
+        if ag.next_due:
+            typer.echo(f"  next: {ag.next_amount:,.2f} by {ag.next_due}")
+        for note in ag.notes:
+            typer.echo(f"note: {note}")
+    for note in et.notes:
+        typer.echo(f"note: {note}")
+
+
+@app.command()
+def paid(
+    year: int = typer.Option(..., help="tax year the payment is for"),
+    agency: str = typer.Option(..., help="fed or nc"),
+    on: str = typer.Option(..., help="payment date YYYY-MM-DD"),
+    amount: float = typer.Option(..., help="dollars"),
+) -> None:
+    """Record an estimated payment the bank export does not show."""
+    from planner.plan.esttax import record
+
+    p = record(layout(), year, agency, on, amount)
+    typer.echo(
+        f"recorded {p.agency} {p.amount:,.2f} on {p.date} (installment {p.installment})"
+    )
+
+
 def main() -> int:
     app()
     return 0
