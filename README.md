@@ -69,8 +69,8 @@ moves to `data/inbox/UNMATCHED/` beside a `.reason.txt`. The same file dropped t
 a no-op. A corrected form supersedes the earlier one by form, payer and year. No value
 is ever inferred: a required box that does not parse unmatches the whole file.
 
-`planner facts --year 2025 --form 1099-DIV` lists what the ledger holds. The Needed
-panel and OCR confirm land in Phase 2d.
+`planner facts --year 2025 --form 1099-DIV` lists what the ledger holds. OCR confirm
+for scanned pages lands in Phase 2e.
 
 ## CSV intake (Phase 2b)
 
@@ -112,3 +112,24 @@ supersedes the last run; `planner derive --year 2025` reruns one year by hand.
 `planner facts --year 2025 --form YTD` shows them beside the forms, box for box
 (the realized boxes use the 1099-B names), so the estimate and the statement can be
 compared the day the form lands.
+
+## The Needed panel (Phase 2d)
+
+Intake is a loop: drop everything you have, run `planner needed --year 2026`, and the
+planner lists only what is still missing, why the plan wants it, which document
+supplies it (with where to download it), and the `planner enter` line that types it
+instead. Every fact a planner or tax line relies on is declared once in
+`planner/ingest/needs.py` with the form boxes that supply it; the report diffs that
+registry against the ledger, the profile and the typed answers. A figure a form has not
+supplied yet but the year-to-date rows cover (dividends, interest, realized gains) shows
+as an *estimate* rather than a need; the day the 1099 lands it becomes *actual*.
+
+`planner enter <item> <value> --year 2026` stores one typed answer, validated by type
+(dates ISO, money with `$` and commas, fractions as `0.035` or `3.5%`, filing status
+from the fixed list); a bad answer is refused, never guessed. Profile items (birth date,
+filing status, state, county, spending band, cash target, return and conversion
+assumptions, SS estimates) go to `data/profile/assumptions.yaml`, which is created from
+`config/assumptions.example.yaml` on first use; year items go to
+`data/manual/<year>.yaml`. `planner dont-have <item> --year 2026` takes an item off the
+list and the plan shows it as unavailable. The loop is done when `planner needed` prints
+`nothing needed`; `--all` shows the covered items with their source.

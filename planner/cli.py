@@ -227,6 +227,69 @@ def rows(
     typer.echo(f"{len(out)} rows")
 
 
+@app.command()
+def needed(
+    year: int = typer.Option(..., help="plan year"),
+    all: bool = typer.Option(False, "--all", help="also list what is already covered"),
+) -> None:
+    """What the plan still lacks for a year: each missing item, why, and the
+    document that supplies it. Empty when the intake loop is done."""
+    from planner.ingest.needs import needed as _needed
+
+    rep = _needed(layout(), year)
+    for st in rep.items:
+        if st.state == "missing":
+            typer.echo(f"needed    {st.need.key:28} {st.need.label}")
+            typer.echo(f"          why: {st.need.why}")
+            typer.echo(f"          from: {st.need.source}")
+            typer.echo(
+                f"          type: planner enter --year {year} {st.need.key} <value>"
+            )
+        elif st.state == "estimate":
+            typer.echo(f"estimate  {st.need.key:28} {st.value:,.2f}  ({st.origin})")
+        elif all:
+            tag = "dont-have" if st.state == "dont_have" else "actual   "
+            val = "" if st.value is None else f" {st.value}"
+            typer.echo(f"{tag} {st.need.key:28}{val}  ({st.origin})")
+    n = len(rep.by_state("missing"))
+    typer.echo("nothing needed" if n == 0 else f"{n} needed")
+
+
+@app.command()
+def enter(
+    key: str = typer.Argument(..., help="item name from `planner needed`"),
+    value: str = typer.Argument(..., help="the typed answer"),
+    year: int = typer.Option(..., help="plan year"),
+) -> None:
+    """Type one answer the documents did not supply; profile answers go to
+    data/profile/assumptions.yaml, year answers to data/manual/<year>.yaml."""
+    from planner.ingest.needs import enter as _enter
+
+    try:
+        stored = _enter(layout(), year, key, value)
+    except (KeyError, ValueError) as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"entered {key} = {stored}")
+
+
+@app.command()
+def dont_have(
+    key: str = typer.Argument(..., help="item name from `planner needed`"),
+    year: int = typer.Option(..., help="plan year"),
+) -> None:
+    """Mark an item as not available; it leaves the Needed list and the plan
+    shows it as unavailable instead of guessing."""
+    from planner.ingest.needs import dont_have as _dont_have
+
+    try:
+        _dont_have(layout(), year, key)
+    except KeyError as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"marked {key}: don't have")
+
+
 def main() -> int:
     app()
     return 0
