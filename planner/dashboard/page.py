@@ -68,7 +68,7 @@ class Pending:
     document_id: int
     file_name: str
     form: str
-    values: list[tuple[str, str, float]]  # (box, label, value)
+    values: list[tuple[str, str, float | str]]  # (box, label, value or words)
 
 
 @dataclass(frozen=True)
@@ -135,7 +135,7 @@ def _pending(lay: Layout) -> list[Pending]:
         p = docs.setdefault(
             f.document_id, Pending(f.document_id, f.file_name, f.form, [])
         )
-        p.values.append((f.box, f.label, f.value))
+        p.values.append((f.box, f.label, f.value if f.text is None else f.text))
     return list(docs.values())
 
 

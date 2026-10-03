@@ -2,7 +2,10 @@
 
 Phase 2a schema: ``documents`` (one row per imported file, keyed by content
 hash) and ``facts`` (one row per form box read from a page). Money is stored
-as integer cents. Phase 2b adds CSV rows; Phase 3 adds ``conversions`` (each Roth
+as integer cents. A box that holds words, not dollars (a filing status, a
+state, a distribution code) keeps them in ``value_text`` (schema 4) and
+``value_cents`` is 0; ``facts_for`` returns only the money facts unless asked.
+Phase 2b adds CSV rows; Phase 3 adds ``conversions`` (each Roth
 conversion with the date its money becomes penalty-free) and ``peak`` (the
 all-time high of the portfolio, persisted so a drawdown is measured from it).
 """
@@ -15,7 +18,7 @@ from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS documents (
@@ -39,6 +42,7 @@ CREATE TABLE IF NOT EXISTS facts (
     value_cents INTEGER NOT NULL,
     page INTEGER NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('accepted', 'pending', 'superseded')),
+    value_text TEXT,
     UNIQUE (document_id, form, tax_year, issuer, box)
 );
 CREATE INDEX IF NOT EXISTS facts_by_year ON facts (tax_year, form, status);
@@ -97,9 +101,10 @@ class Fact:
     issuer: str
     box: str
     label: str
-    value: float
+    value: float  # dollars; 0.0 for a text fact
     page: int
     status: str = "accepted"
+    text: str | None = None  # the words a text box holds; None for money
 
 
 @dataclass(frozen=True)
@@ -149,6 +154,10 @@ def connect(path: Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    if "value_text" not in {
+        r["name"] for r in conn.execute("PRAGMA table_info(facts)")
+    }:
+        conn.execute("ALTER TABLE facts ADD COLUMN value_text TEXT")  # schema 3 -> 4
     if conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 0:
         conn.execute("INSERT INTO schema_version VALUES (?)", (SCHEMA_VERSION,))
     conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
@@ -229,7 +238,8 @@ def add_document(
             )
         conn.executemany(
             "INSERT INTO facts (document_id, form, tax_year, issuer, box, label, "
-            "value_cents, page, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "value_cents, page, status, value_text) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
                     doc_id,
@@ -241,6 +251,7 @@ def add_document(
                     to_cents(f.value),
                     f.page,
                     f.status,
+                    f.text,
                 )
                 for f in facts
             ],
@@ -326,12 +337,17 @@ def facts_for(
     tax_year: int | None = None,
     form: str | None = None,
     status: str = "accepted",
+    text: bool | None = False,
 ) -> list[FactRow]:
+    """Facts of one status. ``text`` picks the kind: False (default) the money
+    facts every total sums, True the text facts, None both."""
     sql = (
         "SELECT f.*, d.file_name FROM facts f JOIN documents d ON d.id = f.document_id "
         "WHERE f.status = ?"
     )
     args: list[object] = [status]
+    if text is not None:
+        sql += f" AND f.value_text IS {'NOT ' if text else ''}NULL"
     if tax_year is not None:
         sql += " AND f.tax_year = ?"
         args.append(tax_year)
@@ -349,6 +365,7 @@ def facts_for(
             value=from_cents(r["value_cents"]),
             page=r["page"],
             status=r["status"],
+            text=r["value_text"],
             document_id=r["document_id"],
             file_name=r["file_name"],
         )

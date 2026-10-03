@@ -153,3 +153,27 @@ def test_real_engine_reads_a_rendered_1099_int(tmp_path: Path) -> None:
     img.save(path)
     (text,) = ocr.page_texts(path)
     assert "1099-INT" in text and "1,234.56" in text
+
+
+def test_a_text_box_read_by_ocr_waits_and_is_corrected_with_text(lay: Layout) -> None:
+    from tests.test_forms import F1099R
+
+    make_pdf(lay.data / "inbox" / "scan.pdf", [[]])
+    ingest(
+        lay, ocr=lambda path: ["\n".join(F1099R[:-1] + ["7 Distribution code(s) 6"])]
+    )
+    conn = ledger(lay)
+    assert db.facts_for(conn, 2025, "1099-R", text=True) == []  # waiting
+    shown = {f.box: f for f in pending(conn)}
+    assert shown["7"].text == "6" and shown["1"].value == 12000.0
+    r = runner.invoke(app, ["confirm"])
+    assert "7" in r.output and "6" in r.output
+    r = runner.invoke(
+        app, ["confirm", "--doc", "1", "--accept", "--set", "7=G", "--set", "1=11,000"]
+    )
+    assert r.exit_code == 0, r.output
+    (code,) = db.facts_for(conn, 2025, "1099-R", text=True)
+    assert code.text == "G"
+    assert [f.value for f in db.facts_for(conn, 2025, "1099-R") if f.box == "1"] == [
+        11000.0
+    ]

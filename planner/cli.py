@@ -445,13 +445,14 @@ def facts(
     from planner.ledger import db
 
     conn = _open_ledger_readonly()
-    rows = db.facts_for(conn, year, form) if conn else []
+    rows = db.facts_for(conn, year, form, text=None) if conn else []
     if conn:
         conn.close()
     for r in rows:
+        shown = r.text if r.text is not None else f"{r.value:,.2f}"
         typer.echo(
             f"{r.tax_year} {r.form:9} {r.issuer[:24]:24} box {r.box:12} "
-            f"{r.value:>14,.2f}  {r.file_name} p{r.page}"
+            f"{shown:>14}  {r.file_name} p{r.page}"
         )
     typer.echo(f"{len(rows)} facts")
 
@@ -804,9 +805,8 @@ def confirm(
                     f"{f.form} {f.tax_year} ({f.issuer})"
                 )
                 last = f.document_id
-            typer.echo(
-                f"    page {f.page}  {f.box:10} {f.label[:40]:40} {f.value:>14,.2f}"
-            )
+            shown = f.text if f.text is not None else f"{f.value:,.2f}"
+            typer.echo(f"    page {f.page}  {f.box:10} {f.label[:40]:40} {shown:>14}")
         if last is None:
             typer.echo("nothing awaiting confirm")
         return
@@ -818,10 +818,10 @@ def confirm(
             where = _reject(lay, conn, doc)
             typer.echo(f"rejected doc {doc}; file at {where}")
             return
-        edits: dict[str, float] = {}
+        edits: dict[str, float | str] = {}
         for item in set_:
             box, _, raw = item.partition("=")
-            edits[box.strip()] = float(raw.replace(",", "").replace("$", ""))
+            edits[box.strip()] = raw.strip()
         facts = _accept(conn, doc, edits)
     except (KeyError, ValueError) as exc:
         typer.echo(f"refused: {exc}", err=True)

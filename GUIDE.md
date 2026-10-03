@@ -75,6 +75,22 @@ patterns tolerate the dot leaders the IRS prints. The D-400 template is verified
 lines the planner relies on (6, 12b, 15, 20a); the payment lines follow the printed form
 and are optional, so a layout difference there never unmatches the return.
 
+Some boxes hold words, not dollars, and the ledger keeps them as text (`facts.value_text`,
+schema version 4; an older ledger gains the column the first time it opens). A template box
+has a `kind`: `amount` (the default), `text` (optionally limited to an `allowed` list) or
+`check` (a set of check-mark options, one of which must be marked; two marked is a refusal,
+never a guess). From the filed 1040 the planner reads the filing status (Single, Married
+filing jointly, Married filing separately, Head of household), the state and the ZIP from the
+address block; the Needed panel then shows filing status and state as *actual* from the
+latest return filed for the plan year or earlier, and a typed answer still wins. Qualifying
+surviving spouse is not read: type it. How a tax-software PDF renders its check boxes is not
+confirmed on a real return (tests use synthetic marks), so a return with no readable mark
+leaves filing status to be typed. Form 1099-R box 7 is stored as the distribution code
+(`7`, `G`, `7D`...). Two consecutive years of Form 1098 from one lender give the mortgage's
+monthly principal and interest: (box 1 interest + the drop in box 2 principal) / 12. The
+Needed panel shows it as an *estimate* (escrow is not on a 1098; type the full payment to
+replace it). `planner confirm --set 7=G` corrects a text box read from a scan.
+
 Until the 1099s arrive, `planner ingest` folds the imported rows into year-to-date
 facts under form `YTD` (issuer = the CSV source): short- and long-term proceeds, basis
 and gain from realized rows, dividends, interest and capital-gain distributions from

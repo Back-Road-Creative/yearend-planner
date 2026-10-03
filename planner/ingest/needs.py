@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,9 @@ class Need:
     boxes: tuple[tuple[str, str], ...] = ()  # (form, box) ledger lookups, summed
     estimate: tuple[tuple[str, str], ...] = ()  # YTD facts that stand in meanwhile
     choices: tuple[str, ...] = ()
+    # An estimate computed from the ledger when the boxes give nothing:
+    # (conn, plan year) -> (value, origin) or None.
+    derive: Callable[[sqlite3.Connection, int], tuple[float, str] | None] | None = None
 
 
 @dataclass(frozen=True)
@@ -70,6 +74,7 @@ _VG = "Vanguard: My Accounts > Tax center > download the year's forms"
 _SSA = "ssa.gov/myaccount > Your Social Security Statement (PDF)"
 _RET = "last year's filed return (the preparer's PDF or tax software export)"
 _NONE = "no document supplies this; type it"
+_1040_ID = _RET + ", the filing-status check boxes and address line; or type it"
 
 NEEDS: tuple[Need, ...] = (
     Need(
@@ -84,13 +89,20 @@ NEEDS: tuple[Need, ...] = (
         "filing_status",
         "Filing status",
         "every bracket and threshold",
-        _NONE,
+        _1040_ID,
         "enum",
         PROFILE,
+        boxes=(("1040", "filing_status"),),
         choices=FILING,
     ),
     Need(
-        "state", "State", "state income tax and Medicaid rules", _NONE, "str", PROFILE
+        "state",
+        "State",
+        "state income tax and Medicaid rules",
+        _1040_ID,
+        "str",
+        PROFILE,
+        boxes=(("1040", "state"),),
     ),
     Need(
         "county", "County", "the ACA benchmark (SLCSP) premium", _NONE, "str", PROFILE
@@ -123,9 +135,11 @@ NEEDS: tuple[Need, ...] = (
         "mortgage_monthly",
         "Mortgage P&I and escrow per month ($)",
         "the month-by-month cash line",
-        "the mortgage statement",
+        "the mortgage statement; two years of Form 1098 give the principal and "
+        "interest, and escrow is typed",
         "money",
         PROFILE,
+        derive=lambda conn, year: _mortgage_pi(conn, year),
     ),
     Need(
         "premium_monthly",
@@ -704,6 +718,62 @@ def dont_have(lay: Layout, year: int, key: str) -> None:
     _write(path, data)
 
 
+def _text_box(
+    conn: sqlite3.Connection,
+    boxes: tuple[tuple[str, str], ...],
+    year: int,
+    choices: tuple[str, ...] = (),
+) -> tuple[str, str] | None:
+    """The words a text box holds on the latest return of ``year`` or earlier
+    (a filing status or address is last year's until a newer return says
+    otherwise); a value outside ``choices`` is not an answer."""
+    best: tuple[int, str, str] | None = None
+    for form, box in boxes:
+        for f in db.facts_for(conn, None, form, text=True):
+            if f.box != box or f.tax_year > year or f.text is None:
+                continue
+            if choices and f.text not in choices:
+                continue
+            if best is None or f.tax_year >= best[0]:
+                best = (f.tax_year, f.text, f"{f.form} {f.tax_year} {f.issuer}")
+    return None if best is None else (best[1], best[2])
+
+
+def _mortgage_pi(conn: sqlite3.Connection, year: int) -> tuple[float, str] | None:
+    """Monthly principal and interest from two consecutive years of Form 1098.
+
+    Box 2 is the principal outstanding at the start of the year, so the
+    principal paid in year Y is box 2 of Y less box 2 of Y+1, and the year's
+    P&I is that plus box 1 (interest) of Y, over 12. 1098s dated after the
+    plan ``year`` are ignored. Only a pair that ends in the latest 1098 year on
+    file counts: a lender whose statements stop earlier (a loan paid off or
+    refinanced away) is no longer the current mortgage. Each such lender is
+    paired on its own and the pairs add up (a loan with several lenders
+    servicing it in the same years). A pair whose balance rose (a refinance or
+    a new loan) is skipped; nothing is inferred. Escrow is not on the 1098."""
+    by: dict[tuple[str, int], dict[str, float]] = {}
+    for f in db.facts_for(conn, None, "1098"):
+        if f.tax_year <= year:
+            by.setdefault((f.issuer, f.tax_year), {})[f.box] = f.value
+    if not by:
+        return None
+    latest = max(y for _, y in by)
+    pairs: list[tuple[str, int, float]] = []
+    for issuer in sorted({i for i, y in by if y == latest}):
+        first, later = by.get((issuer, latest - 1), {}), by[issuer, latest]
+        if "1" not in first or "2" not in first or "2" not in later:
+            continue
+        paid = first["2"] - later["2"]
+        if paid >= 0:
+            pairs.append((issuer, latest - 1, (first["1"] + paid) / 12))
+    if not pairs:
+        return None
+    where = "; ".join(f"1098 {y}-{y + 1} {i}" for i, y, _ in pairs)
+    return round(
+        sum(m for _, _, m in pairs), 2
+    ), f"P&I from {where} (escrow not included)"
+
+
 def _sum_boxes(
     conn: sqlite3.Connection, boxes: tuple[tuple[str, str], ...], year: int | None
 ) -> tuple[float, str] | None:
@@ -744,13 +814,25 @@ def _needed(conn: sqlite3.Connection, lay: Layout, year: int) -> NeedsReport:
         fact_year = (
             None if need.scope == PROFILE else year - 1 if need.scope == PRIOR else year
         )
-        hit = _sum_boxes(conn, need.boxes, fact_year) if need.boxes else None
+        if need.kind in ("enum", "str") and need.boxes:
+            word = _text_box(conn, need.boxes, year, need.choices)
+            if word is not None:
+                report.items.append(Status(need, "actual", word[0], word[1]))
+                continue
+        hit = (
+            _sum_boxes(conn, need.boxes, fact_year)
+            if need.boxes and need.kind not in ("enum", "str")
+            else None
+        )
         if hit is not None:
             report.items.append(Status(need, "actual", hit[0], hit[1]))
             continue
         est = _sum_boxes(conn, need.estimate, fact_year) if need.estimate else None
         if est is not None:
             report.items.append(Status(need, "estimate", est[0], est[1]))
+            continue
+        if need.derive is not None and (calc := need.derive(conn, year)) is not None:
+            report.items.append(Status(need, "estimate", calc[0], calc[1]))
             continue
         dh = profile_dh if need.scope == PROFILE else set(manual[MANUAL_DONT_HAVE])
         report.items.append(Status(need, "dont_have" if need.key in dh else "missing"))

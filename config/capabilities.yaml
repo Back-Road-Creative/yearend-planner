@@ -17,6 +17,9 @@ pdf_filed_1040_and_schedules_1_2_3_c_d_se: verified  # tests/test_forms.py, synt
 pdf_nc_d400: partial  # lines 6, 12b, 15, 20a verified; payment lines checked against the 2025 D-401 (28 overpayment, 34 refund), not a real filed PDF
 pdf_ssa_statement: verified  # tests/test_forms.py
 pdf_1099_nec_k_1098_5498_5498sa_1099sa: verified  # tests/test_forms.py
+pdf_1099_r_distribution_code: verified  # tests/test_forms.py::test_1099r_letter_code
+pdf_1040_filing_status_state_zip: partial  # tests/test_needs.py; synthetic check marks only, a tax-software PDF's rendering is unconfirmed
+mortgage_pi_from_two_1098s: verified  # tests/test_needs.py::test_two_consecutive_1098s_give_principal_and_interest
 ytd_facts_from_rows: verified  # tests/test_derive.py; planner derive / ingest
 pdf_scanned_ocr_confirm: verified  # tests/test_ocr.py; values land pending until planner confirm
 needed_panel_registry_diff: verified  # tests/test_needs.py; planner needed / enter / dont-have

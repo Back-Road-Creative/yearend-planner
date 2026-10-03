@@ -197,3 +197,79 @@ def test_money_is_stored_as_integer_cents(lay: Layout) -> None:
     raw = conn.execute("SELECT value_cents FROM facts WHERE box = '1'").fetchone()[0]
     assert raw == 123456 and isinstance(raw, int)
     assert db.to_cents(0.015) == 2 and db.to_cents(-12.345) == -1235
+
+
+def test_text_facts_are_stored_as_text_and_kept_out_of_numeric_reads(
+    lay: Layout,
+) -> None:
+    from tests.test_forms import F1099R
+
+    make_pdf(inbox(lay) / "r.pdf", [F1099R])
+    ingest(lay)
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    raw = conn.execute(
+        "SELECT value_cents, value_text FROM facts WHERE box = '7'"
+    ).fetchone()
+    assert (raw[0], raw[1]) == (0, "G")
+    assert [f.box for f in db.facts_for(conn, 2025, "1099-R")] == ["1", "2a", "4"]
+    (code,) = db.facts_for(conn, 2025, "1099-R", text=True)
+    assert (code.box, code.text) == ("7", "G")
+    assert {f.box for f in db.facts_for(conn, 2025, "1099-R", text=None)} == {
+        "1",
+        "2a",
+        "4",
+        "7",
+    }
+    r = runner.invoke(app, ["facts", "--year", "2025", "--form", "1099-R"])
+    assert r.exit_code == 0, r.output
+    assert "box 7" in r.output and "G" in r.output.split("box 7")[1].split("\n")[0]
+    assert "4 facts" in r.output
+
+
+V3_LEDGER = """
+CREATE TABLE schema_version (version INTEGER NOT NULL);
+INSERT INTO schema_version VALUES (3);
+CREATE TABLE documents (
+    id INTEGER PRIMARY KEY, fingerprint TEXT NOT NULL UNIQUE,
+    file_name TEXT NOT NULL, kind TEXT NOT NULL, pages INTEGER NOT NULL DEFAULT 0,
+    imported_at TEXT NOT NULL, batch TEXT NOT NULL, archived_as TEXT);
+CREATE TABLE facts (
+    id INTEGER PRIMARY KEY, document_id INTEGER NOT NULL REFERENCES documents(id),
+    form TEXT NOT NULL, tax_year INTEGER NOT NULL, issuer TEXT NOT NULL,
+    box TEXT NOT NULL, label TEXT NOT NULL, value_cents INTEGER NOT NULL,
+    page INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('accepted', 'pending', 'superseded')),
+    UNIQUE (document_id, form, tax_year, issuer, box));
+INSERT INTO documents VALUES (1, 'abc', 'old.pdf', 'pdf', 1, '2025-01-01', 'b', NULL);
+INSERT INTO facts VALUES (1, 1, '1099-INT', 2024, 'Bank', '1', 'Interest', 123456, 1,
+    'accepted');
+"""
+
+
+def test_a_v3_ledger_migrates_to_text_facts(tmp_path: Path) -> None:
+    import sqlite3
+
+    path = tmp_path / "ledger" / "planner.db"
+    path.parent.mkdir()
+    old = sqlite3.connect(path)
+    old.executescript(V3_LEDGER)
+    old.commit()
+    old.close()
+    conn = db.connect(path)
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 4
+    assert db.SCHEMA_VERSION == 4
+    (kept,) = db.facts_for(conn, 2024, "1099-INT")
+    assert (kept.box, kept.value, kept.text) == ("1", 1234.56, None)
+    db.add_document(
+        conn,
+        fingerprint="def",
+        file_name="new.pdf",
+        kind="pdf",
+        pages=1,
+        batch="b",
+        facts=[db.Fact("1099-R", 2025, "Custodian", "7", "Code", 0.0, 1, text="G")],
+    )
+    (code,) = db.facts_for(conn, 2025, "1099-R", text=True)
+    assert code.text == "G"
+    conn.close()
+    db.connect(path).close()  # opening again changes nothing

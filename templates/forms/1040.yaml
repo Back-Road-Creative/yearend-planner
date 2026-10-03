@@ -1,12 +1,35 @@
 # Form 1040 page 1 (income, AGI, deductions). IRS line labels; dot leaders allowed.
 # Box ids follow the 2024 form; the 2025 form's 7a, 11a, 12e and 13a match too.
 # The filed return is the taxpayer's own document: issuer is the literal "self".
+# filing_status (check boxes), state and zip (the city/state/ZIP line) are text
+# boxes: the words are kept as printed, never inferred. Qualifying surviving
+# spouse is not one of the planner's filing statuses, so it is left unread and
+# the question stays on the Needed panel. Form 1040 (2024, 2025) filing-status
+# block and "City, town, or post office ... State ZIP code" address line.
 form: 1040
 years: [2024, 2025, 2026]
 match: ["U.S. Individual Income Tax Return"]
 year_pattern: 'Form 1040(?:-SR)?\s*\((20\d\d)\)'
 issuer: self
 boxes:
+  "filing_status":
+    label: Filing status
+    kind: check
+    options:
+      single: Single
+      married_joint: Married filing jointly
+      married_separate: Married filing separately
+      head_of_household: Head of household
+  "state":
+    label: State (address line)
+    kind: text
+    pattern: 'City, town, or post office[^\n]*(?:\n[^\n]*?)?\b(?-i:([A-Z]{2}))[ \t]+\d{5}(?:-\d{4})?\b'
+    # USPS state abbreviations (USPS Publication 28, appendix B): the 50 states and DC.
+    allowed: [AL, AK, AZ, AR, CA, CO, CT, DE, DC, FL, GA, HI, ID, IL, IN, IA, KS, KY, LA, ME, MD, MA, MI, MN, MS, MO, MT, NE, NV, NH, NJ, NM, NY, NC, ND, OH, OK, OR, PA, RI, SC, SD, TN, TX, UT, VT, VA, WA, WV, WI, WY]
+  "zip":
+    label: ZIP code (address line)
+    kind: text
+    pattern: 'City, town, or post office[^\n]*(?:\n[^\n]*?)?\b[A-Za-z]{2}[ \t]+(\d{5})(?:-\d{4})?\b'
   "1z": {label: "Wages (line 1z)", pattern: 'Add lines 1a through 1h[\s.]*1z\s+AMOUNT'}
   "2a": {label: "Tax-exempt interest", pattern: 'Tax-exempt interest[\s.]*2a\s+AMOUNT'}
   "2b": {label: "Taxable interest", pattern: 'Taxable interest[\s.]*2b\s+AMOUNT'}

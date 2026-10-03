@@ -57,6 +57,7 @@ KEYS = (
     "hsa_employer_contributions",
     "hsa_months",
     "hsa_qualified_expenses",
+    "filing_status",
 )
 
 
@@ -154,7 +155,7 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> HSA:
                 "tax applies for each year it stays (Form 5329 Part VII)"
                 + ("; employer money over the limit is also wages" if l9 > l8 else "")
             )
-        if coverage == "family" and _married(profile):
+        if coverage == "family" and str(v["filing_status"] or "").startswith("married"):
             h.notes.append(
                 "line 6 takes the whole family limit: if your spouse has an HSA of "
                 "their own, the limit is split between you"
@@ -185,10 +186,6 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> HSA:
                     )
     h.lines = {k: lines[k] for k in LABELS if k in lines}
     return h
-
-
-def _married(profile: dict[str, object]) -> bool:
-    return str(profile.get("filing_status", "")).startswith("married")
 
 
 def store(

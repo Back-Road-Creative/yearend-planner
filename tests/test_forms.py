@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from planner.ingest.pdf import Unmatched, load_templates, parse_pdf
+from planner.ingest.pdf import Unmatched, load_templates, parse_pdf, parse_texts
 from tests.pdfgen import make_pdf
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -30,6 +30,17 @@ F1040_P1 = [
     "13 Qualified business income deduction from Form 8995 or Form 8995-A 13 1,000.00",
     "15 Subtract line 14 from line 11. This is your taxable income . 15 104,534.56",
 ]
+# The filing-status check boxes and the address line a filed 1040 prints above
+# line 1a. Synthetic: the city, state and ZIP are made up.
+F1040_ID = [
+    "Filing Status Check only one box.",
+    "[ ] Single [X] Married filing jointly (even if only one had income) [ ] Married filing separately (MFS)",
+    "[ ] Head of household (HOH) [ ] Qualifying surviving spouse (QSS)",
+    "Home address (number and street). If you have a P.O. box, see instructions. Apt. no.",
+    "City, town, or post office. If you have a foreign address, also complete spaces below. State ZIP code",
+    "Anytown NC 27000",
+]
+F1040_FILED_P1 = F1040_P1[:1] + F1040_ID + F1040_P1[1:]
 F1040_P2 = [
     "Form 1040 (2025) Page 2",
     "16 Tax (see instructions). Check if any from Form(s): . . . 16 17,000.00",
@@ -148,6 +159,17 @@ F1099SA = [
 ]
 
 
+F1099R = [
+    "Form 1099-R Distributions From Pensions, Annuities, Retirement or Profit-Sharing Plans, IRAs",
+    "Tax year 2025",
+    "PAYER'S name: Example Custodian (synthetic)",
+    "1 Gross distribution $ 12,000.00",
+    "2a Taxable amount $ 12,000.00",
+    "4 Federal income tax withheld $ 1,200.00",
+    "7 Distribution code(s) G",
+]
+
+
 def one(tmp_path: Path, name: str, pages: list[list[str]]) -> list:  # type: ignore[type-arg]
     p = tmp_path / f"{name}.pdf"
     make_pdf(p, pages)
@@ -248,3 +270,107 @@ def test_1040_without_agi_is_unmatched(tmp_path: Path) -> None:
     page = [line for line in F1040_P1 if not line.startswith("11 ")]
     with pytest.raises(Unmatched, match="11"):
         one(tmp_path, "bad1040", [page])
+
+
+def test_1099r_letter_code(tmp_path: Path) -> None:
+    (r,) = one(tmp_path, "r", [F1099R])
+    assert r.boxes["7"] == ("Distribution code", "G")
+    assert r.boxes["1"][1] == 12000.0 and r.boxes["4"][1] == 1200.0
+
+
+@pytest.mark.parametrize(
+    ("printed", "code"),
+    [("7", "7"), ("1J", "1J"), ("7D", "7D"), ("PN", "PN"), ("G IRA/SEP/SIMPLE", "G")],
+)
+def test_1099r_codes_are_numbers_letters_or_both(printed: str, code: str) -> None:
+    page = "\n".join(F1099R[:-1] + [f"7 Distribution code(s) {printed}"])
+    (r,) = parse_texts([page], TEMPLATES)
+    assert r.boxes["7"][1] == code
+
+
+def test_1099r_with_no_code_still_reads_the_amounts() -> None:
+    page = "\n".join(F1099R[:-1] + ["7 Distribution code(s) IRA/SEP/SIMPLE"])
+    (r,) = parse_texts([page], TEMPLATES)
+    assert "7" not in r.boxes and r.boxes["2a"][1] == 12000.0
+
+
+def test_1040_filing_status_state_and_zip(tmp_path: Path) -> None:
+    (f,) = one(tmp_path, "filed", [F1040_FILED_P1, F1040_P2])
+    assert f.boxes["filing_status"] == ("Filing status", "married_joint")
+    assert f.boxes["state"][1] == "NC" and f.boxes["zip"][1] == "27000"
+    assert f.boxes["11"][1] == 120534.56  # the numeric lines are unchanged
+
+
+@pytest.mark.parametrize(
+    ("line", "status"),
+    [
+        ("☒ Single ☐ Married filing jointly (even if only one had income)", "single"),
+        ("X Single  Married filing jointly", "single"),
+        ("☐ Single ☑ Married filing separately (MFS)", "married_separate"),
+        ("[ ] Single (X) Married filing jointly", "married_joint"),
+        ("☐ Head of household (HOH) ☐ Qualifying surviving spouse", None),
+        (
+            "✔ Head of household (HOH) ☐ Qualifying surviving spouse (QSS)",
+            "head_of_household",
+        ),
+        ("[x] Head of household (HOH)", "head_of_household"),
+        ("☐ Single ☐ Married filing jointly", None),
+    ],
+)
+def test_1040_filing_status_marks(line: str, status: str | None) -> None:
+    page = "\n".join(
+        [F1040_P1[0], "Filing Status Check only one box.", line, *F1040_P1[1:]]
+    )
+    (f,) = parse_texts([page], TEMPLATES)
+    got = f.boxes.get("filing_status")
+    assert (got[1] if got else None) == status
+
+
+def test_1040_two_filing_statuses_checked_is_unmatched() -> None:
+    page = "\n".join(
+        [F1040_P1[0], "[X] Single [X] Married filing jointly", *F1040_P1[1:]]
+    )
+    with pytest.raises(Unmatched, match="more than one filing status"):
+        parse_texts([page], TEMPLATES)
+
+
+@pytest.mark.parametrize(
+    ("addr", "state", "zip_"),
+    [
+        ("Anytown NC 27000", "NC", "27000"),
+        ("ANYTOWN, NC 27000-1234", "NC", "27000"),
+        ("Anytown ZZ 27000", None, "27000"),  # not a state: nothing is guessed
+        ("Anytown nc 27000", None, "27000"),
+    ],
+)
+def test_1040_state_must_be_a_state_code(
+    addr: str, state: str | None, zip_: str
+) -> None:
+    page = "\n".join(
+        [
+            F1040_P1[0],
+            "City, town, or post office. If you have a foreign address, also complete spaces below. State ZIP code",
+            addr,
+            *F1040_P1[1:],
+        ]
+    )
+    (f,) = parse_texts([page], TEMPLATES)
+    got = f.boxes.get("state")
+    assert (got[1] if got else None) == state
+    assert f.boxes["zip"][1] == zip_
+
+
+def test_a_text_box_template_is_checked_at_load(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "form: X\nyears: [2025]\nmatch: [x]\nboxes:\n  a: {label: A, kind: check}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="options"):
+        load_templates(tmp_path)
+    bad.write_text(
+        "form: X\nyears: [2025]\nmatch: [x]\nboxes:\n  a: {label: A, kind: nope, pattern: x}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="kind"):
+        load_templates(tmp_path)

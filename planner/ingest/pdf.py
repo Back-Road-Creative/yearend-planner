@@ -2,9 +2,13 @@
 
 A template (``templates/forms/<form>.yaml``) names the form, the tax years
 its layout covers, the words that identify a page, and one regex per box with
-``AMOUNT`` standing for a dollar figure. A page is accepted only when every
-required box parses; otherwise the file is unmatched with the reason. Nothing
-is inferred.
+``AMOUNT`` standing for a dollar figure. A box has a ``kind``: ``amount`` (the
+default; the pattern's group is a dollar figure), ``text`` (the group is
+kept as words, optionally only when it is one of ``allowed``) or ``check``
+(``options`` maps a value to the label printed beside its check box; the value
+whose box carries a mark is the answer, and two marks are an error). A page is
+accepted only when every required box parses; otherwise the file is unmatched
+with the reason. Nothing is inferred.
 """
 
 from __future__ import annotations
@@ -20,10 +24,17 @@ import yaml
 AMOUNT = r"(\(?-?\$?\s*[\d,]*\d(?:\.\d{1,2})?\)?)"
 DEFAULT_YEAR = r"(?:tax year|for calendar year|calendar year)\s*:?\s*(20\d\d)"
 DEFAULT_ISSUER = r"payer'?s name:?\s*([^\n]+)"
+KINDS = ("amount", "text", "check")
+# A check box that is marked, as text extraction renders it: a ballot-box glyph,
+# a check mark, a bracketed or parenthesised X, or a bare X not inside a word.
+MARK = r"(?:\[\s*[xX✓✔]\s*\]|\(\s*[xX]\s*\)|[☒☑✓✔✗]|(?<!\w)[xX](?=[ \t]))"
 
 
 class Unmatched(ValueError):
     """The file could not be read into facts; carries the reason."""
+
+
+Value = float | str  # dollars, or the words of a text or check box
 
 
 @dataclass(frozen=True)
@@ -33,6 +44,28 @@ class Box:
     pattern: re.Pattern[str]
     required: bool
     group: int
+    kind: str = "amount"
+    options: tuple[tuple[str, re.Pattern[str]], ...] = ()  # check: value -> label
+    allowed: tuple[str, ...] = ()  # text: the only words accepted
+
+    def read(self, text: str) -> Value | None:
+        """The box's value on this page, or None when it is not there."""
+        if self.kind == "check":
+            marked = [v for v, pat in self.options if pat.search(text)]
+            if len(marked) > 1:
+                raise Unmatched(
+                    f"more than one {self.label.lower()} checked: {', '.join(marked)}"
+                )
+            return marked[0] if marked else None
+        m = self.pattern.search(text)
+        if m is None:
+            return None
+        if self.kind == "amount":
+            return parse_amount(m.group(self.group))
+        word = " ".join(m.group(self.group).split())
+        if not word or (self.allowed and word not in self.allowed):
+            return None
+        return word
 
 
 @dataclass(frozen=True)
@@ -60,16 +93,16 @@ class Template:
         m = self.issuer_pattern.search(text)
         return " ".join(m.group(1).split()) if m else "unknown"
 
-    def parse_boxes(self, text: str) -> tuple[dict[str, tuple[str, float]], list[str]]:
-        found: dict[str, tuple[str, float]] = {}
+    def parse_boxes(self, text: str) -> tuple[dict[str, tuple[str, Value]], list[str]]:
+        found: dict[str, tuple[str, Value]] = {}
         missing: list[str] = []
         for box in self.boxes:
-            m = box.pattern.search(text)
-            if m is None:
+            value = box.read(text)
+            if value is None:
                 if box.required:
                     missing.append(box.name)
                 continue
-            found[box.name] = (box.label, parse_amount(m.group(box.group)))
+            found[box.name] = (box.label, value)
         return found, missing
 
 
@@ -79,7 +112,7 @@ class ParsedForm:
     tax_year: int
     issuer: str
     page: int
-    boxes: dict[str, tuple[str, float]] = field(default_factory=dict)
+    boxes: dict[str, tuple[str, Value]] = field(default_factory=dict)
     ocr: bool = False  # read by OCR: lands pending, not accepted
 
 
@@ -99,19 +132,42 @@ def _compile(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern.replace("AMOUNT", AMOUNT), re.IGNORECASE)
 
 
+def _box(path: Path, name: object, spec: dict[str, Any]) -> Box:
+    kind = str(spec.get("kind", "amount"))
+    if kind not in KINDS:
+        raise ValueError(f"{path.name} box {name}: kind must be one of {KINDS}")
+    options: tuple[tuple[str, re.Pattern[str]], ...] = ()
+    if kind == "check":
+        if not spec.get("options"):
+            raise ValueError(f"{path.name} box {name}: a check box needs options")
+        options = tuple(
+            (
+                str(value),
+                re.compile(
+                    MARK + r"[ \t]*" + r"\s+".join(map(re.escape, str(label).split())),
+                    re.IGNORECASE,
+                ),
+            )
+            for value, label in spec["options"].items()
+        )
+    elif "pattern" not in spec:
+        raise ValueError(f"{path.name} box {name}: a pattern is required")
+    return Box(
+        name=str(name),
+        label=str(spec["label"]),
+        pattern=_compile(str(spec.get("pattern", ""))),
+        required=bool(spec.get("required", False)),
+        group=int(spec.get("group", 1)),
+        kind=kind,
+        options=options,
+        allowed=tuple(str(a) for a in spec.get("allowed", ())),
+    )
+
+
 def load_template(path: Path) -> Template:
     with path.open(encoding="utf-8") as fh:
         raw: dict[str, Any] = yaml.safe_load(fh)
-    boxes = tuple(
-        Box(
-            name=str(name),
-            label=str(spec["label"]),
-            pattern=_compile(str(spec["pattern"])),
-            required=bool(spec.get("required", False)),
-            group=int(spec.get("group", 1)),
-        )
-        for name, spec in raw["boxes"].items()
-    )
+    boxes = tuple(_box(path, name, spec) for name, spec in raw["boxes"].items())
     return Template(
         form=str(raw["form"]),
         years=tuple(int(y) for y in raw["years"]),
@@ -172,7 +228,10 @@ def parse_texts(
             if year not in tpl.years:
                 notes.append(f"page {page_no}: {tpl.form} {year} has no template")
                 continue
-            boxes, missing = tpl.parse_boxes(text)
+            try:
+                boxes, missing = tpl.parse_boxes(text)
+            except Unmatched as exc:
+                raise Unmatched(f"page {page_no}: {tpl.form} {year}: {exc}") from exc
             if missing:
                 raise Unmatched(
                     f"page {page_no}: {tpl.form} {year}: required boxes not found: "
