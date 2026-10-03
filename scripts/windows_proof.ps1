@@ -91,3 +91,6 @@ Invoke-Planner $cloud 'paths' 2 | Out-Null
 if (Test-Path (Join-Path $cloud 'data')) { throw 'data/ was created inside OneDrive' }
 
 Write-Host 'PROOF PASSED'
+# The last launcher call above was the refused run (exit 2) and the Actions pwsh
+# shell ends with 'exit $LASTEXITCODE'; a passed proof must say so itself.
+exit 0
