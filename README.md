@@ -549,3 +549,38 @@ whole year. It is a static copy for printing and backup. `planner run` (Phase
 - **Self-contained.** Everything the page shows is escaped, including issuer
   names, file names and OCR text. It loads nothing from the internet. It
   prints cleanly, with the forms hidden.
+
+## The one command: `planner run` (Phase 5b)
+
+`planner run` is the program's front door.
+
+1. It reads whatever is in `data/inbox/`.
+2. It runs every planner and the draft return, and writes `out/index.html`.
+3. It opens the same page live in your browser.
+
+On the live page:
+
+- **Drop files** (PDFs, CSVs, scans) anywhere on the page, or pick them with
+  the button. Each one is read straight away. The page reloads with the
+  Needed list shorter and a line saying what was imported, what waits for
+  you to confirm, what was already in the ledger, and what could not be
+  read, and why.
+- **Answer** a Needed item in its box, or press *Don't have*. The item leaves
+  the list, and the panels that waited on it recompute.
+- **Confirm or reject** values read from scans.
+- **Build the tax pack** from the forms panel.
+
+Repeat until the Needed list is empty. Press Ctrl+C in the window to stop.
+
+- **Private by construction.**
+  - The page is served only to this computer (127.0.0.1), on a port the
+    system picks.
+  - The address carries a one-time key made fresh on each run. A request
+    without it, or addressed to any other host name, is refused.
+  - Nothing is logged, and the page loads nothing from the internet.
+- **Options.**
+  - `--year` picks the plan year; it defaults to this year.
+  - `--no-open` serves the page without opening a browser.
+  - `--port` fixes the port.
+  - `--quiet` stops after writing `out/index.html` (no server, no browser),
+    for Windows Task Scheduler.
