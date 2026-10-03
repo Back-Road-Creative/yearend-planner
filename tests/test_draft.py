@@ -15,7 +15,7 @@ from planner.cli import app
 from planner.ingest.needs import enter
 from planner.ledger import db
 from planner.paths import Layout
-from planner.plan import esttax
+from planner.plan import esttax, inputs
 from planner.taxprep import draft
 
 runner = CliRunner()
@@ -187,3 +187,398 @@ def test_draft_settles_the_se_health_deduction_with_the_credit(lay: Layout) -> N
     )
     src = next(ln.source for ln in d.lines if (ln.form, ln.line) == ("Sch 1", "17"))
     assert "Pub. 974" in src
+
+
+# --- Phase 9n: the draft carries Schedule C, the full Schedule SE and Schedule 1-A
+
+
+def _checks(d: draft.Draft) -> list[str]:
+    return [n for n in d.notes if n.startswith("CHECK")]
+
+
+def _need(d: draft.Draft, form: str, line: str) -> float:
+    value = d.get(form, line)
+    assert value is not None, (form, line)
+    return value
+
+
+def _source(d: draft.Draft, form: str, line: str) -> str:
+    return next(ln.source for ln in d.lines if (ln.form, ln.line) == (form, line))
+
+
+def _answers(lay: Layout, **typed: str) -> None:
+    for key, text in typed.items():
+        enter(lay, YEAR, key, text)
+
+
+BANK = """\
+Transaction ID,Date,Description,Amount,Account
+T-1,02/05/2025,CLIENT PAYMENT ACME,"30,000.00",Checking
+T-2,06/06/2025,CLIENT PAYMENT ACME,"30,000.00",Checking
+T-3,06/07/2025,CARD PURCHASE OFFICE DEPOT,(1500.10),Checking
+T-4,06/09/2025,CARD PURCHASE LUNCH CAFE,(200.00),Checking
+T-5,06/10/2025,GROCERY MART,(120.00),Checking
+T-6,06/11/2025,REFUND CLIENT WIDGETS,(500.00),Checking
+"""
+
+
+@pytest.fixture
+def sc_lay(planner_home: Path) -> Layout:
+    """A sole proprietor whose income is Schedule C from categorised bank rows
+    (synthetic payees), single, NC, 54 at year end."""
+    from planner.ingest import ingest
+    from planner.taxprep import schedule_c
+
+    lay = Layout(planner_home)
+    lay.ensure()
+    _answers(
+        lay,
+        birth_date="1971-06-15",
+        filing_status="single",
+        state="NC",
+        wages="0",
+        ordinary_dividends="0",
+        qualified_dividends="0",
+    )
+    (lay.data / "inbox" / "bank.csv").write_text(BANK, encoding="utf-8")
+    ingest(lay)
+    for text, category in (
+        ("client payment", "receipts"),
+        ("refund client", "returns"),
+        ("office depot", "office"),
+        ("lunch cafe", "meals"),
+        ("grocery", "personal"),
+    ):
+        schedule_c.add_rule(lay, text, category)
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    try:
+        schedule_c.store(conn, lay, YEAR)
+    finally:
+        conn.close()
+    return lay
+
+
+def test_sch1_line3_links_schedule_c_line31(sc_lay: Layout) -> None:
+    d = draft.build(sc_lay, YEAR)
+    assert _checks(d) == [], d.notes
+    # Schedule C: 60,000 receipts, 500 returned, 1,500.10 office, half of 200 meals
+    want = {
+        "1": 60_000.0,
+        "2": 500.0,
+        "3": 59_500.0,
+        "7": 59_500.0,
+        "18": 1_500.10,
+        "24b": 100.0,
+        "28": 1_600.10,
+        "29": 57_899.90,
+        "31": 57_899.90,
+    }
+    for line, value in want.items():
+        assert _need(d, "Sch C", line) == pytest.approx(value, abs=0.005), line
+    assert "2 bank row(s) categorised receipts" in _source(d, "Sch C", "1")
+    assert "half of 1 bank row(s) categorised meals" in _source(d, "Sch C", "24b")
+    # Schedule 1 line 3 and Schedule SE line 2 are Schedule C line 31
+    assert _need(d, "Sch 1", "3") == _need(d, "Sch C", "31")
+    assert _source(d, "Sch 1", "3") == "Sch C line 31"
+    assert _need(d, "Sch SE", "2") == _need(d, "Sch C", "31")
+    assert _source(d, "Sch SE", "2") == "Sch C line 31"
+    assert _need(d, "1040", "8") == _need(d, "Sch 1", "10") == _need(d, "Sch C", "31")
+    assert any("home office" in n and "not built" in n for n in d.notes)
+    text = draft.render(d)
+    assert "Schedule C\n" in text and "Schedule 1-A\n" in text
+
+
+def test_a_typed_figure_that_is_not_schedule_c_is_flagged(sc_lay: Layout) -> None:
+    _answers(sc_lay, se_income="50,000")
+    d = draft.build(sc_lay, YEAR)
+    assert _need(d, "Sch C", "31") == pytest.approx(57_899.90, abs=0.005)
+    assert _need(d, "Sch 1", "3") == 50_000.0
+    assert _source(d, "Sch 1", "3") != "Sch C line 31"
+    assert _need(d, "Sch SE", "2") == 50_000.0
+    [check] = _checks(d)
+    assert "Schedule C line 31 57,899.90" in check and "50,000.00" in check
+
+
+def test_no_schedule_c_sheet_without_categorised_rows(lay: Layout) -> None:
+    d = draft.build(lay, YEAR)
+    assert not [ln for ln in d.lines if ln.form == "Sch C"]
+    assert _source(d, "Sch 1", "3") != "Sch C line 31"
+
+
+def test_schedule_se_part_one_every_line(lay: Layout) -> None:
+    d = draft.build(lay, YEAR)
+    assert _checks(d) == [], d.notes
+    net = 40_000 * 0.9235  # line 3 x 92.35%
+    want = {
+        "2": 40_000.0,
+        "3": 40_000.0,
+        "4a": net,
+        "4c": net,
+        "6": net,
+        "7": 176_100.0,  # 2025 Schedule SE line 7, printed on the form
+        "8a": 0.0,
+        "8d": 0.0,
+        "9": 176_100.0,
+        "10": net * 0.124,
+        "11": net * 0.029,
+        "12": net * 0.153,
+        "13": net * 0.153 / 2,
+    }
+    for line, value in want.items():
+        assert _need(d, "Sch SE", line) == pytest.approx(value, abs=0.01), line
+    assert _need(d, "Sch 2", "4") == _need(d, "Sch SE", "12")
+    assert _need(d, "Sch 1", "15") == _need(d, "Sch SE", "13")
+    assert "Sch SE line 13" in _source(d, "Sch 1", "15")
+    assert "Sch SE line 12" in _source(d, "Sch 2", "4")
+
+
+def test_schedule_se_wages_use_up_the_wage_base(lay: Layout) -> None:
+    """Wages near the base leave only the rest for the 12.4% (lines 8a to 10)."""
+    _answers(lay, wages="150,000")
+    d = draft.build(lay, YEAR)
+    assert _checks(d) == [], d.notes
+    net = 40_000 * 0.9235
+    assert _need(d, "Sch SE", "8a") == 150_000.0
+    assert _need(d, "Sch SE", "9") == 26_100.0
+    assert _need(d, "Sch SE", "10") == pytest.approx(26_100 * 0.124, abs=0.01)
+    assert _need(d, "Sch SE", "11") == pytest.approx(net * 0.029, abs=0.01)
+    assert _need(d, "Sch SE", "12") == pytest.approx(
+        26_100 * 0.124 + net * 0.029, abs=0.01
+    )
+
+
+def test_schedule_se_stops_under_400_of_net_earnings(lay: Layout) -> None:
+    _answers(lay, se_income="300")
+    d = draft.build(lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert _need(d, "Sch SE", "4a") == pytest.approx(300 * 0.9235, abs=0.01)
+    assert _need(d, "Sch SE", "4c") == pytest.approx(300 * 0.9235, abs=0.01)
+    assert d.get("Sch SE", "6") is None and d.get("Sch SE", "10") is None
+    assert _need(d, "Sch SE", "12") == 0.0 and _need(d, "Sch SE", "13") == 0.0
+    assert "under $400" in _source(d, "Sch SE", "12")
+    assert _need(d, "Sch 2", "4") == 0.0
+
+
+def _part_total(d: draft.Draft) -> float:
+    return sum(
+        _need(d, "Sch 1-A", ln)
+        for ln in ("13", "21", "30", "37")
+        if d.get("Sch 1-A", ln) is not None
+    )
+
+
+def test_schedule_1a_without_a_qualifying_part_is_zero(lay: Layout) -> None:
+    d = draft.build(lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert _need(d, "Sch 1-A", "1") == _need(d, "1040", "11b")
+    assert _need(d, "Sch 1-A", "3") == _need(d, "1040", "11b")
+    assert _need(d, "Sch 1-A", "38") == 0.0 == _need(d, "1040", "13b")
+    assert d.get("Sch 1-A", "37") is None  # 54 at year end: Part V does not apply
+    assert any("Schedule 1-A Parts II to IV" in n for n in d.notes)
+
+
+@pytest.fixture
+def senior_lay(planner_home: Path) -> Layout:
+    lay = Layout(planner_home)
+    lay.ensure()
+    _answers(
+        lay,
+        birth_date="1955-03-01",
+        filing_status="single",
+        state="NC",
+        wages="100,000",
+        se_income="0",
+        ordinary_dividends="0",
+        qualified_dividends="0",
+    )
+    return lay
+
+
+def test_schedule_1a_senior_deduction_phases_out(senior_lay: Layout) -> None:
+    d = draft.build(senior_lay, YEAR)
+    assert _checks(d) == [], d.notes
+    agi = _need(d, "1040", "11b")
+    assert agi == 100_000.0
+    # 2025 Schedule 1-A lines 31-37: $6,000 less 6% of the AGI over $75,000
+    assert _need(d, "Sch 1-A", "31") == agi
+    assert _need(d, "Sch 1-A", "32") == 75_000.0
+    assert _need(d, "Sch 1-A", "33") == 25_000.0
+    assert _need(d, "Sch 1-A", "34") == 1_500.0
+    assert _need(d, "Sch 1-A", "35") == 4_500.0
+    assert _need(d, "Sch 1-A", "36a") == 4_500.0
+    assert d.get("Sch 1-A", "36b") is None
+    assert _need(d, "Sch 1-A", "37") == 4_500.0
+    assert _need(d, "Sch 1-A", "38") == 4_500.0 == _need(d, "1040", "13b")
+    assert _source(d, "1040", "13b") == "Sch 1-A line 38"
+
+
+def test_schedule_1a_senior_deduction_in_full_below_the_threshold(
+    senior_lay: Layout,
+) -> None:
+    _answers(senior_lay, wages="60,000")
+    d = draft.build(senior_lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert (
+        d.get("Sch 1-A", "34") is None
+    )  # line 33 is zero or less: 6,000 straight to 35
+    assert _need(d, "Sch 1-A", "35") == 6_000.0
+    assert _need(d, "1040", "13b") == 6_000.0
+
+
+def test_schedule_1a_senior_deduction_gone_at_the_top(senior_lay: Layout) -> None:
+    _answers(senior_lay, wages="200,000")
+    d = draft.build(senior_lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert _need(d, "Sch 1-A", "35") == 0.0
+    assert _need(d, "1040", "13b") == 0.0
+
+
+def _with_inputs(monkeypatch: pytest.MonkeyPatch, **fields: int) -> None:
+    """The household also carries qualified tips, overtime or car-loan interest
+    (Household fields the Needed panel has no item for)."""
+    import dataclasses
+
+    real = inputs.build
+
+    def build(*args, **kwargs):  # type: ignore[no-untyped-def]
+        inp = real(*args, **kwargs)
+        hh = dataclasses.replace(inp.household, **fields)  # type: ignore[arg-type]
+        return dataclasses.replace(inp, household=hh)
+
+    monkeypatch.setattr(inputs, "build", build)
+
+
+def test_schedule_1a_parts_sum_to_1040_line_13b(
+    senior_lay: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _answers(senior_lay, wages="60,000")
+    _with_inputs(
+        monkeypatch,
+        qualified_tips=5_000,
+        tipped_occupation_code=1,
+        qualified_overtime=4_000,
+        car_loan_interest=3_000,
+    )
+    d = draft.build(senior_lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert _need(d, "Sch 1-A", "13") == 5_000.0
+    assert _need(d, "Sch 1-A", "21") == 4_000.0
+    assert _need(d, "Sch 1-A", "30") == 3_000.0
+    assert _need(d, "Sch 1-A", "37") == 6_000.0
+    assert _need(d, "Sch 1-A", "38") == 18_000.0 == _part_total(d)
+    assert _need(d, "1040", "13b") == 18_000.0
+    assert _need(d, "1040", "14") == pytest.approx(
+        _need(d, "1040", "12e") + _need(d, "1040", "13a") + 18_000.0, abs=0.01
+    )
+
+
+def test_schedule_1a_tips_cap_and_phase_out_by_the_thousand(
+    senior_lay: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Line 7 caps tips at $25,000; line 11 drops the MAGI excess to whole
+    $1,000s, so $5,500 over the $150,000 threshold costs $500, not $550. The
+    engine phases out smoothly: the draft follows the form and says the gap."""
+    _answers(senior_lay, wages="155,500", birth_date="1971-06-15")
+    _with_inputs(monkeypatch, qualified_tips=30_000, tipped_occupation_code=1)
+    d = draft.build(senior_lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert _need(d, "Sch 1-A", "7") == 25_000.0
+    assert _need(d, "Sch 1-A", "8") == 155_500.0
+    assert _need(d, "Sch 1-A", "9") == 150_000.0
+    assert _need(d, "Sch 1-A", "10") == 5_500.0
+    assert _need(d, "Sch 1-A", "11") == 5.0
+    assert _need(d, "Sch 1-A", "12") == 500.0
+    assert _need(d, "Sch 1-A", "13") == 24_500.0 == _need(d, "1040", "13b")
+    assert any("rounds the phase-out down" in n for n in d.notes), d.notes
+
+
+def test_schedule_1a_car_loan_interest_rounds_the_excess_up(
+    senior_lay: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _answers(senior_lay, wages="105,500", birth_date="1971-06-15")
+    _with_inputs(monkeypatch, car_loan_interest=12_000)
+    d = draft.build(senior_lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert _need(d, "Sch 1-A", "24") == 10_000.0
+    assert _need(d, "Sch 1-A", "27") == 5_500.0
+    assert _need(d, "Sch 1-A", "28") == 6.0
+    assert _need(d, "Sch 1-A", "29") == 1_200.0
+    assert _need(d, "Sch 1-A", "30") == 8_800.0 == _need(d, "1040", "13b")
+
+
+def test_schedule_1a_tips_without_an_occupation_code_are_not_drafted(
+    senior_lay: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _answers(senior_lay, wages="60,000", birth_date="1971-06-15")
+    _with_inputs(monkeypatch, qualified_tips=5_000)
+    d = draft.build(senior_lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert d.get("Sch 1-A", "13") is None
+    assert _need(d, "1040", "13b") == 0.0
+    assert any("tipped occupation code" in n for n in d.notes)
+
+
+@pytest.mark.parametrize(
+    ("fields", "line"),
+    [
+        ({"qualified_tips": 10_000, "tipped_occupation_code": 1}, "13"),
+        ({"qualified_overtime": 4_000}, "21"),
+    ],
+)
+def test_married_separate_tips_and_overtime_are_not_deducted_and_line_16_follows(
+    senior_lay: Layout,
+    monkeypatch: pytest.MonkeyPatch,
+    fields: dict[str, int],
+    line: str,
+) -> None:
+    """The statute gives no tips or overtime deduction to married filing
+    separately; the engine does not apply that rule. Line 16 is the tax on the
+    form's own line 15 ($80,000 less the $15,750 standard deduction), not on
+    the engine's taxable income that still holds the deduction."""
+    _answers(
+        senior_lay,
+        wages="80,000",
+        birth_date="1971-06-15",
+        filing_status="married_separate",
+    )
+    _with_inputs(monkeypatch, **fields)
+    d = draft.build(senior_lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert d.get("Sch 1-A", line) is None
+    assert _need(d, "1040", "13b") == 0.0
+    assert _need(d, "1040", "15") == 64_250.0
+    assert _need(d, "1040", "16") == 9_049.0
+    assert any("married filing separately" in n for n in d.notes), d.notes
+
+
+def test_married_separate_keeps_car_loan_interest(
+    senior_lay: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _answers(
+        senior_lay,
+        wages="80,000",
+        birth_date="1971-06-15",
+        filing_status="married_separate",
+    )
+    _with_inputs(monkeypatch, qualified_tips=10_000, car_loan_interest=3_000)
+    d = draft.build(senior_lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert _need(d, "Sch 1-A", "30") == 3_000.0 == _need(d, "1040", "13b")
+    assert _need(d, "1040", "15") == 61_250.0
+
+
+def test_the_forms_rounded_phase_out_re_prices_line_16(
+    senior_lay: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The form leaves $50 more tips deduction than the engine's smooth
+    phase-out: line 15 is $50 lower, so line 16 is the tax on that lower
+    income ($20,507 on $115,250), not the engine's $20,519 on $115,300."""
+    _answers(senior_lay, wages="155,500", birth_date="1971-06-15")
+    _with_inputs(monkeypatch, qualified_tips=30_000, tipped_occupation_code=1)
+    d = draft.build(senior_lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert _need(d, "1040", "15") == 115_250.0
+    assert _need(d, "1040", "16") == 20_507.0
+    assert any("rounds the phase-out down" in n and "line 16" in n for n in d.notes), (
+        d.notes
+    )

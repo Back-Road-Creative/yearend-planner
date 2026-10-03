@@ -165,6 +165,27 @@ def thresholds(year: int, filing_status: str) -> dict[str, float]:
     }
 
 
+def self_employment_parameters(year: int) -> dict[str, float]:
+    """The Schedule SE constants the engine prices with, so the draft's Part I
+    lines use the same wage base and rates: the Social Security wage base (line
+    7), the 12.4% and 2.9% rates (lines 10 and 11), the $400 floor (line 4c),
+    the share of the tax deducted (line 13) and the share of net profit left
+    after the employer-equivalent half (the 92.35% of line 4a)."""
+    ss = _param("gov.irs.self_employment.rate.social_security", year)
+    medicare = _param("gov.irs.self_employment.rate.medicare", year)
+    return {
+        "wage_base": _param("gov.irs.payroll.social_security.cap", year),
+        "social_security_rate": ss,
+        "medicare_rate": medicare,
+        "floor": _param("gov.irs.self_employment.net_earnings_exemption", year),
+        "net_earnings_share": 1
+        - _param("gov.irs.ald.misc.employer_share", year) * (ss + medicare),
+        "deductible_share": _param(
+            "gov.irs.ald.self_employment_tax.percent_deductible", year
+        ),
+    }
+
+
 PREFERENTIAL = ("qualified_dividend_income", "long_term_capital_gains")
 PREMIUMS = "self_employed_health_insurance_premiums"
 

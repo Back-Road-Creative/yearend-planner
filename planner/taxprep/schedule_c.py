@@ -221,6 +221,54 @@ def label(line: str) -> str:
     return TOTALS[line]
 
 
+NOT_BUILT = (
+    "Schedule C: cost of goods sold (Part III), depreciation (line 13, Form 4562), "
+    "the home office (line 30, Form 8829) and the vehicle questions (Part IV) are "
+    "not built from bank rows; line 31 is line 29 as it stands"
+)
+DERIVED = {"3": "Subtract line 2 from line 1", "29": "Tentative profit or (loss)"}
+
+
+def _form_order(line: str) -> tuple[int, str]:
+    digits = line.rstrip("abcdefghijklmnopqrstuvwxyz")
+    return int(digits), line[len(digits) :]
+
+
+def sheet(sc: ScheduleC) -> list[tuple[str, str, float, str]]:
+    """The draft return's Schedule C: (line, label, dollars, where it came from)
+    in form order, every line tied to the bank rows or forms behind it. Empty
+    until a row is categorised into a Schedule C line. Lines 3 and 29 are the
+    form's own arithmetic over the lines built here."""
+    if not sc.lines:
+        return []
+    out: dict[str, tuple[str, float, str]] = {}
+    for category, (line, text) in CATEGORIES.items():
+        if line not in sc.lines:
+            continue
+        n = len(sc.rows.get(category, []))
+        rows = f"{n} bank row(s) categorised {category}"
+        if category == MEALS:
+            rows = f"half of {rows}"
+        out[line] = (text, sc.lines[line], rows)
+    if sc.receipts_forms > sc.receipts_rows:
+        out["1"] = (
+            out["1"][0],
+            sc.lines["1"],
+            f"1099-NEC and 1099-K total (above the {sc.receipts_rows:,.2f} of "
+            "categorised receipts)",
+        )
+    out["3"] = (DERIVED["3"], round(sc.lines["1"] - sc.lines["2"], 2), "1 - 2")
+    out["7"] = (
+        TOTALS["7"],
+        sc.lines["7"],
+        "line 3 (no cost of goods sold or other income is built from bank rows)",
+    )
+    out["28"] = (TOTALS["28"], sc.lines["28"], "sum of lines 8 through 27a")
+    out["29"] = (DERIVED["29"], round(sc.lines["7"] - sc.lines["28"], 2), "7 - 28")
+    out["31"] = (TOTALS["31"], sc.lines["31"], "line 29 (no home office on line 30)")
+    return [(ln, *out[ln]) for ln in sorted(out, key=_form_order)]
+
+
 def store(conn: sqlite3.Connection, lay: Layout, year: int) -> ScheduleC:
     """Rebuild the year and replace its SCH-C facts (none when no row is
     categorised into a Schedule C line)."""
