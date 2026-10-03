@@ -5,7 +5,7 @@ sha256 is published beside it. The flow never touches the live folders until the
 candidate has passed the same selfcheck the live install passes:
 
     python-candidate/   the zip extracted; selfcheck run with its own interpreter
-    python/ planner/ config/ templates/ + planner.cmd LICENSE README.md VERSION
+    python/ planner/ config/ templates/ + planner.cmd LICENSE README.md GUIDE.md VERSION
                         live, swapped only after the candidate passes
     python-previous/    the last live set, restored by ``planner update --rollback``
 
@@ -38,7 +38,7 @@ CANDIDATE = "python-candidate"
 LIVE = "python"
 PREVIOUS = "python-previous"
 SWAPPED_DIRS = ("python", "planner", "config", "templates")
-SWAPPED_FILES = ("planner.cmd", "LICENSE", "README.md", "VERSION")
+SWAPPED_FILES = ("planner.cmd", "LICENSE", "README.md", "GUIDE.md", "VERSION")
 READY = "READY.json"
 LAUNCHER_SWAP = 75
 SWAP_CMD = r"""@echo off

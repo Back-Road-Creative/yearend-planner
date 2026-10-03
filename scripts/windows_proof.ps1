@@ -97,7 +97,7 @@ $ver = (Get-Content -LiteralPath (Join-Path $moved 'VERSION')).Trim()
 $next = "$ver.1"
 $cand = Join-Path $base 'candidate'
 New-Item -ItemType Directory -Force -Path $cand | Out-Null
-foreach ($n in 'python', 'planner', 'config', 'templates', 'planner.cmd', 'LICENSE', 'README.md') {
+foreach ($n in 'python', 'planner', 'config', 'templates', 'planner.cmd', 'LICENSE', 'README.md', 'GUIDE.md') {
     Copy-Item -Recurse -LiteralPath (Join-Path $moved $n) -Destination $cand
 }
 Set-Content -LiteralPath (Join-Path $cand 'VERSION') -Value $next -Encoding ascii
