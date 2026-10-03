@@ -256,3 +256,23 @@ template now reads boxes 1, 2, 16 and 17).
 Income with over half in one quarter, or a planned year-end lump, raises the
 annualized-method flag (Schedule AI is not computed). The Form 2210 penalty is
 reported as unavailable.
+
+## The plan on one page (Phase 4e)
+
+`planner plan --year 2026` is the year-end plan: the Needed panel (what is
+still missing and what is standing in from YTD), projected MAGI against every
+watched line, the Roth conversion candidates and the recommended one, the
+spending band, the glide path with its stresses and the first month the cash
+line goes negative, the cash to raise and the lots to sell, estimated tax by
+agency with the next payment, wash-sale flags and open windows, and the
+deadline calendar from October through next September. The same `--as-of`
+and override options as the planners it composes. A planner whose required
+input is still unknown reports what it needs and the rest of the page still
+renders; nothing is estimated in its place. The page is also written to
+`out/plan-<year>.md` (personal, gitignored; `--no-write` skips it).
+
+Every date on the calendar moves off a weekend or a federal holiday by the
+rule in `planner/plan/calendar.py` (a due date to the next business day, a
+year-end cut-off to the one before, an opening not at all); the holidays are
+computed, including DC Emancipation Day, which the IRS counts. Estimated-tax
+installments use the same shift.

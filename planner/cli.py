@@ -900,6 +900,36 @@ def paid(
     )
 
 
+@app.command()
+def plan(
+    year: int = typer.Option(..., help="plan year"),
+    as_of: str | None = AS_OF,
+    q4_dividends: float = Q4,
+    sales_st: float = ST,
+    sales_lt: float = LT,
+    conversion: float = CONV,
+    hsa: float | None = HSA,
+    write: bool = typer.Option(True, help="also write out/plan-<year>.md"),
+) -> None:
+    """The year-end plan on one page: the Needed panel, projected MAGI against
+    every line, the conversion, the spending band, the glide path, cash to
+    raise, estimated tax, wash sales and the deadline calendar. A planner
+    still missing an input says so instead of stopping the page."""
+    from datetime import date
+
+    from planner.plan import year as year_plan
+
+    yp = year_plan.assemble(
+        layout(),
+        year,
+        date.fromisoformat(as_of) if as_of else None,
+        _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa),
+    )
+    typer.echo(year_plan.render(yp), nl=False)
+    if write:
+        typer.echo(f"written {year_plan.write(layout(), yp)}")
+
+
 def main() -> int:
     app()
     return 0
