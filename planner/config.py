@@ -26,6 +26,7 @@ ASSUMPTION_FIELDS = (
     "ss_claim_age",
     "conversion_margin",
     "conversion_cap",
+    "roth_basis_contributions",
 )
 
 

@@ -149,3 +149,30 @@ drop would. `planner confirm --doc 3 --reject` drops the values, forgets the doc
 `data/inbox/UNMATCHED/` with a reason file. Without the OCR engine installed, scans and
 photos go to `UNMATCHED` with that reason and the values can still be typed with
 `planner enter`.
+
+## The ledger as a portfolio (Phase 3)
+
+Every account number the exports name is an account; the planner asks for each
+one's kind exactly once through the Needed panel (`planner enter
+account:12345678 taxable`, one of `taxable`, `trad_ira`, `inherited_ira`, `roth`,
+`hsa`, `cash`) and, for an inherited IRA, the date of death that starts the
+10-year clock. `planner account <number> --name ... --type ... --balance ...`
+describes an account in `data/profile/accounts.yaml` directly; a typed balance
+is for an account no export covers (a bank export has no balance column).
+Balances are the newest holdings snapshot per account and lots the newest
+cost-basis export, so re-dropping a download replaces the picture instead of
+adding to it.
+
+`planner status --year 2026` prints each account, the total, the money that is
+*accessible* without a penalty (taxable and cash balances, lifetime Roth
+contributions from `roth_basis_contributions` or the sum of Form 5498 box 10,
+and conversions past their clock) and the money that is *locked* (traditional
+and inherited IRAs, the HSA, Roth earnings, unseasoned conversions), the
+all-time peak (persisted in the ledger so a drawdown is measured from it), each
+inherited IRA's empty-by date, YTD income by type from the derived rows,
+unrealized gains by lot split short/long, and the capital loss carried in
+(`prior_capital_loss_carryforward`, from last year's carryover worksheet).
+`planner convert 2026-06-01 25000 --from 33333333` records a Roth conversion and
+dates when its principal is penalty-free: January 1 of the fifth year after the
+conversion or the IRA access age, whichever comes first. An inherited IRA is
+refused as a source; so is any account not typed `trad_ira`.

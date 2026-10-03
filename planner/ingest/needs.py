@@ -18,7 +18,7 @@ from typing import Any
 import yaml
 
 from planner.config import ASSUMPTION_FIELDS, load_assumptions
-from planner.ledger import db
+from planner.ledger import db, portfolio
 from planner.paths import Layout
 
 PROFILE = "profile"
@@ -27,6 +27,7 @@ YEAR = "year"
 
 MANUAL_VALUES = "values"
 MANUAL_DONT_HAVE = "dont_have"
+ACCOUNT = "account:"  # dynamic keys: account:<number>, account:<number>:death
 FILING = ("single", "married_joint", "married_separate", "head_of_household")
 
 
@@ -169,6 +170,16 @@ NEEDS: tuple[Need, ...] = (
         PROFILE,
     ),
     Need(
+        "roth_basis_contributions",
+        "Roth IRA contributions, lifetime total ($)",
+        "the part of the Roth balance that is spendable at any age",
+        "the Roth custodian's contribution history (Vanguard: Balances & holdings > "
+        "the Roth account > Contributions), or the sum of every Form 5498 box 10",
+        "money",
+        PROFILE,
+        estimate=(("5498", "10"),),
+    ),
+    Need(
         "ss_estimate_62",
         "SS monthly estimate at 62",
         "claim-age comparison",
@@ -221,6 +232,15 @@ NEEDS: tuple[Need, ...] = (
         "money",
         PRIOR,
         boxes=(("NC-D400", "15"),),
+    ),
+    Need(
+        "prior_capital_loss_carryforward",
+        "Capital loss carried into this year ($)",
+        "offsets this year's gains before any is taxed",
+        "last year's return: the Capital Loss Carryover Worksheet in the Schedule D "
+        "instructions (0 when Schedule D line 16 was not a loss)",
+        "money",
+        PRIOR,
     ),
     Need(
         "wages",
@@ -371,10 +391,38 @@ def load_profile(lay: Layout) -> dict[str, Any]:
     return load_assumptions(path)
 
 
+def account_need(number: str, death: bool = False) -> Need:
+    """The two items an export cannot answer about an account it names: what
+    kind of account it is, and for an inherited IRA, when the clock started."""
+    if death:
+        return Need(
+            f"{ACCOUNT}{number}:death",
+            f"Date of death for inherited IRA {number}",
+            "the 10-year emptying deadline",
+            "the inheritance paperwork or the custodian's beneficiary letter",
+            "date",
+            PROFILE,
+        )
+    return Need(
+        f"{ACCOUNT}{number}",
+        f"Account type for {number}",
+        "which balances are spendable, locked or convertible",
+        "the account's statement header: brokerage = taxable, traditional IRA, "
+        "inherited IRA, Roth IRA, HSA, or a bank account = cash",
+        "enum",
+        PROFILE,
+        choices=portfolio.TYPES,
+    )
+
+
 def need_for(key: str) -> Need:
     for n in NEEDS:
         if n.key == key:
             return n
+    if key.startswith(ACCOUNT):
+        number, _, tail = key[len(ACCOUNT) :].partition(":")
+        if number and tail in ("", "death"):
+            return account_need(number, death=tail == "death")
     raise KeyError(f"no such item: {key}")
 
 
@@ -410,7 +458,12 @@ def enter(lay: Layout, year: int, key: str, text: str) -> Any:
     year's manual file. Returns the stored value."""
     need = need_for(key)
     value = parse_value(need, text)
-    if need.scope == PROFILE:
+    if key.startswith(ACCOUNT):
+        number, _, tail = key[len(ACCOUNT) :].partition(":")
+        portfolio.save_account(
+            lay, number, **{"date_of_death" if tail else "type": value}
+        )
+    elif need.scope == PROFILE:
         path = profile_path(lay)
         load_profile(lay)
         data = _read(path)
@@ -483,10 +536,34 @@ def _needed(conn: sqlite3.Connection, lay: Layout, year: int) -> NeedsReport:
         if hit is not None:
             report.items.append(Status(need, "actual", hit[0], hit[1]))
             continue
-        est = _sum_boxes(conn, need.estimate, year) if need.estimate else None
+        est = _sum_boxes(conn, need.estimate, fact_year) if need.estimate else None
         if est is not None:
             report.items.append(Status(need, "estimate", est[0], est[1]))
             continue
         dh = profile_dh if need.scope == PROFILE else set(manual[MANUAL_DONT_HAVE])
         report.items.append(Status(need, "dont_have" if need.key in dh else "missing"))
+    accounts = portfolio.load_accounts(lay)
+    for number in portfolio.seen_accounts(conn):
+        entry = accounts.get(number, {})
+        need = account_need(number)
+        if entry.get("type"):
+            report.items.append(Status(need, "actual", entry["type"], "accounts.yaml"))
+        else:
+            report.items.append(Status(need, "missing"))
+        if entry.get("type") == "inherited_ira":
+            need = account_need(number, death=True)
+            death = entry.get("date_of_death")
+            state = "actual" if death else "missing"
+            report.items.append(
+                Status(need, state, death, "accounts.yaml" if death else "")
+            )
     return report
+
+
+def need_value(conn: sqlite3.Connection, lay: Layout, year: int, key: str) -> Any:
+    """One item's value as the Needed panel sees it (typed, form or estimate),
+    or None when it is missing or marked don't-have."""
+    for st in _needed(conn, lay, year).items:
+        if st.need.key == key:
+            return st.value if st.state in ("actual", "estimate") else None
+    return None
