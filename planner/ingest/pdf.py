@@ -35,6 +35,7 @@ class Unmatched(ValueError):
 
 
 Value = float | str  # dollars, or the words of a text or check box
+Spot = tuple[int, int]  # (page from 1, line from 0) of a value in a page's text
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,20 @@ class Box:
         if not word or (self.allowed and word not in self.allowed):
             return None
         return word
+
+    def offset(self, text: str) -> int | None:
+        """Where in ``text`` the value ``read`` takes starts (for a check box,
+        where its marked label starts), or None when it is not there."""
+        if self.kind == "check":
+            for _, pat in self.options:
+                m = pat.search(text)
+                if m:
+                    return m.start()
+            return None
+        m = self.pattern.search(text)
+        if m is None:
+            return None
+        return m.start(self.group) if m.start(self.group) >= 0 else m.start()
 
 
 @dataclass(frozen=True)
@@ -105,6 +120,16 @@ class Template:
             found[box.name] = (box.label, value)
         return found, missing
 
+    def spots(self, text: str, page: int, found: dict[str, Any]) -> dict[str, Spot]:
+        """Where each found box's value sits in ``text``: the page and the line
+        (counted from 0) it starts on."""
+        out: dict[str, Spot] = {}
+        for box in self.boxes:
+            at = box.offset(text) if box.name in found else None
+            if at is not None:
+                out[box.name] = (page, text.count("\n", 0, at))
+        return out
+
 
 @dataclass(frozen=True)
 class ParsedForm:
@@ -114,6 +139,9 @@ class ParsedForm:
     page: int
     boxes: dict[str, tuple[str, Value]] = field(default_factory=dict)
     ocr: bool = False  # read by OCR: lands pending, not accepted
+    # box -> (page, line) its value was read from; kept for OCR, where the line
+    # is cut from the scan and shown beside the value at confirm
+    spots: dict[str, Spot] = field(default_factory=dict, compare=False)
 
 
 def parse_amount(raw: str) -> float:
@@ -294,7 +322,8 @@ def _scan_only(typed: list[ParsedForm], scanned: list[ParsedForm]) -> list[Parse
                     )
                 del boxes[box]
         if boxes:
-            kept.append(replace(new, boxes=boxes))
+            spots = {b: s for b, s in new.spots.items() if b in boxes}
+            kept.append(replace(new, boxes=boxes, spots=spots))
     return kept
 
 
@@ -332,9 +361,12 @@ def _parse_pages(
                     f"page {page_no}: {tpl.form} {year}: required boxes not found: "
                     + ", ".join(missing)
                 )
+            spots = tpl.spots(text, page_no, boxes) if ocr else {}
             _merge(
                 forms,
-                ParsedForm(tpl.form, year, tpl.find_issuer(text), page_no, boxes, ocr),
+                ParsedForm(
+                    tpl.form, year, tpl.find_issuer(text), page_no, boxes, ocr, spots
+                ),
             )
     return forms, notes
 
@@ -351,5 +383,7 @@ def _merge(forms: list[ParsedForm], new: ParsedForm) -> None:
                     f"{old.boxes[box][1]} but page {new.page} says {value}"
                 )
         old.boxes.update(new.boxes)
+        for box, spot in new.spots.items():
+            old.spots.setdefault(box, spot)
         return
     forms.append(new)

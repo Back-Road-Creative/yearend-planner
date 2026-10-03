@@ -14,7 +14,8 @@ import email.parser
 import email.policy
 import re
 import secrets
-from collections.abc import Callable
+import sqlite3
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from http import HTTPStatus
@@ -24,7 +25,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from planner.dashboard import page, render
 from planner.engine.household import MissingInputError
-from planner.ingest import confirm, ingest, needs
+from planner.ingest import confirm, ingest, needs, ocr
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import rollover
@@ -91,12 +92,38 @@ class App:
             return f"not saved: {exc}"
         return f"marked {key}: don't have"
 
-    def confirm(self, doc: str, action: str) -> str:
+    def crop(self, fact: str) -> bytes | None:
+        """The scan crop saved for one value still awaiting confirm, or None.
+        The id is looked up in the ledger and the file name built from it, so
+        nothing the request carries is ever part of a path."""
+        if not fact.isdecimal() or len(fact) > 18:
+            return None
+        conn = db.connect(self.lay.data / "ledger" / "planner.db")
+        try:
+            row = conn.execute(
+                "SELECT document_id FROM facts WHERE id = ? AND status = 'pending'",
+                (int(fact),),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        path = ocr.crop_path(self.lay, int(row["document_id"]), int(fact))
+        return path.read_bytes() if path.is_file() else None
+
+    def confirm(
+        self, doc: str, action: str, edits: dict[str, str] | None = None
+    ) -> str:
         conn = db.connect(self.lay.data / "ledger" / "planner.db")
         try:
             if action == "accept":
-                facts = confirm.accept(conn, int(doc))
-                return f"accepted {len(facts)} value(s) from document {doc}"
+                typed: dict[str, float | str] = {
+                    b: v for b, v in (edits or {}).items() if v.strip()
+                }
+                changed = _changed(conn, int(doc), typed)
+                facts = confirm.accept(conn, int(doc), {b: typed[b] for b in changed})
+                fixed = f", {len(changed)} corrected" if changed else ""
+                return f"accepted {len(facts)} value(s) from document {doc}{fixed}"
             if action == "reject":
                 where = confirm.reject(self.lay, conn, int(doc))
                 return f"rejected document {doc}; the file is at {where}"
@@ -123,9 +150,40 @@ class App:
         return f"tax package written to {pack.folder} ({len(pack.written)} files)"
 
 
+def _changed(
+    conn: sqlite3.Connection, doc: int, typed: Mapping[str, float | str]
+) -> list[str]:
+    """The typed boxes whose text differs from what OCR read, so a page posted
+    with every field prefilled reports only the real corrections."""
+    rows = [f for f in confirm.pending(conn) if f.document_id == doc]
+    now = {f.box: f for f in rows}
+    shared = confirm.shared_boxes(rows)
+    out: list[str] = []
+    for box, raw in typed.items():
+        f = now.get(box)
+        if f is None or box in shared:
+            out.append(box)  # unknown or ambiguous box: accept refuses it by name
+        elif f.text is not None:
+            if " ".join(str(raw).split()) != f.text:
+                out.append(box)
+        else:
+            try:
+                same = db.to_cents(confirm.money(box, raw)) == db.to_cents(f.value)
+            except ValueError:
+                same = False  # accept will refuse it with the reason
+            if not same:
+                out.append(box)
+    return out
+
+
 def _form(body: bytes) -> dict[str, str]:
     q = parse_qs(body.decode("utf-8"), keep_blank_values=True)
     return {k: v[0] for k, v in q.items()}
+
+
+def _edits(form: dict[str, str]) -> dict[str, str]:
+    """The corrections typed on the page: ``edit_<box>`` fields, by box."""
+    return {k[len("edit_") :]: v for k, v in form.items() if k.startswith("edit_")}
 
 
 def _files(content_type: str, body: bytes) -> list[tuple[str, bytes]]:
@@ -156,8 +214,8 @@ def handler(app: App) -> type[BaseHTTPRequestHandler]:
             got = parse_qs(urlsplit(self.path).query).get("token", [""])[0]
             return secrets.compare_digest(got, app.token)
 
-        def _send(self, status: HTTPStatus, body: str, ctype: str) -> None:
-            data = body.encode("utf-8")
+        def _send(self, status: HTTPStatus, body: str | bytes, ctype: str) -> None:
+            data = body if isinstance(body, bytes) else body.encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
@@ -176,8 +234,16 @@ def handler(app: App) -> type[BaseHTTPRequestHandler]:
             self._send(HTTPStatus.FORBIDDEN, "forbidden\n", "text/plain")
 
         def do_GET(self) -> None:  # noqa: N802
-            if urlsplit(self.path).path != "/" or not self._allowed():
+            parts = urlsplit(self.path)
+            if parts.path not in ("/", "/crop") or not self._allowed():
                 self._refuse()
+                return
+            if parts.path == "/crop":
+                png = app.crop(parse_qs(parts.query).get("fact", [""])[0])
+                if png is None:
+                    self._send(HTTPStatus.NOT_FOUND, "no such image\n", "text/plain")
+                else:
+                    self._send(HTTPStatus.OK, png, "image/png")
                 return
             self._send(HTTPStatus.OK, app.html(), "text/html; charset=utf-8")
 
@@ -209,7 +275,7 @@ ROUTES: dict[str, Callable[[App, str, bytes], str]] = {
     ),
     "/dont-have": lambda a, ct, b: a.dont_have(_form(b).get("key", "")),
     "/confirm": lambda a, ct, b: a.confirm(
-        _form(b).get("doc", ""), _form(b).get("action", "")
+        _form(b).get("doc", ""), _form(b).get("action", ""), _edits(_form(b))
     ),
     "/taxpack": lambda a, ct, b: a.taxpack(),
     "/rollover": lambda a, ct, b: a.rollover(),

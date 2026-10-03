@@ -14,6 +14,7 @@ import hashlib
 import shutil
 import zipfile
 import zlib
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -244,6 +245,19 @@ def _facts(forms: list[ParsedForm]) -> list[db.Fact]:
     ]
 
 
+def _remember(
+    ocr: ocr_engine.PageTexts, seen: list[Sequence[str]]
+) -> ocr_engine.PageTexts:
+    """``ocr`` that keeps what it returned, so the crops can be cut from it."""
+
+    def read(path: Path) -> Sequence[str]:
+        pages = ocr(path)
+        seen.append(pages)
+        return pages
+
+    return read
+
+
 def ingest(
     lay: Layout,
     templates_dir: Path | None = None,
@@ -281,17 +295,19 @@ def ingest(
             continue
         forms: list[ParsedForm] = []
         rows: list[db.Row] = []
+        scans: list[Sequence[str]] = []  # what the engine read, to cut crops from
+        reader = None if ocr is None else _remember(ocr, scans)
         try:
             if kind == "pdf":
                 notes: list[str] = []
-                forms = parse_pdf(path, templates, ocr, notes)
+                forms = parse_pdf(path, templates, reader, notes)
                 report.notes.extend((label, n) for n in notes)
             elif kind == "csv":
                 rows = parse_csv(path, csv_templates)
-            elif ocr is None:
+            elif reader is None:
                 raise Unmatched(f"image: {ocr_engine.NOT_INSTALLED}")
             else:
-                forms = parse_texts(list(ocr(path)), templates, ocr=True)
+                forms = parse_texts(list(reader(path)), templates, ocr=True)
         except Unmatched as exc:
             to_unmatched(path, inbox, str(exc))
             report.unmatched.append((label, str(exc)))
@@ -308,6 +324,14 @@ def ingest(
         )
         years = [f.tax_year for f in forms] + [r.tax_year for r in rows if r.tax_year]
         year = min(years) if years else datetime.now(UTC).year
+        if any(f.ocr for f in forms):
+            made, wanted = ocr_engine.write_crops(
+                lay, conn, doc_id, forms, scans[-1] if scans else None
+            )
+            if made < wanted:
+                report.notes.append(
+                    (label, f"{wanted - made} OCR value(s) have no image crop")
+                )
         archived = archive(path, archive_root, year, fp)
         db.set_archived(conn, doc_id, str(archived.relative_to(lay.data)))
         labels = [f"{f.form} {f.tax_year} ({f.issuer})" for f in forms]

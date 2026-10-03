@@ -148,4 +148,5 @@ def test_page_renders_a_pending_ocr_document_with_a_text_box(
     static = render.write_static(home, pg).read_text(encoding="utf-8")
     for text in (live, static):
         assert "Distribution code" in text and "12,000.00" in text
-        assert '<td class="num">6</td>' in text
+    assert '<td class="num">6</td>' in static
+    assert 'name="edit_7" value="6"' in live  # the live page lets the word be retyped

@@ -43,6 +43,49 @@ def photo(path: Path, width: int = 40) -> Path:
     return path
 
 
+def fake_engine(
+    monkeypatch: pytest.MonkeyPatch, lines: list[str], top: int = 20, step: int = 40
+) -> None:
+    """An engine double: one 20-pixel-tall box per line, ``step`` pixels apart,
+    in the pixel space of whatever image it is handed."""
+
+    def engine(_array: object) -> tuple[list[list[object]], list[float]]:
+        return [
+            [
+                [[10, y], [410, y], [410, y + 20], [10, y + 20]],
+                text,
+                0.9,
+            ]
+            for i, text in enumerate(lines)
+            for y in [top + i * step]
+        ], [0.0]
+
+    monkeypatch.setattr(ocr, "available", lambda: True)
+    monkeypatch.setattr(ocr, "_engine", lambda: engine)
+
+
+def ruled_photo(path: Path, lines: int, mark: int | None = None) -> Path:
+    """A white image tall enough for ``lines`` engine-double lines, with a black
+    bar on line ``mark`` so a crop shows which line it was cut from."""
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (500, 40 + 40 * lines), "white")
+    if mark is not None:
+        y = 20 + mark * 40
+        ImageDraw.Draw(img).rectangle([10, y + 2, 200, y + 16], fill="black")
+    img.save(path)
+    return path
+
+
+def dark(png: Path) -> bool:
+    from PIL import Image
+
+    with Image.open(png) as im:
+        return (
+            im.convert("L").point(lambda v: 255 if v < 60 else 0).getbbox() is not None
+        )
+
+
 def ledger(lay: Layout) -> db.sqlite3.Connection:  # type: ignore[name-defined]
     return db.connect(lay.data / "ledger" / "planner.db")
 
@@ -304,3 +347,130 @@ def test_reject_on_a_mixed_pdf_keeps_the_text_page_values(lay: Layout) -> None:
     assert not (lay.data / "inbox" / "UNMATCHED" / "mixed.pdf").exists()
     rep = ingest(lay, ocr=scan_of_page_two)  # same file again: still a duplicate
     assert rep.pending == [] and rep.imported == []
+
+
+def test_spots_name_the_page_and_line_each_ocr_value_came_from() -> None:
+    from planner.ingest.pdf import load_templates, parse_texts
+    from tests.test_ingest import TEMPLATES
+
+    (form,) = parse_texts(["\n".join(DIV_2025)], load_templates(TEMPLATES), ocr=True)
+    at = {box: DIV_2025[line].split()[0] for box, (_, line) in form.spots.items()}
+    assert form.spots["1a"] == (1, 3) and form.spots["1b"] == (1, 4)
+    assert at == {box: box for box in form.spots}  # each line starts with its box
+    (typed,) = parse_texts(["\n".join(DIV_2025)], load_templates(TEMPLATES))
+    assert typed.spots == {}  # a text layer needs no crop
+
+
+def test_crop_written_per_value(lay: Layout, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_engine(monkeypatch, DIV_2025)
+    mark = DIV_2025.index(next(x for x in DIV_2025 if x.startswith("1a ")))
+    ruled_photo(lay.data / "inbox" / "photo.png", len(DIV_2025), mark)
+    rep = ingest(lay)
+    assert [i.file_name for i in rep.pending] == ["photo.png"] and rep.notes == []
+    conn = ledger(lay)
+    pend = pending(conn)
+    assert {f.box for f in pend} >= {"1a", "1b", "2a"}
+    for f in pend:  # a PNG under data/ for every box waiting
+        png = ocr.crop_path(lay, f.document_id, f.id)
+        assert png.is_file() and png.is_relative_to(lay.data)
+        assert png.read_bytes().startswith(b"\x89PNG")
+    by = {f.box: ocr.crop_path(lay, f.document_id, f.id) for f in pend}
+    assert dark(by["1a"]) and not dark(by["1b"]) and not dark(by["2a"])
+    from PIL import Image
+
+    with Image.open(by["1a"]) as im:
+        assert im.size == (430, 60)  # the line, a line's margin on each side
+
+
+def test_crops_of_a_scanned_pdf_come_from_the_page_the_value_was_read_on(
+    lay: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_engine(monkeypatch, INT_2025)
+    make_pdf(lay.data / "inbox" / "mixed.pdf", [DIV_2025, []])
+    ingest(lay)
+    conn = ledger(lay)
+    waiting = pending(conn)
+    assert {f.form for f in waiting} == {"1099-INT"}  # page 1 came from its text
+    for f in waiting:
+        png = ocr.crop_path(lay, f.document_id, f.id)
+        assert png.is_file()
+    assert sorted(p.name for p in (lay.data / "crops").rglob("*.png")) == sorted(
+        f"{f.id}.png" for f in waiting
+    )
+
+
+def test_text_only_readers_make_no_crops_and_no_fuss(lay: Layout) -> None:
+    photo(lay.data / "inbox" / "photo.png")
+    rep = ingest(lay, ocr=fake_ocr)
+    assert rep.notes == [] and not (lay.data / "crops").exists()
+
+
+def test_a_value_the_engine_cannot_place_is_named_in_the_report(
+    lay: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_engine(monkeypatch, DIV_2025)
+    ruled_photo(lay.data / "inbox" / "photo.png", len(DIV_2025))
+    monkeypatch.setattr(ocr.ScannedPages, "crops", lambda self, spots: {})
+    rep = ingest(lay)
+    ((name, note),) = rep.notes
+    assert name == "photo.png" and "no image crop" in note
+    assert pending(ledger(lay))  # still waiting, just without a picture
+
+
+def test_reject_forgets_the_crops(lay: Layout, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_engine(monkeypatch, DIV_2025)
+    ruled_photo(lay.data / "inbox" / "photo.png", len(DIV_2025))
+    ingest(lay)
+    conn = ledger(lay)
+    doc = pending(conn)[0].document_id
+    assert list(ocr.crop_dir(lay, doc).glob("*.png"))
+    reject(lay, conn, doc)
+    assert not ocr.crop_dir(lay, doc).exists()
+
+
+def test_a_correction_cannot_name_a_box_two_forms_share(
+    lay: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_engine(monkeypatch, [*INT_2025, *DIV_2025])
+    ruled_photo(lay.data / "inbox" / "both.png", len(INT_2025) + len(DIV_2025))
+    ingest(lay)
+    conn = ledger(lay)
+    doc = pending(conn)[0].document_id
+    by_form = {
+        form: {f.box for f in pending(conn) if f.form == form}
+        for form in ("1099-INT", "1099-DIV")
+    }
+    assert by_form["1099-INT"] & by_form["1099-DIV"] == {"4"}  # both read line 4
+    with pytest.raises(ValueError, match="cannot say which"):
+        accept(conn, doc, {"4": 1.0})
+    assert len(pending(conn)) > 0  # nothing was taken in
+    accept(conn, doc, {"1a": 5.0})
+    assert [f.value for f in db.facts_for(conn, 2025, "1099-DIV") if f.box == "1a"] == [
+        5.0
+    ]
+
+
+@pytest.mark.skipif(not ocr.available(), reason="OCR engine not installed")
+def test_real_engine_crop_shows_the_line_it_was_cut_for(tmp_path: Path) -> None:
+    from io import BytesIO
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    img = Image.new("RGB", (1400, 400), "white")
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default(size=34)
+    for i, line in enumerate(INT_LINES):
+        draw.text((40, 30 + i * 80), line, fill="black", font=font)
+    path = tmp_path / "int.png"
+    img.save(path)
+    pages = ocr.page_texts(path)
+    assert isinstance(pages, ocr.ScannedPages)
+    at = next(n for n, t in enumerate(pages[0].split("\n")) if "1,234.56" in t)
+    png = pages.crops([(1, at)])[(1, at)]
+    crop_path = tmp_path / "crop.png"
+    crop_path.write_bytes(png)
+    with Image.open(BytesIO(png)) as crop:
+        assert 0 < crop.height < 400 and crop.width <= 1400
+    (text,) = ocr.page_texts(crop_path)
+    assert "1,234.56" in text and "Interest" in text
+    assert "withheld" not in text  # the line, not the whole page

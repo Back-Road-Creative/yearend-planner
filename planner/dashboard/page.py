@@ -6,7 +6,7 @@ estimate or unavailable; nothing is filled in to look complete."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 
 from planner.engine import feed
@@ -14,7 +14,7 @@ from planner.engine import limits as limits_
 from planner.engine.household import MissingInputError
 from planner.engine.selfcheck import format_years
 from planner.engine.tax import engine_version, published_years
-from planner.ingest import confirm
+from planner.ingest import confirm, ocr
 from planner.ingest.needs import Status, needed
 from planner.ledger import db
 from planner.paths import Layout
@@ -69,6 +69,11 @@ class Pending:
     file_name: str
     form: str
     values: list[tuple[str, str, float | str]]  # (box, label, value or words)
+    crops: dict[int, int] = field(default_factory=dict)  # row of values -> fact id
+    # boxes read for more than one form, payer or year in this scan: a
+    # correction cannot say which one it means, so the page shows them without
+    # an edit field
+    shared: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -136,7 +141,15 @@ def _pending(lay: Layout) -> list[Pending]:
             f.document_id, Pending(f.document_id, f.file_name, f.form, [])
         )
         p.values.append((f.box, f.label, f.value if f.text is None else f.text))
-    return list(docs.values())
+        if ocr.crop_path(lay, f.document_id, f.id).is_file():
+            p.crops[len(p.values) - 1] = f.id
+    return [
+        replace(
+            p,
+            shared=confirm.shared_boxes(f for f in rows if f.document_id == doc),
+        )
+        for doc, p in docs.items()
+    ]
 
 
 def last_import(lay: Layout) -> str | None:

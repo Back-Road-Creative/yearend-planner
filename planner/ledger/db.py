@@ -111,6 +111,7 @@ class Fact:
 class FactRow(Fact):
     document_id: int = 0
     file_name: str = ""
+    id: int = 0
 
 
 @dataclass(frozen=True)
@@ -368,6 +369,7 @@ def facts_for(
             text=r["value_text"],
             document_id=r["document_id"],
             file_name=r["file_name"],
+            id=r["id"],
         )
         for r in conn.execute(sql, args)
     ]
