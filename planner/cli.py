@@ -5,11 +5,15 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 
 from planner import __version__
 from planner.paths import CloudSyncedPathError, layout
+
+if TYPE_CHECKING:
+    from planner.plan.inputs import Overrides
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 
@@ -516,6 +520,120 @@ def status(
     )
     typer.echo(f"capital loss carryforward: {cf}")
     for note in st.notes:
+        typer.echo(f"note: {note}")
+
+
+def _overrides(
+    q4_dividends: float,
+    sales_st: float,
+    sales_lt: float,
+    conversion: float,
+    hsa: float | None,
+) -> Overrides:
+    from planner.plan.inputs import Overrides
+
+    return Overrides(q4_dividends, sales_st, sales_lt, conversion, hsa)
+
+
+Q4 = typer.Option(0.0, help="Q4 dividend estimate to add ($)")
+ST = typer.Option(0.0, help="planned short-term gain to add ($)")
+LT = typer.Option(0.0, help="planned long-term gain to add ($)")
+CONV = typer.Option(0.0, help="planned Roth conversion to add ($)")
+HSA = typer.Option(None, help="planned HSA contribution ($), replaces the ledger's")
+
+
+@app.command()
+def magi(
+    year: int = typer.Option(..., help="plan year"),
+    q4_dividends: float = Q4,
+    sales_st: float = ST,
+    sales_lt: float = LT,
+    conversion: float = CONV,
+    hsa: float | None = HSA,
+) -> None:
+    """Project the full year from the Needed panel plus overrides: every tax
+    figure and the distance to each watched line. Unknown inputs are named,
+    never treated as zero."""
+    from planner.plan.magi import project
+
+    pj = project(
+        layout(), year, _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa)
+    )
+    res = pj.result
+    hh = pj.inputs.household
+    typer.echo(
+        f"{year} {hh.filing_status} {hh.state} age {hh.age}; "
+        f"engine {res.engine_version}"
+    )
+    for k, v in sorted(pj.inputs.origins.items()):
+        if k in pj.inputs.estimates:
+            typer.echo(f"  estimate  {k:30} {v}")
+    for d in pj.inputs.overrides.describe():
+        typer.echo(f"  override  {d}")
+    typer.echo(
+        f"AGI {res.agi:,.2f}  taxable income {res.taxable_income:,.2f}  "
+        f"ACA MAGI {res.aca_magi:,.2f} (add-backs {pj.aca_addbacks:,.2f}; "
+        f"{res.aca_fpl_pct:.0f}% FPL)"
+    )
+    typer.echo(
+        f"federal {res.fed_total_tax:,.2f} (SE {res.se_tax:,.2f}, on gains "
+        f"{res.ltcg_tax:,.2f})  NC {res.state_tax:,.2f}  ACA credit {res.aca_ptc:,.2f}"
+    )
+    for ln in pj.lines:
+        state = "OVER" if ln.over else "under"
+        typer.echo(
+            f"  {ln.name:40} {ln.limit:>12,.2f}  {ln.measure} {ln.value:>12,.2f}  "
+            f"{state} by {abs(ln.room):,.2f}  ({ln.direction})"
+        )
+    if pj.inputs.unknown:
+        typer.echo(
+            "unknown (left out, not zero): "
+            + ", ".join(pj.inputs.unknown)
+            + f"  (planner needed --year {year})"
+        )
+    for note in pj.inputs.notes:
+        typer.echo(f"note: {note}")
+
+
+@app.command()
+def conversions(
+    year: int = typer.Option(..., help="plan year"),
+    q4_dividends: float = Q4,
+    sales_st: float = ST,
+    sales_lt: float = LT,
+    hsa: float | None = HSA,
+    step: int = typer.Option(500, help="sweep step ($)"),
+) -> None:
+    """Size this year's Roth conversion: one engine sweep, a candidate per
+    watched line, each with its federal and NC tax, ACA credit change, Medicaid
+    effect and the cash needed from outside the IRA."""
+    from planner.plan.conversion import size
+
+    sz = size(
+        layout(), year, _overrides(q4_dividends, sales_st, sales_lt, 0.0, hsa), step
+    )
+    bal = "unknown" if sz.trad_ira_balance is None else f"{sz.trad_ira_balance:,.2f}"
+    typer.echo(
+        f"{year}: already converted {sz.already:,.2f}; traditional IRA {bal}; "
+        f"cap {sz.cap:,.2f}; margin {sz.margin:,.2f}"
+    )
+    for c in sz.candidates:
+        mark = "*" if sz.recommendation is c else " "
+        typer.echo(
+            f"{mark} {c.name:15} {c.amount:>12,.2f}  federal +{c.fed_delta:,.2f}  "
+            f"NC +{c.state_delta:,.2f}  ACA credit {c.ptc_delta:+,.2f}  "
+            f"cash needed {c.cash_needed:,.2f}  taxable income {c.taxable_income:,.2f}"
+            f"{'  Medicaid month OVER' if c.medicaid_month_over else ''}"
+            f"{'  WARNING: qualified/LTCG into 15%' if c.qualified_spill else ''}"
+            f"  ({c.note})"
+        )
+    rec = sz.recommendation
+    typer.echo(
+        f"recommendation: {rec.name} {rec.amount:,.2f} ({rec.note})"
+        if rec
+        else "recommendation: none"
+    )
+    for note in sz.notes:
         typer.echo(f"note: {note}")
 
 

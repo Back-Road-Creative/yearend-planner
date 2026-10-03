@@ -35,6 +35,7 @@ class TaxResult:
     medicaid_magi_monthly: float
     room_to_0pct_ltcg: float
     room_to_12pct_top: float
+    fpg: float  # the federal poverty guideline for this household size and state
 
 
 @lru_cache(maxsize=1)
@@ -63,6 +64,10 @@ def thresholds(year: int, filing_status: str) -> dict[str, float]:
     return {
         "ltcg_0pct_top": _param(f"gov.irs.capital_gains.thresholds.1.{fs}", year),
         "bracket_12pct_top": _param(f"gov.irs.income.bracket.thresholds.2.{fs}", year),
+        "std_deduction": _param(f"gov.irs.deductions.standard.amount.{fs}", year),
+        "niit_threshold": _param(
+            f"gov.irs.investment.net_investment_income_tax.threshold.{fs}", year
+        ),
     }
 
 
@@ -144,6 +149,7 @@ def compute(year: int, household: Household) -> TaxResult:
         medicaid_magi_monthly=r(v["medicaid_magi"] / 12),
         room_to_0pct_ltcg=r(th["ltcg_0pct_top"] - v["taxable_income"]),
         room_to_12pct_top=r(th["bracket_12pct_top"] - v["taxable_income"]),
+        fpg=r(fpg),
     )
 
 
