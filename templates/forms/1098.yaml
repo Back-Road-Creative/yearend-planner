@@ -1,0 +1,10 @@
+# Form 1098: mortgage interest and balance.
+form: 1098
+years: [2024, 2025, 2026]
+match: ["1098", "Mortgage Interest Statement"]
+issuer_pattern: "(?:recipient'?s/)?lender'?s name:?\\s*([^\\n]+)"
+boxes:
+  "1": {label: "Mortgage interest received", pattern: '\b1 Mortgage interest received[^\n]*?\s+AMOUNT', required: true}
+  "2": {label: "Outstanding mortgage principal", pattern: '\b2 Outstanding mortgage principal\s+AMOUNT'}
+  "5": {label: "Mortgage insurance premiums", pattern: '\b5 Mortgage insurance premiums\s+AMOUNT'}
+  "6": {label: "Points paid", pattern: '\b6 Points paid on purchase of principal residence\s+AMOUNT'}

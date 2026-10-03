@@ -1,0 +1,9 @@
+# Form 5498-SA: HSA contributions and year-end value.
+form: 5498-SA
+years: [2024, 2025, 2026]
+match: ["5498-SA"]
+issuer_pattern: "(?:trustee'?s or issuer'?s|trustee'?s|issuer'?s) name:?\\s*([^\\n]+)"
+boxes:
+  "2": {label: "Total HSA contributions made in year", pattern: '\b2 Total contributions made in \d{4}\s+AMOUNT', required: true}
+  "3": {label: "Contributions made in the next year for this year", pattern: '\b3 Total HSA or Archer MSA contributions made in \d{4} for \d{4}\s+AMOUNT'}
+  "5": {label: "Fair market value of HSA", pattern: '\b5 Fair market value of HSA[^\n]*?MSA\s+AMOUNT'}

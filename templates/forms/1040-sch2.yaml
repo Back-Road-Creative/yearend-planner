@@ -1,0 +1,10 @@
+# Schedule 2 (Form 1040): additional taxes.
+form: 1040-SCH2
+years: [2024, 2025, 2026]
+match: ["Schedule 2 (Form 1040)"]
+year_pattern: 'Schedule 2 \(Form 1040\)\s*(20\d\d)'
+issuer: self
+boxes:
+  "2": {label: "Excess advance premium tax credit repayment", pattern: 'Excess advance premium tax credit repayment[^\n]*?\b2\s+AMOUNT'}
+  "4": {label: "Self-employment tax", pattern: 'Self-employment tax\. Attach Schedule SE[\s.]*4\s+AMOUNT'}
+  "21": {label: "Total other taxes", pattern: 'These are your total other taxes[\s.]*21\s+AMOUNT', required: true}

@@ -1,0 +1,7 @@
+# Form 1099-SA: HSA distributions.
+form: 1099-SA
+years: [2024, 2025, 2026]
+match: ["1099-SA"]
+boxes:
+  "1": {label: "Gross distribution", pattern: '\b1 Gross distribution\s+AMOUNT', required: true}
+  "2": {label: "Earnings on excess contributions", pattern: '\b2 Earnings on excess cont\.?\s+AMOUNT'}

@@ -165,10 +165,26 @@ def ingest() -> None:
         typer.echo(f"duplicate {name} (already in the ledger; archived)")
     for name, reason in report.unmatched:
         typer.echo(f"UNMATCHED {name}: {reason}")
+    for year, n in sorted(report.derived.items()):
+        typer.echo(f"derived   {year}: {n} YTD facts from rows")
     typer.echo(
         f"batch {report.batch}: {len(report.imported)} imported, "
         f"{len(report.duplicates)} duplicate, {len(report.unmatched)} unmatched"
     )
+
+
+@app.command()
+def derive(
+    year: int = typer.Option(..., help="tax year to recompute from the ledger rows"),
+) -> None:
+    """Recompute the YTD facts (realized gains, dividends, interest, bank flows)
+    for one year from the imported rows; supersedes the previous run."""
+    from planner.ingest.derive import derive as _derive
+    from planner.ledger import db
+
+    conn = db.connect(layout().data / "ledger" / "planner.db")
+    n = _derive(conn, year)
+    typer.echo(f"derived {year}: {n} YTD facts from rows")
 
 
 @app.command()
