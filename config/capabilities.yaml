@@ -23,3 +23,5 @@ needed_panel_registry_diff: verified  # tests/test_needs.py; planner needed / en
 csv_vanguard_download: verified  # tests/test_csv.py (holdings + transactions blocks)
 csv_vanguard_cost_basis_realized_income: partial  # synthetic headers; real export confirms
 csv_bank: verified  # tests/test_csv.py (signed Amount; Debit/Credit)
+ledger_accounts_balances_lots: verified  # tests/test_portfolio.py; planner account / status
+roth_conversion_clock: verified  # tests/test_portfolio.py; planner convert; earlier of Jan 1 +5y and the access age

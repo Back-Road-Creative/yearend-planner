@@ -2,7 +2,9 @@
 
 Phase 2a schema: ``documents`` (one row per imported file, keyed by content
 hash) and ``facts`` (one row per form box read from a page). Money is stored
-as integer cents. Phase 2b adds CSV rows; Phase 3 adds the planner views.
+as integer cents. Phase 2b adds CSV rows; Phase 3 adds ``conversions`` (each Roth
+conversion with the date its money becomes penalty-free) and ``peak`` (the
+all-time high of the portfolio, persisted so a drawdown is measured from it).
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS documents (
@@ -62,6 +64,20 @@ CREATE TABLE IF NOT EXISTS rows (
     raw TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS rows_by_year ON rows (tax_year, source, kind);
+CREATE TABLE IF NOT EXISTS conversions (
+    id INTEGER PRIMARY KEY,
+    date TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL,
+    taxable_cents INTEGER NOT NULL,
+    source_account TEXT NOT NULL,
+    accessible_date TEXT NOT NULL,
+    recorded_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS peak (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    total_cents INTEGER NOT NULL,
+    as_of TEXT NOT NULL
+);
 """
 
 
@@ -276,6 +292,30 @@ def facts_for(
     ]
 
 
+def _row(r: sqlite3.Row) -> LedgerRow:
+    return LedgerRow(
+        source=r["source"],
+        kind=r["kind"],
+        row_key=r["row_key"],
+        account=r["account"],
+        date=r["date"],
+        tax_year=r["tax_year"],
+        type=r["type"],
+        description=r["description"],
+        symbol=r["symbol"],
+        quantity=r["quantity"],
+        price_cents=r["price_cents"],
+        amount_cents=r["amount_cents"],
+        basis_cents=r["basis_cents"],
+        acquired=r["acquired"],
+        term=r["term"],
+        line=r["line"],
+        raw=r["raw"],
+        document_id=r["document_id"],
+        file_name=r["file_name"],
+    )
+
+
 def rows_for(
     conn: sqlite3.Connection,
     tax_year: int | None = None,
@@ -292,27 +332,86 @@ def rows_for(
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY r.date, r.source, r.line"
-    return [
-        LedgerRow(
-            source=r["source"],
-            kind=r["kind"],
-            row_key=r["row_key"],
-            account=r["account"],
-            date=r["date"],
-            tax_year=r["tax_year"],
-            type=r["type"],
-            description=r["description"],
-            symbol=r["symbol"],
-            quantity=r["quantity"],
-            price_cents=r["price_cents"],
-            amount_cents=r["amount_cents"],
-            basis_cents=r["basis_cents"],
-            acquired=r["acquired"],
-            term=r["term"],
-            line=r["line"],
-            raw=r["raw"],
-            document_id=r["document_id"],
-            file_name=r["file_name"],
+    return [_row(r) for r in conn.execute(sql, args)]
+
+
+def latest_rows(conn: sqlite3.Connection, kind: str) -> list[LedgerRow]:
+    """The rows of one kind from each account's most recent import: a holdings
+    or cost-basis export is a snapshot, so only the newest one per account
+    describes the account now."""
+    sql = (
+        "SELECT r.*, d.file_name FROM rows r JOIN documents d ON d.id = r.document_id "
+        "WHERE r.kind = ? AND r.document_id = ("
+        "  SELECT r2.document_id FROM rows r2"
+        "  JOIN documents d2 ON d2.id = r2.document_id"
+        "  WHERE r2.kind = r.kind AND r2.account = r.account"
+        "  ORDER BY d2.imported_at DESC, d2.id DESC LIMIT 1) "
+        "ORDER BY r.account, r.symbol, r.line"
+    )
+    return [_row(r) for r in conn.execute(sql, (kind,))]
+
+
+@dataclass(frozen=True)
+class Conversion:
+    id: int
+    date: str
+    amount: float
+    taxable: float
+    source_account: str
+    accessible_date: str
+
+
+def add_conversion(
+    conn: sqlite3.Connection,
+    *,
+    date: str,
+    amount_cents: int,
+    taxable_cents: int,
+    source_account: str,
+    accessible_date: str,
+) -> int:
+    with conn:
+        cur = conn.execute(
+            "INSERT INTO conversions (date, amount_cents, taxable_cents, "
+            "source_account, accessible_date, recorded_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                date,
+                amount_cents,
+                taxable_cents,
+                source_account,
+                accessible_date,
+                datetime.now(UTC).isoformat(timespec="seconds"),
+            ),
         )
-        for r in conn.execute(sql, args)
+    return int(cur.lastrowid or 0)
+
+
+def conversions(conn: sqlite3.Connection) -> list[Conversion]:
+    return [
+        Conversion(
+            id=r["id"],
+            date=r["date"],
+            amount=from_cents(r["amount_cents"]),
+            taxable=from_cents(r["taxable_cents"]),
+            source_account=r["source_account"],
+            accessible_date=r["accessible_date"],
+        )
+        for r in conn.execute("SELECT * FROM conversions ORDER BY date, id")
     ]
+
+
+def record_peak(
+    conn: sqlite3.Connection, total_cents: int, as_of: str
+) -> tuple[int, str]:
+    """Persist the all-time high; returns (peak_cents, date it was set)."""
+    row = conn.execute("SELECT total_cents, as_of FROM peak WHERE id = 1").fetchone()
+    if row is not None and row["total_cents"] >= total_cents:
+        return int(row["total_cents"]), str(row["as_of"])
+    with conn:
+        conn.execute(
+            "INSERT INTO peak (id, total_cents, as_of) VALUES (1, ?, ?) "
+            "ON CONFLICT (id) DO UPDATE SET total_cents = excluded.total_cents, "
+            "as_of = excluded.as_of",
+            (total_cents, as_of),
+        )
+    return total_cents, as_of

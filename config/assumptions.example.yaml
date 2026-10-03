@@ -19,3 +19,4 @@ ira_access_age: 59.5      # penalty-free IRA access
 ss_claim_age: null        # planned claim age
 conversion_margin: null   # dollars kept below a threshold when sizing a conversion
 conversion_cap: null      # hard cap on a single year's Roth conversion, dollars
+roth_basis_contributions: null  # dollars ever contributed to Roth IRAs (not conversions)

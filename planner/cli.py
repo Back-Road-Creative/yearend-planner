@@ -352,6 +352,173 @@ def confirm(
     typer.echo(f"accepted doc {doc}: {len(facts)} facts")
 
 
+@app.command()
+def account(
+    number: str | None = typer.Argument(
+        None, help="account number as the export spells it"
+    ),
+    type: str | None = typer.Option(
+        None, help="taxable, trad_ira, inherited_ira, roth, hsa or cash"
+    ),
+    name: str | None = typer.Option(None, help="a label for the status page"),
+    date_of_death: str | None = typer.Option(None, help="inherited IRA: YYYY-MM-DD"),
+    balance: str | None = typer.Option(
+        None, help="typed balance for an account no export covers"
+    ),
+) -> None:
+    """Describe one account (type, name, date of death, typed balance) in
+    data/profile/accounts.yaml; with no arguments, list them."""
+    from datetime import date
+
+    from planner.ingest.needs import parse_value
+    from planner.ledger import portfolio
+
+    lay = layout()
+    if number is None:
+        for num, entry in sorted(portfolio.load_accounts(lay).items()):
+            typer.echo(f"{num:14} {entry.get('type', '?'):14} {entry.get('name', '')}")
+        return
+    fields: dict[str, object] = {
+        "type": type,
+        "name": name,
+        "date_of_death": date_of_death,
+    }
+    if balance is not None:
+        need = portfolio.account_balance_need(number)
+        fields["balance"] = parse_value(need, balance)
+        fields["balance_date"] = date.today().isoformat()
+    try:
+        entry = portfolio.save_account(lay, number, **fields)
+    except ValueError as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(
+        f"account {number}: " + ", ".join(f"{k}={v}" for k, v in sorted(entry.items()))
+    )
+
+
+@app.command()
+def convert(
+    date_: str = typer.Argument(..., metavar="DATE", help="YYYY-MM-DD"),
+    amount: str = typer.Argument(..., help="dollars converted"),
+    from_account: str = typer.Option(
+        ..., "--from", help="the traditional IRA converted from"
+    ),
+    taxable: str | None = typer.Option(
+        None, help="taxable part, if not the whole amount"
+    ),
+) -> None:
+    """Record a Roth conversion; the planner dates when its principal becomes
+    penalty-free. An inherited IRA is refused: it can never be converted."""
+    from datetime import date
+
+    from planner.ingest.needs import load_profile, need_for, parse_value
+    from planner.ledger import db, portfolio
+
+    lay = layout()
+    entry = portfolio.load_accounts(lay).get(from_account, {})
+    kind = entry.get("type")
+    if kind == "inherited_ira":
+        typer.echo(
+            f"refused: {from_account} is an inherited IRA; it is never converted",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    if kind != "trad_ira":
+        typer.echo(
+            f"refused: {from_account} is {kind or 'untyped'}; only a traditional IRA "
+            f"converts (planner account {from_account} --type trad_ira)",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    money = need_for("roth_conversion")
+    try:
+        when = date.fromisoformat(date_)
+        cents = db.to_cents(parse_value(money, amount))
+        taxable_cents = (
+            cents if taxable is None else db.to_cents(parse_value(money, taxable))
+        )
+    except ValueError as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    profile = load_profile(lay)
+    free = portfolio.accessible_date(
+        when, profile.get("birth_date"), float(profile.get("ira_access_age") or 59.5)
+    )
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    db.add_conversion(
+        conn,
+        date=when.isoformat(),
+        amount_cents=cents,
+        taxable_cents=taxable_cents,
+        source_account=from_account,
+        accessible_date=free.isoformat(),
+    )
+    conn.close()
+    typer.echo(
+        f"recorded conversion {when.isoformat()} {cents / 100:,.2f} from "
+        f"{from_account}; penalty-free {free.isoformat()}"
+    )
+
+
+@app.command()
+def status(
+    year: int = typer.Option(..., help="plan year"),
+    as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
+) -> None:
+    """The portfolio today: every account, total, accessible and locked money,
+    the all-time peak, YTD income by type, unrealized gains and the carryforward."""
+    from datetime import date
+
+    from planner.ledger import portfolio
+
+    st = portfolio.status(layout(), year, date.fromisoformat(as_of) if as_of else None)
+    typer.echo(f"as of {st.as_of}  (plan year {st.year})")
+    for p in st.positions:
+        typer.echo(
+            f"  {p.account:14} {p.name[:22]:22} {p.type:14} {p.value:>14,.2f}  "
+            f"{p.as_of} {p.origin}"
+        )
+    typer.echo(f"total        {st.total:>14,.2f}")
+    typer.echo(
+        f"accessible   {st.accessible:>14,.2f}  taxable + cash + Roth basis "
+        f"(contributions {st.roth_contributions or 0:,.2f}, seasoned conversions "
+        f"{st.seasoned:,.2f})"
+    )
+    typer.echo(
+        f"locked       {st.locked:>14,.2f}  IRAs, HSA, Roth earnings, unseasoned "
+        f"conversions {st.unseasoned:,.2f}"
+    )
+    if st.untyped:
+        typer.echo(f"untyped      {st.untyped:>14,.2f}")
+    typer.echo(f"peak         {st.peak:>14,.2f}  ({st.peak_date})")
+    for number, death, by in st.inherited:
+        typer.echo(
+            f"inherited IRA {number}: death {death}; empty it by {by} (10-year rule)"
+        )
+    for c in st.conversions:
+        typer.echo(
+            f"conversion   {c.date} {c.amount:>12,.2f} from {c.source_account}; "
+            f"penalty-free {c.accessible_date}"
+        )
+    if st.ytd_income:
+        typer.echo(f"YTD income {st.year}")
+        for box, value in st.ytd_income.items():
+            typer.echo(f"  {box:26} {value:>14,.2f}")
+    short, long = st.unrealized
+    typer.echo(
+        f"unrealized   {len(st.lots)} lots: short {short:,.2f}, long {long:,.2f}"
+    )
+    cf = (
+        "unknown (planner needed)"
+        if st.carryforward is None
+        else f"{st.carryforward:,.2f}"
+    )
+    typer.echo(f"capital loss carryforward: {cf}")
+    for note in st.notes:
+        typer.echo(f"note: {note}")
+
+
 def main() -> int:
     app()
     return 0
