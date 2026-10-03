@@ -1,12 +1,16 @@
 """Levers: every move left in the year that changes the tax bill or the ACA
 credit, sized from the ledger and priced through the engine.
 
-*Get under a line*: the moves that lower MAGI or tax (a loss harvest,
-deferring a planned sale, an HSA contribution, the SE health deduction, a
-deductible IRA contribution, last year's capital-loss carryforward). Each is
-ranked by what it is worth inside the combined set: the bill with every such
-move, against the bill with all of them but this one, so overlapping moves are
-not counted twice.
+Two menus. *Get under a line* holds the moves that lower MAGI or tax (a loss
+harvest, deferring a planned sale, an HSA contribution, the SE health
+deduction, a deductible IRA contribution, last year's capital-loss
+carryforward). Each is ranked by what it is worth inside the combined set:
+the bill with every such move, against the bill with all of them but this one,
+so overlapping moves are not counted twice. *Use the room* holds the moves
+that add income on purpose (a Roth conversion, a 0% gain harvest, an
+inherited-IRA withdrawal, and a Roth contribution, which moves no income).
+They compete for the same room, so each is sized to the room under the next
+line, priced alone and ranked by what each dollar moved costs now.
 
 Net dollars are federal tax (income + SE) plus NC tax minus the ACA credit,
 against doing nothing. Friction is shown beside the number, never folded into
@@ -26,7 +30,7 @@ from planner.engine.tax import TaxResult, compute, r
 from planner.ingest.needs import load_profile, need_value
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.plan import calendar, washsale
+from planner.plan import calendar, conversion, washsale
 from planner.plan.inputs import Inputs, Overrides, build
 from planner.plan.magi import Line, lines
 
@@ -118,6 +122,20 @@ class Menu:
     rooms: list[Row] = field(default_factory=list)
     together: Row | None = None
     notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class WhatIf:
+    year: int
+    applied: list[Lever]
+    before: TaxResult
+    after: TaxResult
+    lines_before: list[Line]
+    lines_after: list[Line]
+
+    @property
+    def net(self) -> float:
+        return r(cost(self.before) - cost(self.after))
 
 
 def cost(res: TaxResult) -> float:
@@ -409,6 +427,135 @@ def _carryforward(c: _Ctx) -> Lever:
     )
 
 
+def _roomed(c: _Ctx, available: float) -> tuple[float, str]:
+    if c.room is None or c.room_line is None or c.room <= 0:
+        return 0.0, "every watched line is already crossed: no room to fill"
+    amount = r(min(available, c.room))
+    return amount, f"fills to the {c.room_line.name} ({c.room:,.0f} of room)"
+
+
+def _conversion(c: _Ctx) -> Lever:
+    key, label, due = "conversion", "Roth conversion", _year_end(c.year)
+    balance = c.balance("trad_ira")
+    if not balance:
+        return _none(key, ROOM, label, due, "no traditional IRA balance")
+    if c.profile.get("conversion_objective") is None:
+        amount, why = _roomed(c, balance)
+        if amount <= 0:
+            return _none(key, ROOM, label, due, why)
+        return _conversion_lever(c, amount, why)
+    sz = conversion.size(
+        c.lay,
+        c.year,
+        Overrides(
+            c.ov.q4_dividend_estimate,
+            c.ov.planned_st_sales,
+            c.ov.planned_lt_sales,
+            0.0,
+            c.ov.planned_hsa,
+        ),
+    )
+    rec = sz.recommendation
+    if rec is None:
+        return _none(key, ROOM, label, due, "; ".join(sz.notes) or "nothing to size")
+    amount = r(rec.amount - sz.already)
+    if amount <= 0:
+        return _none(key, ROOM, label, due, f"objective {rec.name}: already met")
+    return _conversion_lever(c, amount, f"objective {rec.name}: {rec.note}")
+
+
+def _conversion_lever(c: _Ctx, amount: float, why: str) -> Lever:
+    return Lever(
+        "conversion",
+        ROOM,
+        "Roth conversion",
+        amount,
+        _year_end(c.year),
+        IRREVERSIBLE,
+        why,
+        "taxed now as ordinary income; each conversion starts its own 5-year clock "
+        "before it can be spent penalty-free",
+        (("roth_conversion", int(round(amount))),),
+    )
+
+
+def _gain_harvest(c: _Ctx) -> Lever:
+    key, label, due = "gain_harvest", "0% gain harvest", _year_end(c.year)
+    winners = [lot for lot in c.lots(gain=True) if lot.term != "short"]
+    if not winners:
+        return _none(key, ROOM, label, due, "no long-term gain in taxable lots")
+    zero = next(ln for ln in c.lines if ln.name.startswith("0% LTCG"))
+    std = next(ln.limit for ln in c.lines if ln.name == "standard deduction")
+    to_zero = income_room(zero, c.base, std)
+    if to_zero <= 0:
+        return _none(key, ROOM, label, due, "already past the 0% gain ceiling")
+    gains = r(sum(lot.gain for lot in winners))
+    amount, why = _roomed(c, min(gains, to_zero))
+    if amount <= 0:
+        return _none(key, ROOM, label, due, why)
+    return Lever(
+        key,
+        ROOM,
+        label,
+        amount,
+        due,
+        TRADE,
+        f"{why}; {gains:,.0f} of long-term gain available",
+        "sell and buy back at once (no wash rule for gains): basis steps up; NC "
+        "still taxes the gain; ACA MAGI rises",
+        (("long_term_gains", int(round(amount))),),
+    )
+
+
+def _inherited(c: _Ctx) -> Lever:
+    key, label, due = "inherited_ira", "inherited-IRA withdrawal", _year_end(c.year)
+    balance = c.balance("inherited_ira")
+    if not balance:
+        return _none(key, ROOM, label, due, "no inherited IRA")
+    amount, why = _roomed(c, balance)
+    if amount <= 0:
+        return _none(key, ROOM, label, due, why)
+    ends = ", ".join(f"{acct} empty by {by}" for acct, _, by in c.st.inherited)
+    return Lever(
+        key,
+        ROOM,
+        label,
+        amount,
+        due,
+        IRREVERSIBLE,
+        why + (f"; {ends}" if ends else ""),
+        "ordinary income; the 10-year window (and yearly RMDs if the owner had "
+        "started them) still applies",
+        (("ira_distributions", int(round(amount))),),
+    )
+
+
+def _roth_contribution(c: _Ctx) -> Lever:
+    key, label, due = "roth_contribution", "Roth IRA contribution", _filing(c.year)
+    earned = c.earned()
+    if earned <= 0:
+        return _none(key, ROOM, label, due, "needs earned income (wages or SE)")
+    limit = _ira_limit(c)
+    start, width = _phase(c.th, "roth", c.hh.filing_status)
+    allowed = _phased(limit, c.base.aca_magi, start, width)
+    used = r(c.roth_ytd + c.hh.traditional_ira_contribution)
+    left = r(min(allowed, earned) - used)
+    if left <= 0:
+        return _none(key, ROOM, label, due, "no Roth contribution room left")
+    return Lever(
+        key,
+        ROOM,
+        label,
+        left,
+        due,
+        CASH,
+        f"limit {allowed:,.0f} less {used:,.0f} already contributed; no tax effect "
+        "this year",
+        "spendable at any age (contributions, not earnings); shares the IRA limit",
+        priced=False,
+    )
+
+
 BUILDERS = (
     _harvest,
     _defer,
@@ -416,6 +563,10 @@ BUILDERS = (
     _se_health,
     _traditional_ira,
     _carryforward,
+    _conversion,
+    _gain_harvest,
+    _inherited,
+    _roth_contribution,
 )
 
 
@@ -547,6 +698,35 @@ def menu(
     return m
 
 
+def whatif(
+    lay: Layout,
+    year: int,
+    keys: list[str],
+    amounts: dict[str, float] | None = None,
+    as_of: date | None = None,
+    ov: Overrides | None = None,
+) -> WhatIf:
+    """The full year recomputed with ``keys`` applied, before and after."""
+    ctx, levers, _ = catalog(lay, year, as_of, ov)
+    by_key = {lv.key: lv for lv in levers}
+    chosen = []
+    for key in keys:
+        if key not in by_key:
+            raise ValueError(f"unknown lever {key}; one of {', '.join(by_key)}")
+        lv = by_key[key]
+        if not lv.available:
+            raise ValueError(f"{key} is not available: {lv.why}")
+        if amounts and key in amounts:
+            lv = lv.resized(amounts[key])
+        chosen.append(lv)
+    for key in amounts or {}:
+        if key not in keys:
+            raise ValueError(f"--set {key}: add it to --apply")
+    after = compute(year, _apply(ctx.hh, chosen))
+    status = ctx.hh.filing_status
+    return WhatIf(year, chosen, ctx.base, after, ctx.lines, lines(after, status))
+
+
 def _row_text(rw: Row) -> str:
     if rw.lever is None:
         return f"{DO_NOTHING:20} {'':>12}  net {0:>+11,.2f}"
@@ -600,4 +780,35 @@ def render_menu(m: Menu) -> str:
         f"{lv.key:20} not available: {lv.why}" for lv in m.levers if not lv.available
     ]
     out += [f"note: {n}" for n in m.notes]
+    return "\n".join(out) + "\n"
+
+
+FIGURES = (
+    ("AGI", "agi"),
+    ("taxable income", "taxable_income"),
+    ("ACA MAGI", "aca_magi"),
+    ("FPL %", "aca_fpl_pct"),
+    ("federal tax", "fed_total_tax"),
+    ("NC tax", "state_tax"),
+    ("ACA credit", "aca_ptc"),
+)
+
+
+def render_whatif(w: WhatIf) -> str:
+    out = [
+        f"What if {w.year}: "
+        + ", ".join(f"{lv.key} {lv.amount:,.0f}" for lv in w.applied),
+        f"{'':22} {'before':>14} {'after':>14} {'change':>14}",
+    ]
+    for label, name in FIGURES:
+        b, a = getattr(w.before, name), getattr(w.after, name)
+        out.append(f"{label:22} {b:>14,.2f} {a:>14,.2f} {a - b:>+14,.2f}")
+    out.append(f"{'net (saved +)':22} {'':>14} {'':>14} {w.net:>+14,.2f}")
+    for b, a in zip(w.lines_before, w.lines_after, strict=True):
+        state = {False: "under", True: "OVER"}
+        out.append(
+            f"{a.name:40} {state[b.over]:>5} -> {state[a.over]:5} (room {a.room:,.2f})"
+        )
+    for lv in w.applied:
+        out.append(f"{lv.key}: [{lv.friction}] by {lv.deadline}; {lv.side_effects}")
     return "\n".join(out) + "\n"
