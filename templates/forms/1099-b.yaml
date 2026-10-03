@@ -1,0 +1,11 @@
+# Form 1099-B summary totals (the per-lot rows come from the cost-basis CSV).
+form: 1099-B
+years: [2024, 2025, 2026]
+match: ["1099-B"]
+boxes:
+  "st_proceeds": {label: "Short-term proceeds", pattern: "Short-term[^\\n]*?proceeds\\s+AMOUNT", required: true}
+  "st_basis": {label: "Short-term cost basis", pattern: "Short-term[^\\n]*?cost basis\\s+AMOUNT", required: true}
+  "lt_proceeds": {label: "Long-term proceeds", pattern: "Long-term[^\\n]*?proceeds\\s+AMOUNT", required: true}
+  "lt_basis": {label: "Long-term cost basis", pattern: "Long-term[^\\n]*?cost basis\\s+AMOUNT", required: true}
+  "wash_sale": {label: "Wash sale loss disallowed", pattern: "Wash sale loss disallowed\\s+AMOUNT"}
+  "4": {label: "Federal income tax withheld", pattern: "\\b4 Federal income tax withheld\\s+AMOUNT"}

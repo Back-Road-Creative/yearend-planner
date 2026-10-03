@@ -151,6 +151,44 @@ def update(
     typer.echo(f"updated to {result.version}; candidate selfcheck: {result.selfcheck}")
 
 
+@app.command()
+def ingest() -> None:
+    """Read every file in data/inbox/ into the ledger; archive or mark UNMATCHED."""
+    from planner.ingest import ingest as _ingest
+
+    lay = layout()
+    lay.ensure()
+    report = _ingest(lay)
+    for item in report.imported:
+        typer.echo(f"imported  {item.file_name}: {', '.join(item.forms)}")
+    for name in report.duplicates:
+        typer.echo(f"duplicate {name} (already in the ledger; archived)")
+    for name, reason in report.unmatched:
+        typer.echo(f"UNMATCHED {name}: {reason}")
+    typer.echo(
+        f"batch {report.batch}: {len(report.imported)} imported, "
+        f"{len(report.duplicates)} duplicate, {len(report.unmatched)} unmatched"
+    )
+
+
+@app.command()
+def facts(
+    year: int | None = typer.Option(None, help="tax year"),
+    form: str | None = typer.Option(None, help="form, e.g. 1099-DIV"),
+) -> None:
+    """List the accepted facts in the ledger, each with its source file and page."""
+    from planner.ledger import db
+
+    conn = db.connect(layout().data / "ledger" / "planner.db")
+    rows = db.facts_for(conn, year, form)
+    for r in rows:
+        typer.echo(
+            f"{r.tax_year} {r.form:9} {r.issuer[:24]:24} box {r.box:12} "
+            f"{r.value:>14,.2f}  {r.file_name} p{r.page}"
+        )
+    typer.echo(f"{len(rows)} facts")
+
+
 def main() -> int:
     app()
     return 0
