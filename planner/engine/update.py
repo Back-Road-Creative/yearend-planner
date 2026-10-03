@@ -25,14 +25,20 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import zipfile
 from dataclasses import dataclass
+from datetime import date
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as dist_version
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from planner.engine.selfcheck import format_years, years_in
 
 CANDIDATE = "python-candidate"
 LIVE = "python"
@@ -72,14 +78,35 @@ exit /b 1
 """
 
 
+ALLOW_MAJOR = "planner update --allow-major"
+
+
 class UpdateError(RuntimeError):
     pass
+
+
+class MajorUpdateHeld(UpdateError):
+    """A candidate that jumps a major version waits for ``--allow-major``."""
+
+
+def years_note(years: tuple[int, ...], missing_next: int | None) -> str:
+    """What a release covers, for the user: its tax years and a missing next year."""
+    if not years:
+        return "this release does not report the tax years it covers"
+    note = f"covers tax years {format_years(years)}"
+    return note + (f"; {missing_next} is not modelled yet" if missing_next else "")
 
 
 @dataclass(frozen=True)
 class UpdateResult:
     version: str
     selfcheck: str
+    years: tuple[int, ...] = ()
+    missing_next: int | None = None  # next calendar year, when the engine lacks it
+
+    @property
+    def years_note(self) -> str:
+        return years_note(self.years, self.missing_next)
 
 
 def sha256(path: Path) -> str:
@@ -189,6 +216,61 @@ def version_key(version: str) -> tuple[int, ...]:
         return ()
 
 
+def _major(version: str) -> int | None:
+    m = re.match(r"v?(\d+)", version.strip())
+    return int(m.group(1)) if m else None
+
+
+def installed_engine() -> str | None:
+    """The policyengine-us this process runs on; None when it is not installed."""
+    try:
+        return dist_version("policyengine-us")
+    except PackageNotFoundError:
+        return None
+
+
+def candidate_engine(cand: Path) -> str | None:
+    """policyengine-us as the candidate's own dist-info records it (Windows
+    ``python/Lib/site-packages``, or ``python/lib/python3.x/site-packages``)."""
+    base = cand / LIVE
+    for site in [
+        base / "Lib" / "site-packages",
+        *base.glob("lib/python*/site-packages"),
+    ]:
+        for dist in sorted(site.glob("policyengine_us-*.dist-info")):
+            meta = dist / "METADATA"
+            if meta.exists():
+                for line in meta.read_text(
+                    encoding="utf-8", errors="replace"
+                ).splitlines():
+                    if line.startswith("Version:"):
+                        return line.split(":", 1)[1].strip()
+            return dist.name.removeprefix("policyengine_us-").removesuffix(".dist-info")
+    return None
+
+
+def hold_major(cand: Path, root: Path) -> None:
+    """Raise :class:`MajorUpdateHeld` when the candidate's policyengine-us or
+    planner is a new major version over the installed one."""
+    jumps: list[str] = []
+    new_engine, old_engine = candidate_engine(cand), installed_engine()
+    if new_engine and old_engine:
+        a, b = _major(new_engine), _major(old_engine)
+        if a is not None and b is not None and a > b:
+            jumps.append(
+                f"policyengine-us {new_engine} is a new major version over {old_engine}"
+            )
+    new_planner = (cand / "VERSION").read_text(encoding="utf-8").strip()
+    old_planner = installed_version(root)
+    a, b = _major(new_planner), _major(old_planner)
+    if a is not None and b is not None and a > b:
+        jumps.append(f"planner {new_planner} is a new major version over {old_planner}")
+    if jumps:
+        raise MajorUpdateHeld(
+            f"{'; '.join(jumps)}; results may change, run {ALLOW_MAJOR} to install it"
+        )
+
+
 def carry_thresholds(root: Path, cand: Path) -> list[str]:
     """Limits typed into the live config/thresholds.yaml that the new release
     lacks are copied into it, so an update never drops a hand-entered row.
@@ -215,18 +297,41 @@ def carry_thresholds(root: Path, cand: Path) -> list[str]:
 
 
 def stage(
-    zip_path: Path, expected_sha256: str, root: Path, python_exe: str = "python.exe"
+    zip_path: Path,
+    expected_sha256: str,
+    root: Path,
+    python_exe: str = "python.exe",
+    allow_major: bool = False,
+    today: date | None = None,
 ) -> UpdateResult:
     """Verify, extract and self-check the candidate, carry hand limits into it
-    and mark it ready. Nothing live is touched."""
+    and mark it ready. Nothing live is touched. A candidate that jumps a major
+    version of policyengine-us or the planner is held (before its selfcheck
+    runs) unless ``allow_major``; the tax years its engine publishes are
+    recorded, with next year flagged when absent."""
     verify_zip(zip_path, expected_sha256)
     cand = extract_candidate(zip_path, root)
+    if not allow_major:
+        try:
+            hold_major(cand, root)
+        except MajorUpdateHeld:
+            shutil.rmtree(cand, ignore_errors=True)
+            raise
     check = selfcheck_candidate(cand, python_exe)
     version = (cand / "VERSION").read_text(encoding="utf-8").strip()
+    years = years_in(check)
+    next_year = (today or date.today()).year + 1
+    missing = next_year if years and next_year not in years else None
     carried = carry_thresholds(root, cand)
-    ready = {"version": version, "selfcheck": check, "carried": carried}
+    ready = {
+        "version": version,
+        "selfcheck": check,
+        "carried": carried,
+        "years": list(years),
+        "missing_next": missing,
+    }
     (cand / READY).write_text(json.dumps(ready), encoding="utf-8")
-    return UpdateResult(version=version, selfcheck=check)
+    return UpdateResult(version, check, years, missing)
 
 
 def staged(root: Path) -> dict[str, Any] | None:
@@ -279,6 +384,8 @@ def finish(root: Path) -> str:
         msg += ready["selfcheck"]
         if ready.get("carried"):
             msg += f"; kept your limits: {', '.join(ready['carried'])}"
+        if "years" in ready:
+            msg += f"; {_ready_note(ready)}"
     else:
         shutil.rmtree(root / CANDIDATE, ignore_errors=True)
         shutil.rmtree(root / PREVIOUS, ignore_errors=True)
@@ -287,6 +394,10 @@ def finish(root: Path) -> str:
     # swap.cmd stays: cmd is still running it (the rerun follows this call)
     # and reads each line from the file; write_swap rewrites it next time
     return msg
+
+
+def _ready_note(ready: dict[str, Any]) -> str:
+    return years_note(tuple(ready["years"]), ready.get("missing_next"))
 
 
 def apply_staged(root: Path) -> str:
@@ -298,7 +409,8 @@ def apply_staged(root: Path) -> str:
     (root / CANDIDATE / READY).unlink()
     swap_in(root / CANDIDATE, root)
     v, check = ready["version"], ready["selfcheck"]
-    return f"updated {before} -> {v}; candidate selfcheck: {check}"
+    msg = f"updated {before} -> {v}; candidate selfcheck: {check}"
+    return f"{msg}; {_ready_note(ready)}" if "years" in ready else msg
 
 
 def apply(

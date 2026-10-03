@@ -75,6 +75,37 @@ CONFIG_PARAMS = {
 }
 
 
+def _config_node(name: str, system: Any = None) -> Any:
+    node = (system or _system()).parameters
+    for part in CONFIG_PARAMS[name].split("."):
+        node = getattr(node, part)
+    return node
+
+
+# Inflation-indexed figures the IRS announces every year; a year counts as
+# published when the engine's own file lists all of them for it.
+YEAR_ANCHORS = (
+    "std_deduction_single",
+    "ltcg_0pct_top_single",
+    "bracket_12pct_top_single",
+)
+
+
+def published_years(system: Any = None) -> tuple[int, ...]:
+    """The tax years whose IRS figures the engine's parameter files list
+    (same test as :func:`engine_value`: literal numbers, not index
+    projections). A year the engine only projects is absent."""
+    sets = [
+        {
+            int(v.instant_str[:4])
+            for v in _config_node(name, system).values_list
+            if isinstance(v.value, int)
+        }
+        for name in YEAR_ANCHORS
+    ]
+    return tuple(sorted(set.intersection(*sets)))
+
+
 def engine_value(name: str, year: int) -> tuple[float, bool]:
     """(value, published) for a CONFIG_PARAMS row. An inflation-indexed
     parameter's value counts as published only when the engine's own file
@@ -82,9 +113,7 @@ def engine_value(name: str, year: int) -> tuple[float, bool]:
     index, and those projected values come back as computed floats, never the
     file's literal numbers. Unindexed parameters (a statutory rate) are law
     until changed."""
-    node = _system().parameters
-    for part in CONFIG_PARAMS[name].split("."):
-        node = getattr(node, part)
+    node = _config_node(name)
     value = float(node(f"{year}-01-01"))
     if not (node.metadata or {}).get("uprating"):
         return value, True

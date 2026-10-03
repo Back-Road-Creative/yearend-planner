@@ -48,7 +48,7 @@ taxpack: verified  # tests/test_package.py; planner taxpack writes out/tax-<year
 close_year: verified  # tests/test_close.py; planner close; filed 1040/schedules/D-400 vs draft delta, data/private/returns/<year>-closed.yaml, amended = new version
 dashboard_page: verified  # tests/test_dashboard.py; planner dashboard writes out/index.html; panels tagged actual/estimate/unavailable, alerts, escaped, no external assets
 limits_refresh: verified  # tests/test_limits.py; hand rows win, engine fills Y and Y+1 (published/projected), others carried + confirm, drift alerts, offline launch
-update_check: verified  # tests/test_feed.py + windows_proof.ps1 steps 7-8; feed -> sha256 -> candidate selfcheck -> staged; launcher swap on exit 75 with undo; held -> dashboard alert; rollback
+update_check: verified  # tests/test_feed.py + windows_proof.ps1 steps 7-8; feed -> sha256 -> candidate selfcheck -> staged; at most weekly (data/update/last-check.json), result in the page header; launcher swap on exit 75 with undo; held -> dashboard alert; rollback
 rollover: verified  # tests/test_rollover.py; draft->filed carry, Sch D carryover, snapshots, checklist, idempotent, corrected 1099 re-opens as a new version, dashboard button
 planner_run: verified  # tests/test_serve.py; 127.0.0.1 + per-run token + Host check; drop files -> ingest, enter, dont-have, confirm, taxpack; --quiet static only
 backup_restore: verified  # tests/test_backup.py; AES-256 or plain zip + sha256 manifest; restore refuses hostile/damaged/wrong-password archives before data/ moves; data-previous until next clean run; --undo
@@ -61,3 +61,5 @@ double_click_run: verified  # tests/test_launch.py; no arguments = planner run, 
 single_writer_lock: verified  # tests/test_paths.py; OS lock on data/planner.lock (flock / msvcrt), a second writer exits 2 "another planner is running", a stale file never blocks, restore lets go before data/ moves
 planner_init: verified  # tests/test_cli.py; planner init makes data/ and out/, refuses a cloud-synced folder (exit 2) and creates nothing there
 launcher_cloud_sync_warning: verified  # tests/test_launch.py; planner.cmd findstr for OneDrive, Dropbox, iCloud Drive, Google Drive, My Drive before anything runs; windows_proof.ps1 step 6
+update_major_hold: verified  # tests/test_feed.py + tests/test_update.py; a new major of policyengine-us (candidate dist-info) or planner is held until planner update --allow-major
+update_tax_years_report: verified  # tests/test_update.py + tests/test_dashboard.py; selfcheck prints the years the engine publishes; staging flags a missing next year; header shows years

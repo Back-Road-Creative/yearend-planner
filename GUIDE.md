@@ -581,11 +581,15 @@ year and next from the installed policyengine-us. It needs no network.
 
 ## Updates (Phase 6b)
 
-- **Automatic check.** Each `planner run` looks for a newer release on the
-  feed named in `config/update.yaml` (GitHub's "latest release" address). It
-  sends one plain request and no personal data. Offline, or with no newer
-  release, it says nothing. `--no-update-check` or `PLANNER_UPDATE_FEED=off`
-  turns it off.
+- **Automatic check.** Each `planner run` starts with a look for a newer
+  release on the feed named in `config/update.yaml` (GitHub's "latest
+  release" address), at most once every 7 days: the result is written to
+  `data/update/last-check.json` and shown in the page header ("update check
+  2026-10-01: up to date"). It sends one plain request and no personal data.
+  Offline, or with no newer release, it says nothing; an unreachable feed is
+  not counted, so the next launch tries again. `planner update --check`
+  looks right now, whatever the last check said. `--no-update-check` or
+  `PLANNER_UPDATE_FEED=off` turns it off (the header then says so).
 - **Checked before it is used.** A newer release is downloaded, its sha256
   checked against the `.sha256` file published beside it, and unpacked into
   `python-candidate/`. It must pass its own selfcheck there, with its own
@@ -599,6 +603,17 @@ year and next from the installed policyengine-us. It needs no network.
 - **Held.** A release that fails its selfcheck is never swapped in. The
   dashboard shows "engine update held" with the reason, and the same release
   is not tried again.
+- **Major versions are held for you.** A release whose policyengine-us (read
+  from its own `dist-info`) or planner is a new major version over the
+  installed one can change results, so it is never staged on its own. The
+  dashboard shows it as held with `planner update --allow-major`; run that
+  (alone, to fetch the feed's release, or with a zip and `--sha256`) when you
+  want it.
+- **Tax years covered.** The release's selfcheck prints the tax years its
+  engine publishes parameters for. Staging reports them, and says so when
+  next year is missing ("2027 is not modelled yet"). The page header shows
+  the same for the engine you run, for example `tax years 2015, 2018-2026
+  (2027 is not published)`.
 - **By hand.** `planner update <zip> --sha256 <hash>` installs a downloaded
   release the same way, `planner update --rollback` goes back to
   `python-previous/`, and `planner update --check` looks for one now. `data/`

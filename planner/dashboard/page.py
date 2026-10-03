@@ -12,7 +12,8 @@ from datetime import date, datetime
 from planner.engine import feed
 from planner.engine import limits as limits_
 from planner.engine.household import MissingInputError
-from planner.engine.tax import engine_version
+from planner.engine.selfcheck import format_years
+from planner.engine.tax import engine_version, published_years
 from planner.ingest import confirm
 from planner.ingest.needs import Status, needed
 from planner.ledger import db
@@ -96,6 +97,18 @@ class Page:
     alerts: list[Alert] = field(default_factory=list)
     limits: limits_.Limits | None = None
     stale_days: int | None = None  # set once STALE_DAYS have passed
+    years: list[int] = field(default_factory=list)  # tax years the engine publishes
+    update_check: str = ""  # the header's words for the last update check
+
+    @property
+    def years_text(self) -> str:
+        return format_years(self.years)
+
+    @property
+    def next_missing(self) -> int | None:
+        """The year after the plan year, when the engine does not publish it."""
+        nxt = self.year + 1
+        return nxt if self.years and nxt not in self.years else None
 
     @property
     def needed_count(self) -> int:
@@ -253,6 +266,8 @@ def gather(
         page.draft_blocked = str(exc)
     page.pending = _pending(lay)
     page.limits = limits_.refresh(lay, year, write=False)
+    page.years = list(published_years())
+    page.update_check = feed.status_line(lay)
     page.alerts = _alerts(lay, page, today)
     page.stale_days = _stale_days(lay, today)  # also a banner atop every page
     return page

@@ -75,7 +75,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `sweep` | Sweep one input across a range in a single engine run; one JSON row per step. |
 | `taxpack` | Everything a preparer asks for in out/tax-<year>/: the draft return (text and printable HTML), Form 8949 CSV, Schedule C, carryforward and basis, estimated payments, the form inventory, and the originals ZIP. |
 | `thresholds` | The sourced limits in config/thresholds.yaml for a year, checked against the engine's own parameters. |
-| `update` | Swap in a newer release after its own selfcheck passes; --rollback undoes it; --check looks for one on the update feed. |
+| `update` | Swap in a newer release after its own selfcheck passes; --rollback undoes it; --check looks for one on the update feed now (the automatic check runs at most weekly); --allow-major installs a release that jumps a major version of the planner or policyengine-us. |
 | `verify` | Recompute a filed year from its inputs; compare each line to what was filed. |
 | `version` | Print the planner version (the release's VERSION file when there is one). |
 | `washsales` | Every loss sale with a buy of the same symbol within 30 days either side, across all accounts, and the symbols whose window is still open. |

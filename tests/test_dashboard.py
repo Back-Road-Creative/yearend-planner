@@ -95,3 +95,32 @@ def test_cli_dashboard(lots: Layout) -> None:  # noqa: F811
     r = runner.invoke(app, ["dashboard", "--year", "2026", "--as-of", "2026-07-10"])
     assert r.exit_code == 0, r.output
     assert "index.html" in r.output and (lots.out / "index.html").exists()
+
+
+@pytest.mark.engine
+def test_header_shows_the_last_update_check_and_the_years_covered(
+    planner_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = Layout(planner_home)
+    home.ensure()
+    off = page.gather(home, 2026, AS_OF)
+    assert off.update_check == "update check off"
+    assert off.years and 2026 in off.years
+    text = render.html(off)
+    assert "tax years" in text and "update check off" in text
+    monkeypatch.setenv("PLANNER_UPDATE_FEED", "file:///nowhere/latest.json")
+    assert page.gather(home, 2026, AS_OF).update_check == "update check not yet run"
+    folder = home.data / "update"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "last-check.json").write_text(
+        '{"date": "2026-10-01", "status": "current", "message": "up to date"}',
+        encoding="utf-8",
+    )
+    pg = page.gather(home, 2026, AS_OF)
+    assert pg.update_check == "update check 2026-10-01: up to date"
+    assert "update check 2026-10-01: up to date" in render.html(pg)
+    # next year absent from the engine's published years is flagged in the header
+    pg.years = [y for y in pg.years if y <= 2026]
+    assert "2027 is not published" in render.html(pg)
+    pg.years = [*pg.years, 2027]
+    assert "2027 is not published" not in render.html(pg)

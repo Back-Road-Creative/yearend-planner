@@ -29,7 +29,9 @@ STUB_OK = "#!/bin/sh\necho 'stub selfcheck ok'\n"
 STUB_BAD = "#!/bin/sh\necho broken >&2\nexit 1\n"
 
 
-def release(folder: Path, version: str, ok: bool = True) -> Path:
+def release(
+    folder: Path, version: str, ok: bool = True, engine: str | None = None
+) -> Path:
     z = folder / f"yearend-planner-{version}-win64.zip"
     with zipfile.ZipFile(z, "w") as zf:
         zf.writestr("VERSION", version + "\n")
@@ -39,6 +41,11 @@ def release(folder: Path, version: str, ok: bool = True) -> Path:
         info = zipfile.ZipInfo("python/python")
         info.external_attr = 0o755 << 16
         zf.writestr(info, STUB_OK if ok else STUB_BAD)
+        if engine:
+            dist = f"python/Lib/site-packages/policyengine_us-{engine}.dist-info"
+            zf.writestr(
+                f"{dist}/METADATA", f"Name: policyengine-us\nVersion: {engine}\n"
+            )
     return z
 
 
@@ -186,3 +193,91 @@ def test_no_feed_offline_or_plain_http_says_nothing(
     assert upd.version_key("dev") == ()
     shutil.rmtree(lay.root / "python")
     assert not upd.launcher_swaps(lay.root)
+
+
+def opens(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Every address the feed module opens, in order."""
+    seen: list[str] = []
+    real = feed._open
+
+    def spy(url: str, timeout: int) -> bytes:
+        seen.append(url)
+        return real(url, timeout)
+
+    monkeypatch.setattr(feed, "_open", spy)
+    return seen
+
+
+def test_check_runs_at_most_weekly(
+    lay: Layout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url = publish(tmp_path, release(tmp_path, "0.1.0"), "0.1.0")  # nothing newer
+    monkeypatch.setenv("PLANNER_UPDATE_FEED", url)
+    seen = opens(monkeypatch)
+    assert feed.check(lay, date(2026, 10, 1)) == ""
+    assert feed.check(lay, date(2026, 10, 4)) == ""  # 3 days later: skipped
+    assert seen == [url]
+    record = json.loads((lay.data / "update" / feed.LAST_CHECK).read_text())
+    assert record["date"] == "2026-10-01" and record["status"] == "current"
+    assert feed.check(lay, date(2026, 10, 8)) == ""  # a week on: asks again
+    assert seen == [url, url]
+    assert feed.last_check(lay)["date"] == "2026-10-08"  # type: ignore[index]
+    feed.check(lay, date(2026, 10, 9), force=True)  # planner update --check
+    assert seen == [url, url, url]
+
+
+def test_an_unreachable_feed_is_recorded_but_retried_next_launch(
+    lay: Layout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PLANNER_UPDATE_FEED", (tmp_path / "gone.json").as_uri())
+    seen = opens(monkeypatch)
+    assert feed.check(lay, date(2026, 10, 1)) == ""
+    assert feed.last_check(lay)["status"] == "offline"  # type: ignore[index]
+    assert feed.check(lay, date(2026, 10, 2)) == ""
+    assert len(seen) == 2  # no network: a week's wait would hide a release
+    publish(tmp_path, release(tmp_path, "0.1.0"), "0.1.0")
+    (tmp_path / "gone.json").write_bytes((tmp_path / "latest.json").read_bytes())
+    feed.check(lay, date(2026, 10, 3))
+    assert feed.last_check(lay)["status"] == "current"  # type: ignore[index]
+    assert feed.check(lay, date(2026, 10, 4)) == "" and len(seen) == 3
+
+
+def test_major_engine_jump_is_held(
+    lay: Layout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(upd, "installed_engine", lambda: "2.21.0")
+    z = release(tmp_path, "0.2.0", engine="3.0.0")
+    monkeypatch.setenv("PLANNER_UPDATE_FEED", publish(tmp_path, z, "0.2.0"))
+    line = feed.check(lay, date(2026, 10, 3))
+    assert (
+        line.startswith("update 0.2.0 held:") and "planner update --allow-major" in line
+    )
+    assert upd.staged(lay.root) is None and not (lay.root / upd.CANDIDATE).exists()
+    assert not list((lay.data / "update").glob("*.zip"))
+    assert feed.held(lay)["version"] == "0.2.0"  # type: ignore[index]
+    assert feed.last_check(lay)["status"] == "held"  # type: ignore[index]
+    seen = opens(monkeypatch)
+    assert feed.check(lay, date(2026, 10, 20)) == ""  # held: not downloaded again
+    assert [u for u in seen if u.endswith(".zip")] == []
+    if sys.platform != "win32":
+        # planner update --allow-major fetches and stages it past the hold
+        r = runner.invoke(app, ["update", "--allow-major"])
+        assert r.exit_code == 0 and "update 0.2.0 is ready" in r.output, r.output
+        assert upd.staged(lay.root)["version"] == "0.2.0"  # type: ignore[index]
+        assert feed.held(lay) is None
+
+
+def test_manual_zip_of_a_new_major_needs_allow_major(
+    lay: Layout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(upd, "installed_engine", lambda: "2.21.0")
+    z = release(tmp_path, "0.2.0", engine="3.0.0")
+    r = runner.invoke(app, ["update", str(z), "--sha256", upd.sha256(z)])
+    assert r.exit_code == 1 and "--allow-major" in r.output
+    assert not (lay.root / upd.CANDIDATE).exists()
+    if sys.platform != "win32":
+        r = runner.invoke(
+            app, ["update", str(z), "--sha256", upd.sha256(z), "--allow-major"]
+        )
+        assert r.exit_code == 0, r.output  # no launcher: swapped in-process
+        assert (lay.root / "VERSION").read_text().strip() == "0.2.0"
