@@ -384,8 +384,8 @@ def draft(
     year: int = typer.Option(..., help="tax year"),
     as_json: bool = typer.Option(False, "--json", help="machine-readable"),
 ) -> None:
-    """The draft federal return: Form 1040, Schedules 1, 2, 3 and SE and Form
-    8962, every line priced by the engine and naming its source."""
+    """The draft return: Form 1040 with its schedules and forms, and the NC
+    D-400 with Schedule S, every line priced by the engine and naming its source."""
     import json
     from dataclasses import asdict
 

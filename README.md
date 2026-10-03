@@ -436,3 +436,32 @@ Schedule 1 (line 13, and line 8f for taxable distributions) and Schedule 2
 - **Not handled, and named.** Archer MSA contributions (line 4), a funding
   distribution from an IRA (line 10), rollovers (line 14b), and a family limit
   split with a spouse's own HSA (line 6).
+
+## The NC return: D-400 and Schedule S (Phase 4k)
+
+For a North Carolina resident (`state: NC`), `planner draft` adds Form D-400
+and its Schedule S. It uses the same engine run as the federal return.
+
+- **Lines.** Line numbers, the rate (4.25% for 2025, 3.99% for 2026), the
+  standard deduction and the child deduction table follow the 2025 D-400
+  instructions (D-401). A test checks the rate against the engine for each year
+  on file.
+- **Schedule S.** The planner fills these lines itself:
+  - Line 18: interest on US obligations (1099-INT box 3).
+  - Line 19: the Social Security taxed federally.
+  - Line 16: additions you type (`nc_additions`).
+  - Lines 20-40: other deductions you type (`nc_other_deductions`), such as a
+    Bailey or uniformed services pension.
+- **Tax and payments.**
+  - Line 18 (use tax): `nc_use_tax` when typed; until then, the use tax table's
+    estimate for your income, and the draft says so.
+  - Line 20a: NC withholding from W-2 box 17 and 1099-R box 14.
+  - Line 21a: the NC estimated payments from the bank export or typed.
+  - The draft ends on line 26a/27 (owed) or line 28/34 (refund).
+- **Check.** Line 14 is compared with the engine's NC taxable income, with the
+  typed Schedule S items put back. A gap is printed as `CHECK:`.
+- **Federal fix.** 1099-INT box 3 (US Treasury and savings bond interest) now
+  counts as taxable interest on 1040 line 2b. Before, it was missed.
+- **Not drafted, and named.** Part-year and nonresident returns (line 13,
+  Schedule PN), D-400TC credits, penalties and interest (lines 26b-26e,
+  Form D-422), and the amended-return lines.
