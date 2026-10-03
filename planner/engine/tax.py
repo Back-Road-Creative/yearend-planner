@@ -7,7 +7,7 @@ from the engine's taxable income to report headroom.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from typing import Any
 
@@ -257,6 +257,16 @@ def values(
     for name in prior:
         out[f"{name}@prior"] = float(_calc(sim, name, year - 1)[0])
     return out
+
+
+def engine_slcsp(year: int, household: Household) -> float:
+    """The engine's benchmark (second-lowest-cost silver) premium for the
+    household's county, in dollars for January of ``year`` (monthly; 0 for a
+    household with no income, which the engine does not price). Ignores
+    ``household.slcsp_monthly``: this is the engine's own figure, the one
+    ``tests/test_tax.py`` checks against the CMS published county table."""
+    sim = _sim(year, replace(household, slcsp_monthly=None))
+    return float(sim.calculate("slcsp", f"{year}-01")[0])
 
 
 def compute_sweep(

@@ -17,6 +17,7 @@ from datetime import date
 from typing import Any
 
 from planner.engine.household import Household, MissingInputError
+from planner.ingest.derive import CountyError, resolve_county
 from planner.ingest.needs import _needed
 from planner.ledger import db
 from planner.paths import Layout
@@ -97,6 +98,17 @@ def _recorded_conversions(conn: sqlite3.Connection, year: int) -> float:
     )
 
 
+def _county_key(lay: Layout, value: dict[str, Any]) -> str | None:
+    """The engine's name for the household's county, or None when unknown (the
+    engine then prices the state's first county; the Needed panel asks)."""
+    if value.get("county") is None:
+        return None
+    try:
+        return resolve_county(lay.config, str(value["county"]), str(value["state"]))
+    except CountyError as exc:
+        raise MissingInputError(f"county: {exc} (planner enter county)") from exc
+
+
 def build(
     lay: Layout, year: int, overrides: Overrides | None = None, *, with_db: bool = True
 ) -> Inputs:
@@ -130,7 +142,7 @@ def build(
         "age": age_at_year_end(str(value["birth_date"]), year),
         "filing_status": FILING[str(value["filing_status"])],
         "state": str(value["state"]),
-        "county": value.get("county"),
+        "county": _county_key(lay, value),
     }
     for key, name in MONEY.items():
         if value.get(key) is not None:

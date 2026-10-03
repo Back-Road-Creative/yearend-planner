@@ -46,3 +46,12 @@ def test_load_household_yaml() -> None:
     h = load_household(FIX / "household_2026.yaml")
     assert h.roth_conversion == 40000
     assert h.qualified_dividends == 3000
+
+
+def test_county_must_be_the_engines_name_for_the_state() -> None:
+    for bad in ("Wake", "WAKE_COUNTY_VA", "wake_county_nc"):
+        h = Household(age=55, filing_status="SINGLE", state="NC", county=bad)
+        with pytest.raises(ValueError, match="WAKE_COUNTY_NC"):
+            h.situation(2026)
+    ok = Household(age=55, filing_status="SINGLE", state="NC", county="WAKE_COUNTY_NC")
+    assert ok.situation(2026)["households"]["hh"]["county"] == {2026: "WAKE_COUNTY_NC"}

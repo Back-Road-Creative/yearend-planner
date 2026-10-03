@@ -82,7 +82,16 @@ has a `kind`: `amount` (the default), `text` (optionally limited to an `allowed`
 never a guess). From the filed 1040 the planner reads the filing status (Single, Married
 filing jointly, Married filing separately, Head of household), the state and the ZIP from the
 address block; the Needed panel then shows filing status and state as *actual* from the
-latest return filed for the plan year or earlier, and a typed answer still wins. Qualifying
+latest return filed for the plan year or earlier, and a typed answer still wins. The ZIP
+also answers the county, which sets the ACA benchmark premium: `config/zip_county.csv.gz` is
+the Census Bureau's 2020 ZIP-to-county file (source, URL and download date in
+`config/zip_county.SOURCE.md`; `python scripts/refresh_zip_county.py` rebuilds it). A ZIP
+that lies in one county of your state fills the county as *actual* and says where it came
+from. A ZIP that spans counties (the Needed panel and `planner needed` list them, largest
+first), is not in the file, or is in another state leaves the county missing with a note
+saying why; type it (`planner enter county Macon --year 2026`) and the planner turns the name into the
+engine's own (`MACON_COUNTY_NC`), refusing a name that fits two counties or none in your
+state. Qualifying
 surviving spouse is not read: type it. How a tax-software PDF renders its check boxes is not
 confirmed on a real return (tests use synthetic marks), so a return with no readable mark
 leaves filing status to be typed. Form 1099-R box 7 is stored as the distribution code

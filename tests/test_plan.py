@@ -160,3 +160,18 @@ def test_cli_magi_and_conversions(lay: Layout) -> None:
     assert "* bracket_12" in r.output
     assert "recommendation: bracket_12" in r.output
     assert "cash needed" in r.output
+
+
+def test_a_typed_county_reaches_the_engine_by_its_engine_name(lay: Layout) -> None:
+    enter(lay, 2026, "county", "Macon")
+    assert inputs.build(lay, 2026).household.county == "MACON_COUNTY_NC"
+    enter(lay, 2026, "county", "Wake County, NC")
+    assert inputs.build(lay, 2026).household.county == "WAKE_COUNTY_NC"
+
+
+def test_a_county_that_is_not_the_states_blocks_the_plan_with_the_reason(
+    lay: Layout,
+) -> None:
+    enter(lay, 2026, "county", "Harris")
+    with pytest.raises(MissingInputError, match="not a county of NC"):
+        inputs.build(lay, 2026)
