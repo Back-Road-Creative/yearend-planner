@@ -32,3 +32,28 @@ characters, moved folder, network blocked, standard user, cloud-sync folder refu
 
 AGPL-3.0-or-later. PolicyEngine US is AGPL-3.0; this planner is distributed under the
 same terms.
+
+## Engine (Phase 1)
+
+`planner compute <household.yaml>` prints every figure for one household-year as JSON:
+federal income tax after credits, SE tax, total tax (1040 line 24), tax attributable to
+qualified dividends and long-term gains, NC tax, AGI, ACA MAGI, taxable income, QBI
+deduction, premium tax credit, FPL percentages, monthly Medicaid MAGI, and the headroom
+left under the 0% capital-gains ceiling and the top of the 12% bracket. All figures come
+from policyengine-us; the only arithmetic here is threshold minus taxable income.
+
+`planner sweep <household.yaml> --variable taxable_roth_conversions --lo 0 --hi 100000 --step 5000`
+runs the whole range in one engine call.
+
+`planner verify data/private/returns/<year>.yaml` recomputes a filed year from the inputs
+recorded in that file and prints each line as filed next to the engine's figure. The file
+format is `tests/fixtures/2025_return.yaml` (synthetic); your own lives under
+`data/private/` and is never committed.
+
+`planner update <release.zip> --sha256 <digest>` verifies the zip, extracts it to
+`python-candidate/`, runs the candidate's own selfcheck, then swaps it in and keeps the old
+install as `python-previous/`. `planner update --rollback` restores it. `data/` and `out/`
+are never touched.
+
+Reference cases (hand-worked, $1 tolerance) are in `tests/test_tax.py`; the engine's
+coverage of each rule the planner relies on is recorded in `config/capabilities.yaml`.

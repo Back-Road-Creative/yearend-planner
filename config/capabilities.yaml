@@ -2,11 +2,11 @@
 # verified: reference test passes. partial: computes but a reference case fails or
 # is untested. unsupported: the planner implements the rule itself from the cited
 # worksheet until the engine covers it (never left as a gap, never reported as 0).
-federal_income_tax: partial
-federal_ltcg_rates: partial
-self_employment_tax: partial
-qbi_deduction: partial
-nc_income_tax: partial
+federal_income_tax: verified  # tests/test_tax.py, tests/test_verify.py
+federal_ltcg_rates: verified  # tests/test_tax.py (0% band, 15% above)
+self_employment_tax: verified  # tests/test_tax.py::test_self_employment_30k
+qbi_deduction: verified  # tests/test_tax.py::test_self_employment_30k
+nc_income_tax: verified  # tests/test_tax.py (3.99%, 12,750 std), tests/test_verify.py (2025)
 aca_premium_tax_credit: partial
 aca_slcsp_county: partial
 medicaid_expansion_magi: partial

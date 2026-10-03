@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import sys
+from pathlib import Path
 
 import typer
 
@@ -62,6 +64,91 @@ def check_config() -> None:
         f"assumptions: {len(a)} fields; thresholds: years {sorted(t)}; "
         f"capabilities: {len(c)}"
     )
+
+
+@app.command()
+def compute(
+    household: Path = typer.Argument(..., help="household YAML (see tests/fixtures)"),
+    year: int = typer.Option(2026, help="tax year"),
+) -> None:
+    """Every tax figure for one household-year, as JSON."""
+    from dataclasses import asdict
+
+    from planner.engine.household import load_household
+    from planner.engine.tax import compute as _compute
+
+    typer.echo(json.dumps(asdict(_compute(year, load_household(household))), indent=2))
+
+
+@app.command()
+def sweep(
+    household: Path = typer.Argument(...),
+    variable: str = typer.Option(
+        "taxable_roth_conversions", help="engine input to sweep"
+    ),
+    lo: int = typer.Option(0),
+    hi: int = typer.Option(100_000),
+    step: int = typer.Option(5_000),
+    year: int = typer.Option(2026),
+) -> None:
+    """Sweep one input across a range in a single engine run; one JSON row per step."""
+    from planner.engine.household import load_household
+    from planner.engine.tax import compute_sweep
+
+    rows = compute_sweep(year, load_household(household), variable, lo, hi, step)
+    typer.echo(json.dumps(rows, indent=2))
+
+
+@app.command()
+def verify(
+    filed_return: Path = typer.Argument(..., help="data/private/returns/<year>.yaml"),
+    tolerance: float = typer.Option(1.0, help="dollars of allowed difference per line"),
+) -> None:
+    """Recompute a filed year from its inputs; compare each line to what was filed."""
+    from planner.engine.verify import verify_return
+
+    report = verify_return(filed_return, tolerance)
+    for line in report.lines:
+        mark = "ok " if line.ok else "DIFF"
+        typer.echo(
+            f"{mark} {line.name:32} filed {line.filed:>12,.2f} "
+            f"engine {line.engine:>12,.2f}"
+        )
+    typer.echo(
+        f"{report.year}: {report.n_ok}/{len(report.lines)} lines "
+        f"within ${tolerance:,.2f}"
+    )
+    if not report.passed:
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def update(
+    release_zip: Path | None = typer.Argument(
+        None, help="release zip from GitHub Releases"
+    ),
+    sha256: str | None = typer.Option(None, help="sha256 published beside the zip"),
+    rollback: bool = typer.Option(False, "--rollback", help="restore python-previous/"),
+) -> None:
+    """Swap in a newer release after its own selfcheck passes; --rollback undoes it."""
+    from planner.engine import update as upd
+
+    root = layout().root
+    try:
+        if rollback:
+            typer.echo(f"rolled back to {upd.rollback(root)}")
+            return
+        if release_zip is None or sha256 is None:
+            typer.echo(
+                "update needs a release zip and --sha256 (or --rollback)", err=True
+            )
+            raise typer.Exit(code=2)
+        exe = "python.exe" if sys.platform == "win32" else "python"
+        result = upd.apply(release_zip, sha256, root, python_exe=exe)
+    except upd.UpdateError as exc:
+        typer.echo(f"update refused: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"updated to {result.version}; candidate selfcheck: {result.selfcheck}")
 
 
 def main() -> int:
