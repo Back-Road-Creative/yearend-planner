@@ -7,6 +7,10 @@ Layout inside the zip (contents at the zip root, no top-level folder):
     planner.cmd  LICENSE  README.md  VERSION
     python/      python.org embeddable 3.12 + Lib/site-packages from uv.lock
     planner/     the package          config/  templates/
+
+Privacy: only files git tracks are staged (a developer's own data/, out/ or
+untracked notes cannot ship), and :func:`audit` refuses a stage that holds a
+private folder or a database before anything is zipped.
 """
 
 from __future__ import annotations
@@ -37,6 +41,9 @@ PTH = "python312.zip\n.\nLib\\site-packages\n..\nimport site\n"
 
 SHIP = ("planner.cmd", "LICENSE", "README.md")
 SHIP_DIRS = ("planner", "config", "templates")
+# never in a release: the user's figures, built output, restore leftovers
+PRIVATE = ("data", "out", "dist", "restore-staging", "data-previous", "data-restored")
+PRIVATE_SUFFIXES = (".db", ".sqlite", "-journal", "-wal", ".zip")
 
 
 def version() -> str:
@@ -96,23 +103,40 @@ def build_python(stage: Path) -> None:
     )
 
 
+def tracked(*paths: str) -> list[str]:
+    """Files git tracks under ``paths``: the release ships nothing else."""
+    git = shutil.which("git") or "git"
+    out = subprocess.run(  # noqa: S603  (fixed argv, our own paths)
+        [git, "ls-files", "-z", "--", *paths],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    return [
+        p for p in out.split("\0") if p and not p.endswith("thresholds.engine.yaml")
+    ]
+
+
 def stage_tree() -> Path:
     if STAGE.exists():
         shutil.rmtree(STAGE)
     STAGE.mkdir(parents=True)
-    for name in SHIP:
-        shutil.copy2(ROOT / name, STAGE / name)
-    for name in SHIP_DIRS:
-        src = ROOT / name
-        if src.exists():
-            shutil.copytree(
-                src,
-                STAGE / name,
-                ignore=shutil.ignore_patterns("__pycache__", "thresholds.engine.yaml"),
-            )
+    for rel in tracked(*SHIP, *SHIP_DIRS):
+        (STAGE / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / rel, STAGE / rel)
     (STAGE / "VERSION").write_text(version() + "\n", encoding="utf-8")
     build_python(STAGE)
     return STAGE
+
+
+def audit(stage: Path) -> None:
+    """Refuse a stage holding a private folder or a database, before zipping."""
+    for path in sorted(p for p in stage.rglob("*") if p.is_file()):
+        rel = path.relative_to(stage).as_posix()
+        top = rel.split("/", 1)[0]
+        if top in PRIVATE or (top != "python" and rel.endswith(PRIVATE_SUFFIXES)):
+            raise SystemExit(f"release refused: {rel} is private data")
 
 
 def zip_stage(stage: Path) -> Path:
@@ -127,7 +151,9 @@ def zip_stage(stage: Path) -> Path:
 
 
 def main() -> int:
-    out = zip_stage(stage_tree())
+    stage = stage_tree()
+    audit(stage)
+    out = zip_stage(stage)
     # published beside the zip: the update check verifies the download with it
     digest = hashlib.sha256(out.read_bytes()).hexdigest()
     out.with_name(out.name + ".sha256").write_text(

@@ -35,7 +35,7 @@ def test_paths_refuses_onedrive(tmp_path: Path, monkeypatch) -> None:  # type: i
 def test_check_config(planner_home: Path) -> None:
     r = runner.invoke(app, ["check-config"])
     assert r.exit_code == 0, r.output
-    assert "thresholds: years [2026]" in r.output
+    assert "thresholds: years [2025, 2026]" in r.output
 
 
 @pytest.mark.engine

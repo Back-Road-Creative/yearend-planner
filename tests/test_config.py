@@ -12,6 +12,7 @@ from planner.config import (
     load_thresholds,
     missing_assumptions,
 )
+from planner.engine.tax import CONFIG_PARAMS
 
 
 def test_example_assumptions_cover_every_field_and_are_unknown(repo_root: Path) -> None:
@@ -34,6 +35,26 @@ def test_thresholds_every_value_has_a_source(repo_root: Path) -> None:
     assert t[2026]["std_deduction_single"]["value"] == 16100
     for name, row in t[2026].items():
         assert row["source"], name
+
+
+# the hand rows the levers read for the year planned (planner/plan/levers.py
+# _phase and the HSA lever); the engine carries none of them
+LEVER_ROWS = {
+    f"{kind}_phaseout_{who}_{part}"
+    for kind in ("ira", "roth")
+    for who in ("single", "joint")
+    for part in ("start", "width")
+} | {"hsa_limit_self", "hsa_limit_family", "hsa_catchup_55plus"}
+
+
+def test_every_hand_year_lists_every_lever_row(repo_root: Path) -> None:
+    """A year missing one of these fails mid-run, so the file itself must be
+    complete. A 2025 return is prepared in 2026, so 2025 is listed too."""
+    t = load_thresholds(repo_root / "config" / "thresholds.yaml", merged=False)
+    assert {2025, 2026} <= set(t)
+    assert not LEVER_ROWS & set(CONFIG_PARAMS)
+    for year, rows in t.items():
+        assert LEVER_ROWS <= set(rows), (year, sorted(LEVER_ROWS - set(rows)))
 
 
 def test_threshold_without_source_is_rejected(tmp_path: Path) -> None:

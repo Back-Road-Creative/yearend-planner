@@ -1,0 +1,43 @@
+name: release
+# Push a tag vX.Y.Z (planner/__init__.py __version__) to run the suite, build
+# the Windows zip on a clean Windows machine, prove it with
+# scripts/windows_proof.ps1, and attach the zip and its .sha256 to a DRAFT
+# release. Publishing the draft is the human step.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Tag matches the version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path planner/__init__.py -Pattern '^__version__ = "(.+)"').Matches[0].Groups[1].Value
+          if ("v$v" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} != planner version $v" }
+      - run: uv sync --frozen --extra dev
+      - run: uv run pytest
+        env:
+          PYTHONUTF8: "1"
+      - name: Build release zip
+        run: uv run --no-project python scripts/build_release.py
+      - name: Prove the zip
+        shell: pwsh
+        run: |
+          $zip = (Get-ChildItem dist\yearend-planner-*-win64.zip | Select-Object -First 1).FullName
+          & scripts\windows_proof.ps1 -Zip $zip
+      - name: Draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = (Get-ChildItem dist\yearend-planner-*-win64.zip | Select-Object -First 1).FullName
+          gh release create "${{ github.ref_name }}" $zip "$zip.sha256" --draft --title "${{ github.ref_name }}" --notes "Windows one-folder release. Unzip, right-click the zip > Properties > Unblock first, then double-click planner.cmd."
