@@ -27,3 +27,5 @@ ledger_accounts_balances_lots: verified  # tests/test_portfolio.py; planner acco
 roth_conversion_clock: verified  # tests/test_portfolio.py; planner convert; earlier of Jan 1 +5y and the access age
 magi_projection_lines: verified  # tests/test_plan.py; planner magi; engine-priced, unknown never zero
 roth_conversion_candidates: verified  # tests/test_plan.py; planner conversions; one engine sweep, each candidate costed
+spending_band: verified
+glide_path_and_monthly_cash: verified

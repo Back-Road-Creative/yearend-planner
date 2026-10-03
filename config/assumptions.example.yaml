@@ -9,6 +9,9 @@ spending_floor: null      # annual, dollars: the lowest the household can run on
 spending_ceiling: null    # annual, dollars: comfortable spending
 withdrawal_rate: null     # fraction of investable assets per year, e.g. 0.035
 cash_target: null         # dollars of cash buffer to hold
+mortgage_monthly: null    # P&I plus escrow per month, for the cash line
+premium_monthly: null     # health premium per month net of the advance credit
+irregular: null           # e.g. [{label: property tax, month: 9, amount: 2400}]; add year: 2026 for a one-off
 inflation: null           # fraction per year, e.g. 0.025
 return_floor: null        # fraction per year, pessimistic real return
 return_track: null        # fraction per year, planning real return

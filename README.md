@@ -197,3 +197,26 @@ into 15%, and the cash needed from outside the IRA. The profile's
 `conversion_margin` is kept below each line, `conversion_cap` is the hard cap
 and `conversion_objective` picks the recommendation; the rest stay on the page.
 Record the one you make with `planner convert`.
+
+## Planners: spending and the glide path (Phase 4b)
+
+`planner spend --year 2026` is the spending band: the profile's withdrawal
+rate times the investable balance (the ledger's latest snapshot, or
+`--balance` for the January 1 figure), clamped to `spending_floor` and
+`spending_ceiling`. The drawdown rule holds spending at the floor while the
+balance sits under 90% of the all-time peak, inflation-adjusted, which a
+rollover never resets. The table runs the next ten years in real dollars under
+`return_floor` and `return_track`.
+
+`planner glide --year 2026` is the age/year table to 95 under the planning
+return, real and nominal, with Social Security from `ss_claim_age` (the SSA
+statement figure for that age, else the nearest lower one), the
+accessible-bucket check (taxable plus cash plus Roth basis against the floor
+through `ira_access_age`), three stress rows (a 30% drop in year one, 5%
+inflation, floor returns), and the month-by-month cash line for this year and
+next: SE deposits and dividends from the ledger's rows for the months already
+run and their run-rate after, living cost at the band, `mortgage_monthly`,
+`premium_monthly`, estimated payments as a quarter of the projected year's tax
+on the four due dates, the profile's `irregular` items (`label`, `month`,
+`amount`, optional `year`) and any `--cash-in 2026-11:25000`. The cash bucket
+is carried month by month and the first month under `cash_target` is named.

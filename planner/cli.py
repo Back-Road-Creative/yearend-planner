@@ -637,6 +637,120 @@ def conversions(
         typer.echo(f"note: {note}")
 
 
+AS_OF = typer.Option(None, help="YYYY-MM-DD; default today")
+BALANCE = typer.Option(None, help="investable balance ($); default the ledger's")
+
+
+@app.command()
+def spend(
+    year: int = typer.Option(..., help="plan year"),
+    as_of: str | None = AS_OF,
+    balance: float | None = BALANCE,
+    years: int = typer.Option(10, help="rows in the return-band table"),
+) -> None:
+    """The spending band: rate x balance clamped to the floor and ceiling, the
+    drawdown rule against the inflation-adjusted peak, and the return-band
+    table under the floor and planning returns (real dollars)."""
+    from datetime import date
+
+    from planner.plan.spending import plan
+
+    sp = plan(
+        layout(), year, date.fromisoformat(as_of) if as_of else None, balance, years
+    )
+    typer.echo(
+        f"{year} balance {sp.balance:,.2f} as of {sp.as_of}; peak {sp.peak:,.2f} "
+        f"({sp.peak_date}) inflation-adjusted {sp.peak_adjusted:,.2f}"
+    )
+    typer.echo(
+        f"rate {sp.rate:.2%} floor {sp.floor:,.2f} ceiling {sp.ceiling:,.2f} -> "
+        f"spending {sp.spending:,.2f}" + ("  DRAWDOWN" if sp.in_drawdown else "")
+    )
+    typer.echo(
+        f"{'year':>6} {'age':>4} {'floor balance':>15} {'spend':>10} "
+        f"{'track balance':>15} {'spend':>10}"
+    )
+    for rw in sp.rows:
+        typer.echo(
+            f"{rw.year:>6} {rw.age:>4} {rw.balance_floor:>15,.2f} "
+            f"{rw.spend_floor:>10,.2f} "
+            f"{rw.balance_track:>15,.2f} {rw.spend_track:>10,.2f}"
+        )
+    for note in sp.notes:
+        typer.echo(f"note: {note}")
+
+
+@app.command()
+def glide(
+    year: int = typer.Option(..., help="plan year"),
+    as_of: str | None = AS_OF,
+    balance: float | None = BALANCE,
+    cash_in: list[str] = typer.Option(
+        [], help="extra cash landing in a month, YYYY-MM:AMOUNT (sale proceeds, a gift)"
+    ),
+    q4_dividends: float = Q4,
+    sales_st: float = ST,
+    sales_lt: float = LT,
+    conversion: float = CONV,
+    hsa: float | None = HSA,
+) -> None:
+    """The age/year table to 95 under the planning return, the accessible-bucket
+    floor through the IRA access age, three stress rows, and the month-by-month
+    cash line for this year and next."""
+    from datetime import date
+
+    from planner.plan.glidepath import HORIZON_AGE as HORIZON
+    from planner.plan.glidepath import glide as run_glide
+
+    extra: dict[str, float] = {}
+    for item in cash_in:
+        ym, _, amt = item.partition(":")
+        extra[ym] = extra.get(ym, 0.0) + float(amt.replace(",", ""))
+    g = run_glide(
+        layout(),
+        year,
+        date.fromisoformat(as_of) if as_of else None,
+        balance,
+        extra,
+        _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa),
+    )
+    typer.echo(
+        f"{year} age {g.age} balance {g.balance:,.2f}; accessible {g.accessible:,.2f} "
+        f"vs floor through {g.access_age:g} ({g.years_to_access} years) "
+        f"{g.floor_needed:,.2f}: "
+        + (f"SHORT by {g.floor_shortfall:,.2f}" if g.floor_shortfall else "covered")
+    )
+    typer.echo(
+        f"{'year':>6} {'age':>4} {'real':>15} {'nominal':>15} {'SS':>10} "
+        f"{'spend':>10} {'withdraw':>10}"
+    )
+    for rw in g.rows:
+        typer.echo(
+            f"{rw.year:>6} {rw.age:>4} {rw.balance_real:>15,.2f} "
+            f"{rw.balance_nominal:>15,.2f} "
+            f"{rw.ss:>10,.2f} {rw.spend:>10,.2f} {rw.withdrawal:>10,.2f}"
+        )
+    for s in g.stresses:
+        end = f"runs out at {s.runs_out_age}" if s.runs_out_age else "lasts"
+        typer.echo(
+            f"stress {s.name:22} {end}; at {HORIZON} {s.balance_at_horizon:,.2f}"
+        )
+    typer.echo(
+        f"{'month':>8} {'SE':>10} {'div':>9} {'in':>9} {'living':>9} {'mortg':>9} "
+        f"{'prem':>8} {'est tax':>9} {'irreg':>9} {'net':>10} {'cash':>12}"
+    )
+    for m in g.months:
+        typer.echo(
+            f"{m.year}-{m.month:02d}{'*' if m.actual else ' '} {m.se:>10,.2f} "
+            f"{m.dividends:>9,.2f} {m.cash_in:>9,.2f} {m.living:>9,.2f} "
+            f"{m.mortgage:>9,.2f} {m.premiums:>8,.2f} {m.est_tax:>9,.2f} "
+            f"{m.irregular:>9,.2f} {m.net:>10,.2f} {m.cash:>12,.2f}"
+        )
+    typer.echo("* income columns from ledger rows; others at the run-rate")
+    for note in g.notes:
+        typer.echo(f"note: {note}")
+
+
 def main() -> int:
     app()
     return 0
