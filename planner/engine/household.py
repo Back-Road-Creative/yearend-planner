@@ -39,6 +39,7 @@ class Household:
     social_security: int = 0
     traditional_ira_contribution: int = 0
     se_health_premiums: int = 0
+    hsa_contribution: int = 0  # health_savings_account_ald (tax-unit level)
     slcsp_monthly: int | None = None  # benchmark silver premium; None = engine estimate
     other: dict[str, int] = field(default_factory=dict)
 
@@ -91,6 +92,7 @@ class Household:
         tax_unit: dict[str, Any] = {
             "members": ["p"],
             "filing_status": {y: self.filing_status},
+            "health_savings_account_ald": {y: self.hsa_contribution},
         }
         if self.slcsp_monthly is not None:
             tax_unit["slcsp"] = {

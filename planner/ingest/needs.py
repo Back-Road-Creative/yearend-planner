@@ -170,6 +170,21 @@ NEEDS: tuple[Need, ...] = (
         PROFILE,
     ),
     Need(
+        "conversion_objective",
+        "Conversion objective",
+        "which candidate the planner recommends",
+        _NONE,
+        "enum",
+        PROFILE,
+        choices=(
+            "ltcg_0pct",
+            "bracket_12",
+            "aca_400",
+            "medicaid_under",
+            "medicaid_over",
+        ),
+    ),
+    Need(
         "roth_basis_contributions",
         "Roth IRA contributions, lifetime total ($)",
         "the part of the Roth balance that is spendable at any age",

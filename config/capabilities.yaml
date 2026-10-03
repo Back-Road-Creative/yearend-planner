@@ -25,3 +25,5 @@ csv_vanguard_cost_basis_realized_income: partial  # synthetic headers; real expo
 csv_bank: verified  # tests/test_csv.py (signed Amount; Debit/Credit)
 ledger_accounts_balances_lots: verified  # tests/test_portfolio.py; planner account / status
 roth_conversion_clock: verified  # tests/test_portfolio.py; planner convert; earlier of Jan 1 +5y and the access age
+magi_projection_lines: verified  # tests/test_plan.py; planner magi; engine-priced, unknown never zero
+roth_conversion_candidates: verified  # tests/test_plan.py; planner conversions; one engine sweep, each candidate costed

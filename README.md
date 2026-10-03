@@ -176,3 +176,24 @@ unrealized gains by lot split short/long, and the capital loss carried in
 dates when its principal is penalty-free: January 1 of the fifth year after the
 conversion or the IRA access age, whichever comes first. An inherited IRA is
 refused as a source; so is any account not typed `trad_ira`.
+
+## Planners: MAGI and the conversion (Phase 4a)
+
+Every planner prices the household the Needed panel has confirmed, through the
+engine, never by formula. `planner magi --year 2026` projects the full year
+(add `--q4-dividends`, `--sales-st`, `--sales-lt`, `--conversion`, `--hsa` for
+the planning numbers no document supplies) and shows the distance to every
+watched line: the standard deduction, the 0% LTCG ceiling, the 12% bracket
+top, the Medicaid line (tested monthly), the ACA 250% and 400% lines and NIIT.
+Unknown inputs are named and left out, never treated as zero; unknown
+qualified dividends are priced as ordinary and flagged.
+
+`planner conversions --year 2026` sizes this year's Roth conversion from a
+traditional IRA in one engine sweep: a candidate per line (fill to the 0% LTCG
+line, to the 12% top, under the ACA cliff, under or just over the Medicaid
+line in the month it lands, and the hard cap), each with the federal and NC
+tax it adds, the ACA credit it costs, a warning when qualified dividends spill
+into 15%, and the cash needed from outside the IRA. The profile's
+`conversion_margin` is kept below each line, `conversion_cap` is the hard cap
+and `conversion_objective` picks the recommendation; the rest stay on the page.
+Record the one you make with `planner convert`.
