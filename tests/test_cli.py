@@ -111,7 +111,7 @@ def test_first_run_records_the_engine_baseline_and_prints_the_delta(
     assert first.exit_code == 0, first.output
     assert "engine baseline recorded for policyengine-us" in first.output
     assert "delta from the filed return:" in first.output
-    assert "reference cases: 18/18 lines within $1.00" in first.output
+    assert "reference cases: 40/40 lines within $1.00" in first.output
     saved = json.loads((planner_home / "data" / "engine-baseline.json").read_text())
     version = saved["pinned"]
     assert set(saved["engines"]) == {version}

@@ -10,10 +10,15 @@ repaid when the household file gives `aptc`),
 SE tax, total tax (1040 line 24: line 22 plus Schedule 2 line 21, so it holds SE tax, the
 additional Medicare tax and NIIT; refundable credits are payments, not a cut in it), tax attributable to
 qualified dividends and long-term gains, NC tax, AGI, ACA MAGI, taxable income, QBI
-deduction, premium tax credit, FPL percentages, monthly Medicaid MAGI, and the headroom
+deduction, premium tax credit, FPL percentages, Medicaid eligibility, monthly Medicaid MAGI, and the headroom
 left under the 0% capital-gains ceiling and the top of the 12% bracket. All figures come
 from policyengine-us; the arithmetic written here is threshold minus taxable income and
 the self-employed health insurance settlement below.
+Two poverty guidelines are in play for one tax year, and both are printed: `fpg` is the
+guideline of the tax year itself, which Medicaid's 138% line uses, and `aca_fpg` is the
+guideline of the year before (Form 8962 line 4), which the premium tax credit's 400% cliff
+and the 250% cost-sharing line use. `aca_fpl_pct` is measured against `aca_fpg`, so a 2026
+single filer reaches 400% at $62,600 (4 x $15,650), not at 4 x the 2026 guideline.
 
 **Self-employed health insurance and the premium tax credit (IRS Pub. 974).** Give
 `se_health_premiums` as the year's premiums before any credit (1095-A column A) and
@@ -54,6 +59,18 @@ are never touched.
 Reference cases (hand-worked, $1 tolerance) are in `tests/test_tax.py` and, shipped with
 every release, in `planner/engine/reference.yaml`; the engine's
 coverage of each rule the planner relies on is recorded in `config/capabilities.yaml`.
+Every row there names the test that proves it (`tests/test_config.py` fails a verified or
+partial row that cites none, or one whose test does not exist). The poverty-line cases sit
+on both sides of each line: 138% (Medicaid) and 400% (premium tax credit), with the credit
+worked by hand from the Rev. Proc. 2025-25 table; they ship in `reference.yaml`, so
+`planner update` holds a release whose engine moves any of them. One known engine
+deviation: at 400.00% to 400.99% of the poverty line the engine pays no credit, but the
+statute ("does not exceed 400 percent", IRC 36B(c)(1)(A)) and Form 8962 line 5 (which
+truncates to a whole percent) still allow it, 3,365.04 for the single $800-a-month
+benchmark case at $62,600. That case is a strict expected-failure test, not a filed line
+in `reference.yaml`, and the premium tax credit row in `config/capabilities.yaml` stays
+`partial` until the engine is fixed. The planner stays clear of the line: it sizes
+conversions to strictly under the line (and under it by your margin on top), so no plan depends on the deviation.
 
 ## Intake (Phase 2a)
 

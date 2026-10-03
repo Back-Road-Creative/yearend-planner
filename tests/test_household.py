@@ -16,8 +16,12 @@ def test_situation_has_one_person_one_unit_one_household() -> None:
     s = h.situation(2026)
     assert s["people"]["p"]["employment_income"] == {2026: 1}
     assert s["tax_units"]["tu"]["filing_status"] == {2026: "SINGLE"}
-    assert s["households"]["hh"]["state_name"] == {2026: "NC"}
-    assert s["households"]["hh"]["county"] == {2026: "WAKE_COUNTY_NC"}
+    # the prior year carries the state and county for the ACA credit's guideline
+    assert s["households"]["hh"]["state_name"] == {2025: "NC", 2026: "NC"}
+    assert s["households"]["hh"]["county"] == {
+        2025: "WAKE_COUNTY_NC",
+        2026: "WAKE_COUNTY_NC",
+    }
     assert "slcsp" not in s["tax_units"]["tu"]
 
 
@@ -54,4 +58,7 @@ def test_county_must_be_the_engines_name_for_the_state() -> None:
         with pytest.raises(ValueError, match="WAKE_COUNTY_NC"):
             h.situation(2026)
     ok = Household(age=55, filing_status="SINGLE", state="NC", county="WAKE_COUNTY_NC")
-    assert ok.situation(2026)["households"]["hh"]["county"] == {2026: "WAKE_COUNTY_NC"}
+    assert ok.situation(2026)["households"]["hh"]["county"] == {
+        2025: "WAKE_COUNTY_NC",
+        2026: "WAKE_COUNTY_NC",
+    }

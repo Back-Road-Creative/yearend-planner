@@ -45,7 +45,10 @@ class Projection:
 
 def lines(res: TaxResult, filing_status: str) -> list[Line]:
     th = thresholds(res.year, filing_status)
-    fpg = res.fpg
+    fpg, aca_fpg = (
+        res.fpg,
+        res.aca_fpg,
+    )  # Medicaid: this year's; the credit: last year's
     return [
         Line("standard deduction", th["std_deduction"], "AGI", res.agi, "use room"),
         Line(
@@ -70,11 +73,15 @@ def lines(res: TaxResult, filing_status: str) -> list[Line]:
             "get under",
         ),
         Line(
-            "ACA CSR 250% FPL", r(fpg * CSR_FPL), "ACA MAGI", res.aca_magi, "get under"
+            "ACA CSR 250% FPL",
+            r(aca_fpg * CSR_FPL),
+            "ACA MAGI",
+            res.aca_magi,
+            "get under",
         ),
         Line(
             "ACA 400% FPL cliff",
-            r(fpg * CLIFF_FPL),
+            r(aca_fpg * CLIFF_FPL),
             "ACA MAGI",
             res.aca_magi,
             "get under",

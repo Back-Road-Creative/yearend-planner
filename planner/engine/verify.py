@@ -49,6 +49,7 @@ LINES = {
     "agi": "Form 1040 line 11",
     "taxable_income": "Form 1040 line 15",
     "qbi_deduction": "Form 1040 line 13",
+    "aca_ptc": "Form 8962 line 24",
     "state_tax": "NC D-400 line 15",
 }
 

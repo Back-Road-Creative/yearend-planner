@@ -45,6 +45,7 @@ class TaxResult:
     aca_ptc: float  # Form 8962 line 24: the credit allowed (at most the premiums paid)
     aca_fpl_pct: float
     medicaid_fpl_pct: float
+    medicaid_eligible: float  # 1.0 when the engine finds the person Medicaid-eligible
     medicaid_magi_monthly: float
     room_to_0pct_ltcg: float
     room_to_12pct_top: float
@@ -55,6 +56,9 @@ class TaxResult:
     excess_aptc: float  # Form 8962 line 27: advance credit above the credit allowed
     aptc_repayment: float  # Form 8962 line 29: the excess after the line 28 limit
     net_ptc: float  # Form 8962 line 26: credit allowed above the advance (Sch 3 line 9)
+    # The guideline of the year BEFORE the tax year: the one the premium tax credit
+    # and cost-sharing tests use (Form 8962 line 4). Medicaid uses ``fpg``.
+    aca_fpg: float
 
 
 @lru_cache(maxsize=1)
@@ -364,8 +368,10 @@ def _compute(year: int, household: Household) -> TaxResult:
             "tax_unit_medicaid_income_level",
             "medicaid_magi",
             "tax_unit_fpg",
+            "is_medicaid_eligible",
         )
     }
+    aca_fpg = float(_calc(sim, "tax_unit_fpg", year - 1)[0])
     th = thresholds(year, household.filing_status)
     pref = min(
         float(_calc(sim, "qualified_dividend_income", year)[0])
@@ -429,8 +435,9 @@ def _compute(year: int, household: Household) -> TaxResult:
         qualified_div_and_ltcg_in_taxable=r(max(pref, 0.0)),
         qbi_deduction=r(v["qualified_business_income_deduction"]),
         aca_ptc=r(ptc),
-        aca_fpl_pct=r(100 * v["aca_magi"] / fpg) if fpg else 0.0,
+        aca_fpl_pct=r(100 * v["aca_magi"] / aca_fpg) if aca_fpg else 0.0,
         medicaid_fpl_pct=r(100 * v["tax_unit_medicaid_income_level"]),
+        medicaid_eligible=v["is_medicaid_eligible"],
         medicaid_magi_monthly=r(v["medicaid_magi"] / 12),
         room_to_0pct_ltcg=r(th["ltcg_0pct_top"] - v["taxable_income"]),
         room_to_12pct_top=r(th["bracket_12pct_top"] - v["taxable_income"]),
@@ -441,6 +448,7 @@ def _compute(year: int, household: Household) -> TaxResult:
         excess_aptc=r(excess),
         aptc_repayment=r(repayment),
         net_ptc=r(max(ptc - advance, 0.0)),
+        aca_fpg=r(aca_fpg),
     )
 
 

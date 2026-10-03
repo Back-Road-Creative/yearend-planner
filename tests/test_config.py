@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -71,6 +72,34 @@ def test_capabilities_statuses(repo_root: Path, tmp_path: Path) -> None:
     bad.write_text("federal_income_tax: yes\n", encoding="utf-8")
     with pytest.raises(ConfigError):
         load_capabilities(bad)
+
+
+def test_every_capability_row_cites_an_existing_test(repo_root: Path) -> None:
+    """The matrix is only auditable if each row says which test proves it. A
+    verified or partial row's comment names tests/<file>.py or
+    tests/<file>.py::<name>, and every one named must exist; an unsupported row
+    names the rule it replaces instead."""
+    path = repo_root / "config" / "capabilities.yaml"
+    status = load_capabilities(path)
+    comments = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        key, sep, rest = line.partition(":")
+        if sep and not line.startswith((" ", "#")) and key in status:
+            comments[key] = rest.partition("#")[2]
+    assert set(comments) == set(status), set(status) - set(comments)
+    cited = re.compile(r"(tests/[\w/]+\.py)(?:::(\w+))?")
+    for name, state in status.items():
+        refs = cited.findall(comments[name])
+        if state == "unsupported":
+            continue
+        assert refs, f"{name} ({state}) cites no tests/ file in its comment"
+        for file, test in refs:
+            src = repo_root / file
+            assert src.is_file(), f"{name}: {file} does not exist"
+            if test:
+                assert re.search(rf"^def {test}\b", src.read_text("utf-8"), re.M), (
+                    f"{name}: {file} has no test {test}"
+                )
 
 
 def test_yaml_is_never_executed(tmp_path: Path) -> None:

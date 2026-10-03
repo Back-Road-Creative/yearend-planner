@@ -104,7 +104,13 @@ class Household:
             tax_unit["slcsp"] = {
                 f"{y}-{m:02d}": self.slcsp_monthly for m in range(1, 13)
             }
-        household: dict[str, Any] = {"members": ["p"], "state_name": {y: self.state}}
+        # The prior year carries the state and county too: the ACA credit reads the
+        # prior year's poverty guideline, which differs for Alaska and Hawaii.
+        years = (y - 1, y)
+        household: dict[str, Any] = {
+            "members": ["p"],
+            "state_name": {yr: self.state for yr in years},
+        }
         if self.county:
             if (
                 self.county != self.county.upper()
@@ -117,7 +123,7 @@ class Household:
                     "capitals joined by underscores, like WAKE_COUNTY_NC "
                     "(planner.ingest.derive.resolve_county turns a typed name into it)"
                 )
-            household["county"] = {y: self.county}
+            household["county"] = {yr: self.county for yr in years}
         return {
             "people": {"p": person},
             "tax_units": {"tu": tax_unit},
