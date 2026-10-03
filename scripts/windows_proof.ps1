@@ -12,17 +12,31 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Expand-Archive -LiteralPath $Zip -DestinationPath $dest -Force
 
 function Invoke-Planner([string]$Dir, [string]$Cmd, [int]$Expect = 0) {
-    # The redirection stays on the PowerShell side: cmd.exe drops a batch file's
-    # `exit /b` code when the /c line itself carries a redirection, so
-    # `cmd /c "planner.cmd ... 2>&1"` reported 0 for every step (PR #1 proof).
+    # PowerShell runs the launcher itself and takes the batch file's exit code;
+    # going through `cmd.exe /c "..."` reported 0 for every exit (PR #1 proof).
     $ErrorActionPreference = 'Continue'
-    $out = & cmd.exe /c "`"$Dir\planner.cmd`" $Cmd" 2>&1 | ForEach-Object { "$_" }
-    $out | ForEach-Object { "  | $_" }
-    if ($LASTEXITCODE -ne $Expect) { throw "planner.cmd $Cmd exited $LASTEXITCODE, expected $Expect" }
+    $out = & "$Dir\planner.cmd" $Cmd.Split(' ') 2>&1 | ForEach-Object { "$_" }
+    $code = $LASTEXITCODE
+    $out | ForEach-Object { Write-Host "  | $_" }
+    if ($code -ne $Expect) { throw "planner.cmd $Cmd exited $code, expected $Expect" }
     return ($out -join "`n")
 }
 
 Write-Host "== 0. a failing command reports its exit code"
+# Diagnostics first: every launcher style and the bare interpreter, so a wrong
+# code is explained by this log rather than by another run.
+$ErrorActionPreference = 'Continue'
+& cmd.exe /c "`"$dest\planner.cmd`" no-such-command" *> $null
+Write-Host "  cmd /c `"planner.cmd`"      -> $LASTEXITCODE"
+& cmd.exe /c "call `"$dest\planner.cmd`" no-such-command" *> $null
+Write-Host "  cmd /c call planner.cmd   -> $LASTEXITCODE"
+& "$dest\planner.cmd" no-such-command *> $null
+Write-Host "  & planner.cmd             -> $LASTEXITCODE"
+$env:PLANNER_HOME = "$dest\"
+& "$dest\python\python.exe" -m planner no-such-command *> $null
+Write-Host "  python -m planner         -> $LASTEXITCODE"
+Remove-Item Env:PLANNER_HOME
+$ErrorActionPreference = 'Stop'
 Invoke-Planner $dest 'no-such-command' 2 | Out-Null
 
 Write-Host "== 1. version / paths / config in '$dest'"
@@ -70,7 +84,13 @@ Write-Host '== 6. cloud-sync folder refused'
 $cloud = Join-Path $base 'OneDrive\planner'
 New-Item -ItemType Directory -Force -Path $cloud | Out-Null
 Copy-Item -Path (Join-Path $moved '*') -Destination $cloud -Recurse
+# Steps 1-5 already created data/ and out/ in the source folder; the check below is
+# that the refused run creates nothing, so start the copy without them.
+Remove-Item -Recurse -Force -Path (Join-Path $cloud 'data'), (Join-Path $cloud 'out') -ErrorAction SilentlyContinue
 Invoke-Planner $cloud 'paths' 2 | Out-Null
 if (Test-Path (Join-Path $cloud 'data')) { throw 'data/ was created inside OneDrive' }
 
 Write-Host 'PROOF PASSED'
+# The last launcher call above was the refused run (exit 2) and the Actions pwsh
+# shell ends with 'exit $LASTEXITCODE'; a passed proof must say so itself.
+exit 0
