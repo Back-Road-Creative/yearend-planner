@@ -76,7 +76,12 @@ def test_repayment_cap_table() -> None:
 
 def test_draft_return_ties_out(lay: Layout) -> None:
     d = draft.build(lay, YEAR)
-    g = d.get
+
+    def g(form: str, line: str) -> float:
+        value = d.get(form, line)
+        assert value is not None, (form, line)
+        return value
+
     assert not [n for n in d.notes if n.startswith("CHECK")], d.notes
     # income and the schedules that feed it
     assert g("Sch 1", "3") == 40000.0 and g("1040", "8") == 40000.0
@@ -107,7 +112,7 @@ def test_draft_return_ties_out(lay: Layout) -> None:
     # payments and the bottom line
     assert g("1040", "25b") == 100.0 and g("1040", "26") == 1500.0
     assert g("1040", "24") == pytest.approx(g("1040", "22") + g("1040", "23"), abs=0.01)
-    owe, refund = g("1040", "37"), g("1040", "34")
+    owe, refund = d.get("1040", "37"), d.get("1040", "34")
     assert (owe or 0) - (refund or 0) == pytest.approx(
         g("1040", "24") - g("1040", "33"), abs=0.01
     )
