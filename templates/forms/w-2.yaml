@@ -1,0 +1,11 @@
+# Form W-2, IRS box labels: wages and the withholding credited to the installments.
+form: W-2
+years: [2024, 2025, 2026]
+match: ["W-2", "Wage and Tax Statement"]
+year_pattern: "(?:Wage and Tax Statement\\s*|tax year\\s*:?\\s*)(20\\d\\d)"
+issuer_pattern: "Employer'?s name(?:, address,? and ZIP code)?\\s*:?\\s*([^\\n]+)"
+boxes:
+  "1": {label: "Wages, tips, other compensation", pattern: "\\b1 Wages, tips, other comp(?:ensation|\\.)\\s+AMOUNT", required: true}
+  "2": {label: "Federal income tax withheld", pattern: "\\b2 Federal income tax withheld\\s+AMOUNT", required: true}
+  "16": {label: "State wages, tips, etc.", pattern: "\\b16 State wages, tips, etc\\.?\\s+AMOUNT"}
+  "17": {label: "State income tax", pattern: "\\b17 State income tax\\s+AMOUNT"}

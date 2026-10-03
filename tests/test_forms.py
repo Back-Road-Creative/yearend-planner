@@ -102,6 +102,14 @@ NEC = [
     "1 Nonemployee compensation $ 20,000.00",
     "4 Federal income tax withheld $ 0.00",
 ]
+W2 = [
+    "Form W-2 Wage and Tax Statement 2025",
+    "c Employer's name, address, and ZIP code: Example Employer Inc (synthetic)",
+    "1 Wages, tips, other compensation $ 30,000.00",
+    "2 Federal income tax withheld $ 2,400.00",
+    "16 State wages, tips, etc. $ 30,000.00",
+    "17 State income tax $ 1,100.00",
+]
 K = [
     "Form 1099-K Payment Card and Third Party Network Transactions",
     "Tax year 2025",
@@ -189,10 +197,12 @@ def test_nc_d400_and_ssa_statement(tmp_path: Path) -> None:
 
 
 def test_information_returns(tmp_path: Path) -> None:
-    forms = one(tmp_path, "info", [NEC, K, M1098, F5498, F5498SA, F1099SA])
+    forms = one(tmp_path, "info", [NEC, W2, K, M1098, F5498, F5498SA, F1099SA])
     got = {f.form: f for f in forms}
     assert got["1099-NEC"].boxes["1"][1] == 20000.0
     assert got["1099-NEC"].issuer == "Example Client LLC (synthetic)"
+    assert got["W-2"].boxes["2"][1] == 2400.0 and got["W-2"].boxes["17"][1] == 1100.0
+    assert got["W-2"].issuer == "Example Employer Inc (synthetic)"
     assert got["1099-K"].boxes["1a"][1] == 5400.0
     assert got["1099-K"].issuer == "Example Processor (synthetic)"
     assert got["1098"].boxes["1"][1] == 6500.0 and got["1098"].boxes["2"][1] == 180000.0

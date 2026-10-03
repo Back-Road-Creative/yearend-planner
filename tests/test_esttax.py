@@ -1,0 +1,110 @@
+"""Phase 4d: estimated tax — the safe harbor, four installments, payments from
+bank rows and typed ones, and the next due amount."""
+
+from __future__ import annotations
+
+from datetime import date
+
+from typer.testing import CliRunner
+
+from planner.cli import app
+from planner.ingest import ingest
+from planner.ingest.needs import enter
+from planner.paths import Layout
+from planner.plan import esttax
+from tests.test_spending import lay  # noqa: F401
+
+runner = CliRunner()
+BANK2 = """\
+Transaction ID,Date,Description,Amount,Account
+T-9,04/10/2026,IRS USATAXPYMT,(1200.00),Checking
+T-10,06/20/2026,NCDOR TAX PYMT,(300.00),Checking
+"""
+
+
+def test_safe_harbor_and_installments(lay: Layout) -> None:  # noqa: F811
+    enter(lay, 2026, "se_income", "80,000")
+    enter(lay, 2026, "prior_agi", "70,000")
+    enter(lay, 2026, "prior_total_tax", "8,000")
+    enter(lay, 2026, "prior_nc_tax", "2,000")
+    (lay.data / "inbox" / "bank2.csv").write_text(BANK2, encoding="utf-8")
+    ingest(lay)
+    esttax.record(lay, 2026, "nc", "2026-04-12", 400.0)
+    et = esttax.estimate(lay, 2026, date(2026, 7, 10))
+    fed, nc = et.agencies
+    assert fed.name == "fed" and nc.name == "nc"
+    # prior-year tax is the lower leg for both (projected tax well above it)
+    assert fed.required == 8_000.0 and "last year" in fed.basis
+    assert nc.required == 2_000.0
+    assert [p.amount for p in fed.payments] == [1_200.0]
+    assert [(p.date, p.amount, p.origin) for p in nc.payments] == [
+        ("2026-04-12", 400.0, "typed"),
+        ("2026-06-20", 300.0, "bank bank2.csv"),
+    ]
+    assert [i.due for i in fed.installments] == [
+        "2026-04-15",
+        "2026-06-15",
+        "2026-09-15",
+        "2027-01-15",
+    ]
+    assert [i.required for i in fed.installments] == [
+        2_000.0,
+        4_000.0,
+        6_000.0,
+        8_000.0,
+    ]
+    assert [i.paid for i in fed.installments] == [1_200.0] * 4
+    assert fed.installments[0].shortfall == 800.0
+    # the June NC payment landed after June 15: it does not cure installment 2
+    assert [i.paid for i in nc.installments] == [400.0, 400.0, 700.0, 700.0]
+    assert (
+        nc.installments[1].shortfall == 600.0 and nc.installments[2].shortfall == 800.0
+    )
+    assert (fed.next_due, fed.next_amount) == ("2026-09-15", 4_800.0)
+    assert (nc.next_due, nc.next_amount) == ("2026-09-15", 800.0)
+    assert fed.penalty is None and any("2210" in n for n in fed.notes)
+    assert any("were short" in n for n in fed.notes)
+    # 110% leg over 150k prior AGI; de minimis under 1,000
+    assert esttax.safe_harbor("fed", 100_000.0, 20_000.0, 160_000.0) == (
+        22_000.0,
+        "110% of last year's tax",
+    )
+    assert esttax.safe_harbor("nc", 100_000.0, 20_000.0, 160_000.0)[0] == 20_000.0
+    assert esttax.safe_harbor("fed", 5_000.0, None, None) == (
+        4_500.0,
+        "90% of this year's projected tax (prior year unknown)",
+    )
+    enter(lay, 2026, "se_income", "6,000")
+    enter(lay, 2026, "fed_withheld", "500")
+    small = esttax.estimate(lay, 2026, date(2026, 7, 10)).agencies[0]
+    assert small.de_minimis and small.installments[-1].required == 0.0
+
+
+def test_lumpy_income_flags_the_annualized_method(lay: Layout) -> None:  # noqa: F811
+    enter(lay, 2026, "se_income", "30,000")
+    et = esttax.estimate(lay, 2026, date(2026, 7, 10))
+    assert et.annualized  # the fixture's deposits all land in Q1
+    assert any("annualized" in n for n in et.notes)
+
+
+def test_cli_esttax_and_paid(lay: Layout) -> None:  # noqa: F811
+    enter(lay, 2026, "se_income", "80,000")
+    r = runner.invoke(
+        app,
+        [
+            "paid",
+            "--year",
+            "2026",
+            "--agency",
+            "fed",
+            "--on",
+            "2026-04-10",
+            "--amount",
+            "1200",
+        ],
+    )
+    assert r.exit_code == 0 and "installment 1" in r.output, r.output
+    r = runner.invoke(app, ["esttax", "--year", "2026", "--as-of", "2026-07-10"])
+    assert r.exit_code == 0, r.output
+    assert "fed:" in r.output and "nc:" in r.output and "next:" in r.output
+    assert "due 2026-09-15" in r.output and "1,200.00" in r.output

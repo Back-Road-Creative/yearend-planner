@@ -237,3 +237,22 @@ whose symbol was bought inside the last 30 days is flagged as a wash sale.
 with a buy of the same symbol within 30 days either side, across all accounts
 including IRAs (a dividend reinvestment is a buy), and the symbols whose window
 is still open as of the date.
+
+## Planners: estimated tax (Phase 4d)
+
+`planner esttax --year 2026 [--as-of …] [--conversion 40000 …]` shows, for the
+IRS and NC separately: the projected tax, the safe harbor (the lesser of 90% of
+this year's tax and 100% of last year's — 110% federal when last year's AGI
+topped 150,000; 90% of this year's when the prior return is not in), the four
+installments (April 15, June 15, September 15, January 15) with what was paid
+by each due date, and the next payment. Payments come from bank rows whose
+description names the IRS (`USATAXPYMT`, `EFTPS`) or NCDOR, plus anything
+typed with `planner paid --year 2026 --agency fed --on 2026-04-10 --amount 1200`
+(kept in the year's manual file). A payment counts toward the installment
+whose window it falls in, so a late payment never cures an earlier shortfall.
+Tax after withholding under 1,000 is de minimis (no payments required);
+withholding comes from `fed_withheld` / `nc_withheld` on the Needed panel (a W-2
+template now reads boxes 1, 2, 16 and 17).
+Income with over half in one quarter, or a planned year-end lump, raises the
+annualized-method flag (Schedule AI is not computed). The Form 2210 penalty is
+reported as unavailable.
