@@ -31,6 +31,8 @@ ASSUMPTION_FIELDS = (
     "conversion_cap",
     "conversion_objective",
     "roth_basis_contributions",
+    "hsa_coverage",
+    "workplace_plan",
 )
 
 

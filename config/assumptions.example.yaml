@@ -24,3 +24,5 @@ conversion_margin: null   # dollars kept below a threshold when sizing a convers
 conversion_cap: null      # hard cap on a single year's Roth conversion, dollars
 conversion_objective: null  # ltcg_0pct | bracket_12 | aca_400 | medicaid_under | medicaid_over
 roth_basis_contributions: null  # dollars ever contributed to Roth IRAs (not conversions)
+hsa_coverage: null        # none | self | family (high-deductible plan this year)
+workplace_plan: null      # yes | no: covered by a retirement plan at work this year (W-2 box 13, SEP or solo 401(k))

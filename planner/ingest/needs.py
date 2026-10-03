@@ -211,6 +211,26 @@ NEEDS: tuple[Need, ...] = (
         estimate=(("5498", "10"),),
     ),
     Need(
+        "hsa_coverage",
+        "High-deductible health plan this year (none, self or family)",
+        "whether an HSA contribution is a lever, and its limit",
+        "the plan's summary of benefits (an HSA-eligible plan says so) or the "
+        "marketplace plan listing",
+        "enum",
+        PROFILE,
+        choices=("none", "self", "family"),
+    ),
+    Need(
+        "workplace_plan",
+        "Covered by a retirement plan at work this year (yes or no)",
+        "whether a traditional IRA contribution is deductible in full",
+        "W-2 box 13 'Retirement plan' (checked = yes); a SEP or solo 401(k) of "
+        "your own also counts",
+        "enum",
+        PROFILE,
+        choices=("yes", "no"),
+    ),
+    Need(
         "ss_estimate_62",
         "SS monthly estimate at 62",
         "claim-age comparison",

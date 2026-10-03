@@ -17,6 +17,7 @@ from planner.plan import (
     conversion,
     esttax,
     glidepath,
+    levers,
     magi,
     spending,
     washsale,
@@ -28,6 +29,7 @@ SECTIONS = (
     "needed",
     "magi",
     "conversion",
+    "levers",
     "spending",
     "glide",
     "cash",
@@ -124,6 +126,16 @@ def _conversion(lay: Layout, year: int, _today: date, ov: Overrides) -> Section:
             f"{'  Medicaid month OVER' if c.medicaid_month_over else ''}"
         )
     return Section("conversion", True, lines, list(sz.notes))
+
+
+def _levers(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
+    m = levers.menu(lay, year, today, ov)
+    waiting = [
+        f"{lv.key}: {lv.why}"
+        for lv in m.levers
+        if not lv.available and lv.why.startswith("needs")
+    ]
+    return Section("levers", True, levers.summary(m, levers.TOP), m.notes + waiting)
 
 
 def _spending(lay: Layout, year: int, today: date, _ov: Overrides) -> Section:
@@ -226,6 +238,7 @@ BUILDERS = {
     "needed": _needed,
     "magi": _magi,
     "conversion": _conversion,
+    "levers": _levers,
     "spending": _spending,
     "glide": _glide,
     "cash": _cash,
