@@ -38,3 +38,4 @@ year_end_plan_page: verified  # tests/test_year.py; planner plan; a missing inpu
 lever_optimizer: verified  # tests/test_levers.py; planner levers; combined-set pricing, unknown inputs named
 whatif: verified  # tests/test_levers.py; planner whatif; full-year recompute before and after
 threshold_drift: verified  # tests/test_levers.py; planner thresholds; config rows checked against engine parameters
+expected_forms: verified  # tests/test_expected.py; planner forms; late forms join planner needed

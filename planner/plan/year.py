@@ -24,9 +24,11 @@ from planner.plan import (
     withdraw,
 )
 from planner.plan.inputs import Overrides
+from planner.taxprep import expected
 
 SECTIONS = (
     "needed",
+    "forms",
     "magi",
     "conversion",
     "levers",
@@ -126,6 +128,10 @@ def _conversion(lay: Layout, year: int, _today: date, ov: Overrides) -> Section:
             f"{'  Medicaid month OVER' if c.medicaid_month_over else ''}"
         )
     return Section("conversion", True, lines, list(sz.notes))
+
+
+def _forms(lay: Layout, year: int, today: date, _ov: Overrides) -> Section:
+    return Section("forms", True, expected.lines(expected.inventory(lay, year, today)))
 
 
 def _levers(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
@@ -239,6 +245,7 @@ BUILDERS = {
     "magi": _magi,
     "conversion": _conversion,
     "levers": _levers,
+    "forms": _forms,
     "spending": _spending,
     "glide": _glide,
     "cash": _cash,

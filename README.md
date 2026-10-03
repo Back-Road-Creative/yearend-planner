@@ -312,3 +312,24 @@ limits and checks the ones the engine also carries; a mismatch (the engine's
 2026 IRA limit is still 7,000 against Notice 2025-67's 7,500) means the engine
 prices with its own value until policyengine-us updates. Engine runs are
 memoized per household, so the page prices each household once.
+
+## Tax prep: the forms the year should produce (Phase 4g)
+
+`planner forms --year 2026` predicts every form the return needs and checks it
+off as it arrives. A form is expected when last year's issuer sent one, when an
+account shows the activity behind it (dividends, interest or sales in a taxable
+account: the institution's consolidated 1099; a withdrawal or Roth conversion
+from an IRA: a 1099-R; HSA money in or out: 5498-SA or 1099-SA), or when a
+Needed-panel answer implies it (wages: W-2; SE income: a 1099-NEC from each
+client who sends one; interest or dividends: 1099-INT, 1099-DIV; marketplace
+premiums: 1095-A; a mortgage: 1098, needed
+only when itemizing; a Social Security claim age reached: SSA-1099). A form
+nobody predicted is listed as it arrives. Each line is received (with the file
+it came from), superseded or expected, with the date the issuer owes it to you
+moved to a business day: January 31, February 15 for a broker's consolidated
+statement, May 31 for the 5498 forms, which come after filing and are never
+needed to file.
+
+A form past its due date that the return needs joins `planner needed` with
+where to download it, so the intake loop is not done until it is in the inbox
+(`--as-of` checks any date). The plan page lists the inventory under "forms".
