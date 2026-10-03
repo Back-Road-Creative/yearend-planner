@@ -44,6 +44,7 @@ MONEY = {
     "traditional_ira_contribution": "traditional_ira_contribution",
     "se_health_premiums": "se_health_premiums",
     "slcsp_monthly": "slcsp_monthly",
+    "aptc": "aptc",
     "hsa_contribution": "hsa_contribution",
 }
 OVERRIDES = (

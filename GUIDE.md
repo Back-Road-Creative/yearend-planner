@@ -5,13 +5,36 @@ How each part works, phase by phase. The one-page start is the [README](README.m
 ## Engine (Phase 1)
 
 `planner compute <household.yaml>` prints every figure for one household-year as JSON:
-federal income tax after credits (line 22, before any excess advance premium credit),
+federal income tax after credits (line 22, which holds any excess advance premium credit
+repaid when the household file gives `aptc`),
 SE tax, total tax (1040 line 24: line 22 plus Schedule 2 line 21, so it holds SE tax, the
 additional Medicare tax and NIIT; refundable credits are payments, not a cut in it), tax attributable to
 qualified dividends and long-term gains, NC tax, AGI, ACA MAGI, taxable income, QBI
 deduction, premium tax credit, FPL percentages, monthly Medicaid MAGI, and the headroom
 left under the 0% capital-gains ceiling and the top of the 12% bracket. All figures come
-from policyengine-us; the only arithmetic here is threshold minus taxable income.
+from policyengine-us; the arithmetic written here is threshold minus taxable income and
+the self-employed health insurance settlement below.
+
+**Self-employed health insurance and the premium tax credit (IRS Pub. 974).** Give
+`se_health_premiums` as the year's premiums before any credit (1095-A column A) and
+`aptc` as the advance credit paid (column C). The deduction is the premiums less the
+credit allowed, no more than the profit less half the SE tax and any SEP/SIMPLE
+contribution (Worksheet W); the credit depends on the income the deduction leaves
+(Worksheet X). `compute` runs the Iterative Calculation Method on the engine: deduct
+the premiums, price the credit, take it off the premiums, and repeat until neither
+moves by $1 (about six runs, so a household with premiums takes a few seconds longer).
+The result carries `se_health_deduction`, `aca_ptc` (the credit allowed, never more
+than the premiums), `net_ptc` (Form 8962 line 26), `excess_aptc` and `aptc_repayment`
+(lines 27 and 29, after the 2025 line 28 cap; none from 2026), and `se_health_converged`.
+At the 400% cliff (2026 on) the credit ends as the deduction falls, so there is no
+fixed point: the result is the two-pass figure with `se_health_converged` false, and
+the draft says to check it with a preparer. Where the applicable percentage rises with
+income, the whole-percent step of Form 8962 line 5 can leave two points that both get a
+credit (about $13-15 apart); that is not the cliff, so the lower deduction is reported as
+settled, with the deduction plus the credit within that step of the premiums. Assumed: one plan for the full year, all
+premiums specified, one business; not modelled: partial-year coverage with a different
+benchmark each month, nonspecified premiums (Worksheet P), and the passive-loss, IRA,
+EE-bond and student-loan interactions of Pub. 974's special instructions.
 
 `planner sweep <household.yaml> --variable taxable_roth_conversions --lo 0 --hi 100000 --step 5000`
 runs the whole range in one engine call.
@@ -412,6 +435,8 @@ SSA-1099), and the federal estimated payments recorded for the year. Tax-exempt
 interest (1099-INT box 8, 1099-DIV box 12) comes from the Needed panel, the
 same figure the plan prices.
 
+Schedule 1 line 17 is the settled deduction above (its source line says so), and the
+draft checks that it and Form 8962 line 24 add up to the premiums (`CHECK:` if not).
 Form 8962 is reconciled month by month from the 1095-A (premium, benchmark and
 advance columns summed across policies): each month's credit is the smaller of
 the premium and the benchmark less the monthly contribution, and a shortfall

@@ -7,12 +7,12 @@ federal_ltcg_rates: verified  # tests/test_tax.py (0% band, 15% above)
 self_employment_tax: verified  # tests/test_tax.py::test_self_employment_30k
 qbi_deduction: verified  # tests/test_tax.py::test_self_employment_30k
 nc_income_tax: verified  # tests/test_tax.py (3.99%, 12,750 std), tests/test_verify.py (2025)
-federal_total_tax_line_24: verified  # tests/test_tax.py::test_fed_total_tax_matches_draft_line_24; engine total = draft 1040 line 24 (SE tax, additional Medicare tax, NIIT; refundable credits kept out); excess APTC (Sch 2 line 1a) stays in the draft
+federal_total_tax_line_24: verified  # tests/test_tax.py::test_fed_total_tax_matches_draft_line_24; engine total = draft 1040 line 24 (SE tax, additional Medicare tax, NIIT; refundable credits kept out); with Household.aptc the excess advance credit (Sch 2 line 1a, 8962 line 29 after the line 28 cap) is in line 22 and line 24
 aca_magi_tax_exempt_interest: verified  # tests/test_plan.py::test_aca_magi_adds_exempt_interest; 1099-INT box 8 and 1099-DIV box 12 reach the plan household, the MAGI lines, conversion sizes and levers
 aca_premium_tax_credit: partial
 aca_slcsp_county: verified  # tests/test_tax.py::test_slcsp_for_named_county; Wake, Mecklenburg and Guilford within $1 of CMS's PY2025 county table (average SLCSP, 40-year-old; CMS publishes only these three NC counties)
 medicaid_expansion_magi: partial
-se_health_insurance_deduction: partial
+se_health_insurance_deduction: verified  # tests/test_tax.py::test_se_health_ptc_iteration_pub974 (Pub. 974 iterative method, hand-worked within $1, with an advance credit), ::test_se_health_step_cycle_inside_the_phase_in_band_is_not_the_cliff (whole-percent step, not the cliff), ::test_se_health_deduction_is_limited_by_profit_less_half_the_se_tax (Worksheet W), ::test_se_health_at_the_400pct_cliff_has_no_fixed_point (two-pass answer, flagged); tests/test_draft.py::test_draft_settles_the_se_health_deduction_with_the_credit; one plan, full year, specified premiums, one business
 # Intake (not engine rules): what the templates read today.
 pdf_text_1099_int_div_b_r_1095a: verified  # tests/test_ingest.py
 pdf_filed_1040_and_schedules_1_2_3_c_d_se: verified  # tests/test_forms.py, synthetic dot-leader text
