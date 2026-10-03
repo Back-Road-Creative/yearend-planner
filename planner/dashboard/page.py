@@ -95,6 +95,7 @@ class Page:
     pending: list[Pending] = field(default_factory=list)
     alerts: list[Alert] = field(default_factory=list)
     limits: limits_.Limits | None = None
+    stale_days: int | None = None  # set once STALE_DAYS have passed
 
     @property
     def needed_count(self) -> int:
@@ -177,16 +178,14 @@ def _alerts(lay: Layout, page: Page, today: date) -> list[Alert]:
         out.append(
             Alert("stale", "no document imported yet: drop your documents on this page")
         )
-    else:
-        age = (today - datetime.fromisoformat(last).date()).days
-        if age > STALE_DAYS:
-            out.append(
-                Alert(
-                    "stale",
-                    f"last document imported {age} days ago ({last[:10]}): "
-                    "figures may be stale",
-                )
+    elif (age := _stale_days(lay, today)) is not None:
+        out.append(
+            Alert(
+                "stale",
+                f"last document imported {age} days ago ({last[:10]}): "
+                "figures may be stale",
             )
+        )
     lim = page.limits
     if lim is not None:
         if lim.coverage.get(page.year) == "none":
@@ -211,6 +210,15 @@ def _alerts(lay: Layout, page: Page, today: date) -> list[Alert]:
         if p.tag == UNAVAILABLE:
             out.append(Alert("blocked", f"{p.title}: {'; '.join(p.lines)}"))
     return out
+
+
+def _stale_days(lay: Layout, today: date) -> int | None:
+    """Days since the newest import when past STALE_DAYS; the plan still runs."""
+    last = last_import(lay)
+    if last is None:
+        return None
+    age = (today - datetime.fromisoformat(last).date()).days
+    return age if age > STALE_DAYS else None
 
 
 def gather(
@@ -246,4 +254,5 @@ def gather(
     page.pending = _pending(lay)
     page.limits = limits_.refresh(lay, year, write=False)
     page.alerts = _alerts(lay, page, today)
+    page.stale_days = _stale_days(lay, today)  # also a banner atop every page
     return page

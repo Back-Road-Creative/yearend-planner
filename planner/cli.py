@@ -74,7 +74,7 @@ def check_config() -> None:
 @app.command()
 def compute(
     household: Path = typer.Argument(..., help="household YAML (see tests/fixtures)"),
-    year: int = typer.Option(2026, help="tax year"),
+    year: int = typer.Option(2026, help="tax year", min=1990, max=2100),
 ) -> None:
     """Every tax figure for one household-year, as JSON."""
     from dataclasses import asdict
@@ -91,10 +91,10 @@ def sweep(
     variable: str = typer.Option(
         "taxable_roth_conversions", help="engine input to sweep"
     ),
-    lo: int = typer.Option(0),
-    hi: int = typer.Option(100_000),
-    step: int = typer.Option(5_000),
-    year: int = typer.Option(2026),
+    lo: int = typer.Option(0, min=0),
+    hi: int = typer.Option(100_000, min=0),
+    step: int = typer.Option(5_000, min=1),
+    year: int = typer.Option(2026, min=1990, max=2100),
 ) -> None:
     """Sweep one input across a range in a single engine run; one JSON row per step."""
     from planner.engine.household import load_household
@@ -107,7 +107,9 @@ def sweep(
 @app.command()
 def verify(
     filed_return: Path = typer.Argument(..., help="data/private/returns/<year>.yaml"),
-    tolerance: float = typer.Option(1.0, help="dollars of allowed difference per line"),
+    tolerance: float = typer.Option(
+        1.0, help="dollars of allowed difference per line", min=0
+    ),
 ) -> None:
     """Recompute a filed year from its inputs; compare each line to what was filed."""
     from planner.engine.verify import verify_return
@@ -284,7 +286,9 @@ def ingest() -> None:
 
 @app.command()
 def derive(
-    year: int = typer.Option(..., help="tax year to recompute from the ledger rows"),
+    year: int = typer.Option(
+        ..., help="tax year to recompute from the ledger rows", min=1990, max=2100
+    ),
 ) -> None:
     """Recompute the YTD facts (realized gains, dividends, interest, bank flows)
     for one year from the imported rows; supersedes the previous run."""
@@ -298,7 +302,7 @@ def derive(
 
 @app.command()
 def facts(
-    year: int | None = typer.Option(None, help="tax year"),
+    year: int | None = typer.Option(None, help="tax year", min=1990, max=2100),
     form: str | None = typer.Option(None, help="form, e.g. 1099-DIV"),
 ) -> None:
     """List the accepted facts in the ledger, each with its source file and page."""
@@ -316,7 +320,7 @@ def facts(
 
 @app.command()
 def rows(
-    year: int | None = typer.Option(None, help="tax year"),
+    year: int | None = typer.Option(None, help="tax year", min=1990, max=2100),
     source: str | None = typer.Option(None, help="e.g. vanguard_transactions, bank"),
     kind: str | None = typer.Option(
         None, help="holding, lot, transaction, realized, income or bank"
@@ -338,7 +342,7 @@ def rows(
 
 @app.command()
 def needed(
-    year: int = typer.Option(..., help="plan year"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     all: bool = typer.Option(False, "--all", help="also list what is already covered"),
     as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
 ) -> None:
@@ -387,7 +391,7 @@ def needed(
 
 
 @app.command()
-def gains(year: int = typer.Option(..., help="tax year")) -> None:
+def gains(year: int = typer.Option(..., help="tax year", min=1990, max=2100)) -> None:
     """Form 8949 and Schedule D: each closed lot in a taxable account, wash sales
     across every account (code W), 1099-DIV capital gain distributions and the
     loss carried in. Once the year has ended its Schedule D feeds the Needed
@@ -405,7 +409,7 @@ def gains(year: int = typer.Option(..., help="tax year")) -> None:
 
 
 @app.command()
-def hsa(year: int = typer.Option(..., help="tax year")) -> None:
+def hsa(year: int = typer.Option(..., help="tax year", min=1990, max=2100)) -> None:
     """Form 8889: the HSA limit for your coverage and months, employer money
     against it, the deduction, any excess, and distributions not spent on
     medical care. Once the year has ended its deduction feeds the Needed
@@ -424,7 +428,7 @@ def hsa(year: int = typer.Option(..., help="tax year")) -> None:
 
 @app.command()
 def categorize(
-    year: int = typer.Option(..., help="tax year"),
+    year: int = typer.Option(..., help="tax year", min=1990, max=2100),
     rule: str | None = typer.Option(None, help="description text to match"),
     row: str | None = typer.Option(None, help="one row's key, as listed"),
     as_: str | None = typer.Option(None, "--as", help="the category"),
@@ -464,7 +468,7 @@ def categorize(
 
 @app.command()
 def forms(
-    year: int = typer.Option(..., help="tax year"),
+    year: int = typer.Option(..., help="tax year", min=1990, max=2100),
     as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
 ) -> None:
     """The forms the year should produce (from last year's issuers, the
@@ -480,7 +484,7 @@ def forms(
 
 @app.command()
 def draft(
-    year: int = typer.Option(..., help="tax year"),
+    year: int = typer.Option(..., help="tax year", min=1990, max=2100),
     as_json: bool = typer.Option(False, "--json", help="machine-readable"),
 ) -> None:
     """The draft return: Form 1040 with its schedules and forms, and the NC
@@ -504,7 +508,7 @@ def draft(
 
 @app.command()
 def taxpack(
-    year: int = typer.Option(..., help="tax year"),
+    year: int = typer.Option(..., help="tax year", min=1990, max=2100),
     as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
 ) -> None:
     """Everything a preparer asks for in out/tax-<year>/: the draft return
@@ -526,7 +530,7 @@ def taxpack(
 
 
 @app.command()
-def close(year: int = typer.Option(..., help="tax year")) -> None:
+def close(year: int = typer.Option(..., help="tax year", min=1990, max=2100)) -> None:
     """Close the year from the filed return: every filed line beside the
     draft's, and the filed figures kept as the year's record. An amended return
     closes it again as a new version."""
@@ -543,7 +547,7 @@ def close(year: int = typer.Option(..., help="tax year")) -> None:
 @app.command()
 def rollover(
     year: int | None = typer.Option(
-        None, help="the year that ended; default last year"
+        None, help="the year that ended; default last year", min=1990, max=2100
     ),
     as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
     ask: bool | None = typer.Option(
@@ -598,7 +602,7 @@ def rollover(
 def enter(
     key: str = typer.Argument(..., help="item name from `planner needed`"),
     value: str = typer.Argument(..., help="the typed answer"),
-    year: int = typer.Option(..., help="plan year"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
 ) -> None:
     """Type one answer the documents did not supply; profile answers go to
     data/profile/assumptions.yaml, year answers to data/manual/<year>.yaml."""
@@ -615,7 +619,7 @@ def enter(
 @app.command()
 def dont_have(
     key: str = typer.Argument(..., help="item name from `planner needed`"),
-    year: int = typer.Option(..., help="plan year"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
 ) -> None:
     """Mark an item as not available; it leaves the Needed list and the plan
     shows it as unavailable instead of guessing."""
@@ -796,7 +800,7 @@ def convert(
 
 @app.command()
 def status(
-    year: int = typer.Option(..., help="plan year"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
 ) -> None:
     """The portfolio today: every account, total, accessible and locked money,
@@ -873,7 +877,7 @@ HSA = typer.Option(None, help="planned HSA contribution ($), replaces the ledger
 
 @app.command()
 def magi(
-    year: int = typer.Option(..., help="plan year"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     q4_dividends: float = Q4,
     sales_st: float = ST,
     sales_lt: float = LT,
@@ -926,12 +930,12 @@ def magi(
 
 @app.command()
 def conversions(
-    year: int = typer.Option(..., help="plan year"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     q4_dividends: float = Q4,
     sales_st: float = ST,
     sales_lt: float = LT,
     hsa: float | None = HSA,
-    step: int = typer.Option(500, help="sweep step ($)"),
+    step: int = typer.Option(500, help="sweep step ($)", min=1),
 ) -> None:
     """Size this year's Roth conversion: one engine sweep, a candidate per
     watched line, each with its federal and NC tax, ACA credit change, Medicaid
@@ -972,10 +976,10 @@ BALANCE = typer.Option(None, help="investable balance ($); default the ledger's"
 
 @app.command()
 def spend(
-    year: int = typer.Option(..., help="plan year"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     as_of: str | None = AS_OF,
     balance: float | None = BALANCE,
-    years: int = typer.Option(10, help="rows in the return-band table"),
+    years: int = typer.Option(10, help="rows in the return-band table", min=1, max=60),
 ) -> None:
     """The spending band: rate x balance clamped to the floor and ceiling, the
     drawdown rule against the inflation-adjusted peak, and the return-band
@@ -1011,7 +1015,7 @@ def spend(
 
 @app.command()
 def glide(
-    year: int = typer.Option(..., help="plan year"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     as_of: str | None = AS_OF,
     balance: float | None = BALANCE,
     cash_in: list[str] = typer.Option(
@@ -1082,7 +1086,9 @@ def glide(
 
 @app.command()
 def washsales(
-    year: int | None = typer.Option(None, help="loss sales in this year; default all"),
+    year: int | None = typer.Option(
+        None, help="loss sales in this year; default all", min=1990, max=2100
+    ),
     as_of: str | None = AS_OF,
 ) -> None:
     """Every loss sale with a buy of the same symbol within 30 days either side,
@@ -1118,9 +1124,11 @@ LOT = typer.Option(None, help="sell this lot first: ACCOUNT:SYMBOL:YYYY-MM-DD (r
 
 @app.command()
 def withdraw(
-    year: int = typer.Option(..., help="plan year"),
-    target: float | None = typer.Option(None, help="cash to hold; default cash_target"),
-    budget: float | None = typer.Option(None, help="realized gain allowed ($)"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
+    target: float | None = typer.Option(
+        None, help="cash to hold; default cash_target", min=0
+    ),
+    budget: float | None = typer.Option(None, help="realized gain allowed ($)", min=0),
     as_of: str | None = AS_OF,
     lot: list[str] | None = LOT,
     q4_dividends: float = Q4,
@@ -1169,7 +1177,7 @@ def withdraw(
 
 @app.command()
 def esttax(
-    year: int = typer.Option(..., help="plan year"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     as_of: str | None = AS_OF,
     q4_dividends: float = Q4,
     sales_st: float = ST,
@@ -1215,10 +1223,12 @@ def esttax(
 
 @app.command()
 def paid(
-    year: int = typer.Option(..., help="tax year the payment is for"),
+    year: int = typer.Option(
+        ..., help="tax year the payment is for", min=1990, max=2100
+    ),
     agency: str = typer.Option(..., help="fed or nc"),
     on: str = typer.Option(..., help="payment date YYYY-MM-DD"),
-    amount: float = typer.Option(..., help="dollars"),
+    amount: float = typer.Option(..., help="dollars", min=0),
 ) -> None:
     """Record an estimated payment the bank export does not show."""
     from planner.plan.esttax import record
@@ -1231,7 +1241,7 @@ def paid(
 
 @app.command()
 def plan(
-    year: int = typer.Option(..., help="plan year"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     as_of: str | None = AS_OF,
     q4_dividends: float = Q4,
     sales_st: float = ST,
@@ -1261,7 +1271,9 @@ def plan(
 
 @app.command()
 def dashboard(
-    year: int | None = typer.Option(None, help="plan year; default this year"),
+    year: int | None = typer.Option(
+        None, help="plan year; default this year", min=1990, max=2100
+    ),
     as_of: str | None = AS_OF,
 ) -> None:
     """Write the dashboard as a static page, out/index.html, for printing and
@@ -1289,13 +1301,17 @@ def dashboard(
 
 @app.command()
 def run(
-    year: int | None = typer.Option(None, help="plan year; default this year"),
+    year: int | None = typer.Option(
+        None, help="plan year; default this year", min=1990, max=2100
+    ),
     as_of: str | None = AS_OF,
     quiet: bool = typer.Option(
         False, "--quiet", help="no browser, no server: refresh out/index.html"
     ),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="open the page"),
-    port: int = typer.Option(0, help="local port; 0 lets the system pick"),
+    port: int = typer.Option(
+        0, help="local port; 0 lets the system pick", min=0, max=65535
+    ),
     update_check: bool = typer.Option(
         True, "--update-check/--no-update-check", help="look for a newer release"
     ),
@@ -1381,7 +1397,7 @@ def _lever_amounts(pairs: list[str]) -> dict[str, float]:
 
 @app.command()
 def levers(
-    year: int = typer.Option(..., help="plan year"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     as_of: str | None = AS_OF,
     q4_dividends: float = Q4,
     sales_st: float = ST,
@@ -1406,7 +1422,7 @@ def levers(
 
 @app.command()
 def whatif(
-    year: int = typer.Option(..., help="plan year"),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     apply: str = typer.Option(..., help="lever keys, comma-separated"),
     set_: list[str] = typer.Option(  # noqa: B008
         [], "--set", help="lever=amount to size a lever yourself (repeatable)"
@@ -1439,7 +1455,9 @@ def whatif(
 
 
 @app.command()
-def thresholds(year: int = typer.Option(..., help="tax year")) -> None:
+def thresholds(
+    year: int = typer.Option(..., help="tax year", min=1990, max=2100),
+) -> None:
     """The sourced limits in config/thresholds.yaml for a year, checked against
     the engine's own parameters. A mismatch means one side is stale: the config
     row names its source; the engine updates with policyengine-us."""

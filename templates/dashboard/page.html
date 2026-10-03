@@ -36,6 +36,7 @@ td, th { text-align:left; padding:3px 6px; border-bottom:1px solid var(--line); 
 td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .scroll { overflow-x:auto; }
 .done { color:var(--actual); font-weight:600; }
+.stale { margin:.5rem 0 0; padding:.4rem .6rem; border-left:4px solid var(--estimate); background:var(--panel); }
 @media print { #drop, form, button { display:none !important; } body { background:#fff; } section { break-inside:avoid; } }
 </style>
 </head>
@@ -47,6 +48,7 @@ td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap
   {% if p.needed_count %}<a href="#needed">{{ p.needed_count }} needed</a>{% else %}<span class="done">nothing needed</span>{% endif %}
   · <a href="#alerts">{{ p.alerts|length }} alert(s)</a>
   {% if not live %} · static copy: run <code>planner run</code> to answer questions here{% endif %}</p>
+  {% if p.stale_days %}<p class="stale">{{ p.stale_days }} days since the last import: the figures below may be out of date. Drop your newest statements in the inbox to catch them up.</p>{% endif %}
 </header>
 <main>
 {% if live %}
