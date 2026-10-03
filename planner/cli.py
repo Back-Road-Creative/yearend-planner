@@ -1117,11 +1117,14 @@ def dashboard(
     from datetime import date
 
     from planner.dashboard import page, render
+    from planner.engine import limits
 
     lay = layout()
     lay.ensure()
     today = date.fromisoformat(as_of) if as_of else date.today()
-    pg = page.gather(lay, year or page.default_year(today), today)
+    active = year or page.default_year(today)
+    typer.echo(f"limits: {limits.summary(limits.refresh(lay, active))}")
+    pg = page.gather(lay, active, today)
     typer.echo(f"written {render.write_static(lay, pg)}")
     typer.echo(
         f"{pg.needed_count} needed, {len(pg.alerts)} alert(s)"
@@ -1148,6 +1151,7 @@ def run(
     from datetime import date
 
     from planner.dashboard import page, render, serve
+    from planner.engine import limits
     from planner.ingest import ingest as _ingest
 
     lay = layout()
@@ -1159,6 +1163,7 @@ def run(
     )
     today = date.fromisoformat(as_of) if as_of else None
     active = year or page.default_year(today or date.today())
+    typer.echo(f"limits: {limits.summary(limits.refresh(lay, active))}")
     pg = page.gather(lay, active, today)
     typer.echo(f"written {render.write_static(lay, pg)}")
     typer.echo(f"{pg.needed_count} needed, {len(pg.alerts)} alert(s)")

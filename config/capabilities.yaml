@@ -47,4 +47,5 @@ nc_d400_draft: verified  # tests/test_d400.py; planner draft; Schedule S 16/18/1
 taxpack: verified  # tests/test_package.py; planner taxpack writes out/tax-<year>/ (draft txt+html, 8949 csv, Sch C, carryforward, basis, payments, forms, originals zip)
 close_year: verified  # tests/test_close.py; planner close; filed 1040/schedules/D-400 vs draft delta, data/private/returns/<year>-closed.yaml, amended = new version
 dashboard_page: verified  # tests/test_dashboard.py; planner dashboard writes out/index.html; panels tagged actual/estimate/unavailable, alerts, escaped, no external assets
+limits_refresh: verified  # tests/test_limits.py; hand rows win, engine fills Y and Y+1 (published/projected), others carried + confirm, drift alerts, offline launch
 planner_run: verified  # tests/test_serve.py; 127.0.0.1 + per-run token + Host check; drop files -> ingest, enter, dont-have, confirm, taxpack; --quiet static only
