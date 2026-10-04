@@ -22,11 +22,14 @@ from planner.dashboard import page as dash
 from planner.dashboard import serve
 from planner.ingest import ingest, ocr
 from planner.ingest.confirm import pending
+from planner.ingest.needs import enter
 from planner.ledger import db
 from planner.paths import Layout
+from planner.plan import rollover
+from planner.taxprep import close
 from tests.pdfgen import make_pdf
 from tests.test_expected import _form
-from tests.test_forms import SSA
+from tests.test_forms import F1040_P1, F1040_P2, SSA
 from tests.test_ingest import DIV_2025, INT_2025
 from tests.test_ocr import fake_engine, ruled_photo
 from tests.test_schedule_c import BANK, _nec
@@ -521,3 +524,33 @@ def test_categorize_waive_and_undo_refuse_bad_input(
     assert a.message == "1099-NEC from nobody was not waived"
     post(port, "/undo-dont-have", key="no_such_key")
     assert a.message.startswith("not saved")
+
+
+@pytest.mark.engine
+def test_dropping_filed_return_closes_year(
+    live: tuple[serve.App, int], tmp_path: Path
+) -> None:
+    """A filed 2025 1040 dropped on the page closes 2025 with no terminal: the
+    record is written, the page lists the filed lines that differ from the
+    draft, and next year carries the filed figures."""
+    a, port = live
+    for key, text in (
+        ("birth_date", "1980-05-01"),
+        ("filing_status", "single"),
+        ("state", "NC"),
+    ):
+        enter(a.lay, 2025, key, text)
+    pdf = make_pdf(tmp_path / "filed.pdf", [F1040_P1, F1040_P2]).read_bytes()
+    drop = multipart([("filed-2025.pdf", pdf)])
+    kind = f"multipart/form-data; boundary={BOUNDARY}"
+    assert call(port, "POST", "/upload?token=tok", drop, kind)[0] == 303
+    assert "2025 closed: version 1" in a.message
+    rec = close.closed(a.lay, 2025)
+    assert rec is not None and rec["1040 24"] == 18696.0
+    page = html.unescape(call(port, "GET", "/?token=tok")[2])
+    assert "Filed 2025 return" in page and "closed, version 1" in page
+    assert "<td>1040 24</td>" in page and "18,696.00" in page
+    assert rollover.carry(a.lay, 2025).basis == "filed"
+    # the same file again closes nothing new
+    call(port, "POST", "/upload?token=tok", drop, kind)
+    assert "closed: version" not in a.message

@@ -252,6 +252,18 @@ tr.under td { color:var(--unavailable); font-weight:600; }
 </section>
 {% endfor %}
 
+{% for c in p.closings %}
+<section id="closed-{{ c.year }}">
+  <h2>Filed {{ c.year }} return <span class="tag actual">closed, version {{ c.version }}</span></h2>
+  <pre>from {{ c.documents|join(', ') }} on {{ c.closed_at[:10] }}: {{ c.matched }} line(s) agree with the draft, {{ c.lines|length }} differ or have no draft line</pre>
+  {% if c.lines %}<div class="scroll"><table>
+    <tr><th>Line</th><th>Label</th><th>Filed</th><th>Draft</th><th>Gap</th></tr>
+    {% for x in c.lines %}<tr><td>{{ x.key }}</td><td>{{ x.label }}</td><td class="num">{{ '{:,.2f}'.format(x.filed) }}</td><td class="num">{{ 'no line' if x.drafted is none else '{:,.2f}'.format(x.drafted) }}</td><td class="num">{{ '' if x.drafted is none else '{:+,.2f}'.format(x.filed - x.drafted) }}</td></tr>{% endfor %}
+  </table></div>{% endif %}
+  <ul class="notes"><li>the year after {{ c.year }} takes its prior-year AGI, total tax, NC tax and loss carryover from this filed return</li></ul>
+</section>
+{% endfor %}
+
 <section id="alerts">
   <h2>Alerts <span class="tag {{ 'actual' if not p.alerts else 'estimate' }}">{{ p.alerts|length }}</span></h2>
   {% if p.alerts %}<ul>{% for a in p.alerts %}<li><b>{{ a.kind }}</b>: {{ a.text }}</li>{% endfor %}</ul>{% else %}<p>none</p>{% endif %}

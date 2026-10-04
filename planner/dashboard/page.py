@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
+from typing import Any
 
 from planner.engine import feed
 from planner.engine import limits as limits_
@@ -22,7 +23,7 @@ from planner.paths import Layout
 from planner.plan import rollover
 from planner.plan import year as year_plan
 from planner.plan.inputs import Overrides
-from planner.taxprep import draft, expected, schedule_c
+from planner.taxprep import close, draft, expected, schedule_c
 
 ACTUAL, ESTIMATE, UNAVAILABLE = "actual", "estimate", "unavailable"
 LOOSE_SHOWN = 40  # bank rows listed with their own form; a rule catches the rest
@@ -109,6 +110,7 @@ class Page:
     stale_days: int | None = None  # set once STALE_DAYS have passed
     years: list[int] = field(default_factory=list)  # tax years the engine publishes
     update_check: str = ""  # the header's words for the last update check
+    closings: list[dict[str, Any]] = field(default_factory=list)  # closed years
 
     @property
     def years_text(self) -> str:
@@ -311,6 +313,9 @@ def gather(
     except MissingInputError as exc:
         page.draft_blocked = str(exc)
     page.pending = _pending(lay)
+    page.closings = [
+        c for c in (close.latest(lay, y) for y in (year - 1, year)) if c is not None
+    ]
     page.limits = limits_.refresh(lay, year, write=False)
     page.years = list(published_years())
     page.update_check = feed.status_line(lay)
