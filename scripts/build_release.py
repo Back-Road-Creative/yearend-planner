@@ -128,7 +128,12 @@ def zip_stage(stage: Path) -> Path:
 
 def main() -> int:
     out = zip_stage(stage_tree())
-    print(f"built {out} ({out.stat().st_size / 1e6:.1f} MB)")
+    # published beside the zip: the update check verifies the download with it
+    digest = hashlib.sha256(out.read_bytes()).hexdigest()
+    out.with_name(out.name + ".sha256").write_text(
+        f"{digest}  {out.name}\n", encoding="ascii"
+    )
+    print(f"built {out} ({out.stat().st_size / 1e6:.1f} MB) sha256 {digest}")
     return 0
 
 

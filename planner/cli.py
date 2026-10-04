@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 import typer
 
-from planner import __version__
 from planner.paths import CloudSyncedPathError, layout
 
 if TYPE_CHECKING:
@@ -20,8 +19,10 @@ app = typer.Typer(add_completion=False, no_args_is_help=True)
 
 @app.command()
 def version() -> None:
-    """Print the planner version."""
-    typer.echo(f"planner {__version__}")
+    """Print the planner version (the release's VERSION file when there is one)."""
+    from planner.engine.update import installed_version
+
+    typer.echo(f"planner {installed_version(layout().root)}")
 
 
 @app.command()
@@ -133,13 +134,31 @@ def update(
     ),
     sha256: str | None = typer.Option(None, help="sha256 published beside the zip"),
     rollback: bool = typer.Option(False, "--rollback", help="restore python-previous/"),
+    check: bool = typer.Option(False, "--check", help="look for a newer release now"),
+    finish: bool = typer.Option(False, "--finish", hidden=True),
 ) -> None:
-    """Swap in a newer release after its own selfcheck passes; --rollback undoes it."""
+    """Swap in a newer release after its own selfcheck passes; --rollback undoes
+    it; --check looks for one on the update feed. From planner.cmd the folders
+    move after this process exits (it cannot move the interpreter it runs on)."""
+    from planner.engine import feed
     from planner.engine import update as upd
 
     root = layout().root
     try:
+        if finish:
+            typer.echo(upd.finish(root))
+            return
+        if check:
+            typer.echo(feed.check(layout()) or "no newer release found")
+            return
         if rollback:
+            if not (root / upd.PREVIOUS / "VERSION").exists():
+                raise upd.UpdateError(
+                    "nothing to roll back to (no python-previous/VERSION)"
+                )
+            if upd.launcher_swaps(root):
+                upd.write_swap(root, "back", rerun=False)
+                raise typer.Exit(code=upd.LAUNCHER_SWAP)
             typer.echo(f"rolled back to {upd.rollback(root)}")
             return
         if release_zip is None or sha256 is None:
@@ -148,11 +167,15 @@ def update(
             )
             raise typer.Exit(code=2)
         exe = "python.exe" if sys.platform == "win32" else "python"
-        result = upd.apply(release_zip, sha256, root, python_exe=exe)
+        result = upd.stage(release_zip, sha256, root, python_exe=exe)
+        if upd.launcher_swaps(root):
+            typer.echo(f"staged {result.version}; swapping it in")
+            upd.write_swap(root, "in", rerun=False)
+            raise typer.Exit(code=upd.LAUNCHER_SWAP)
+        typer.echo(upd.apply_staged(root))
     except upd.UpdateError as exc:
         typer.echo(f"update refused: {exc}", err=True)
         raise typer.Exit(code=1) from exc
-    typer.echo(f"updated to {result.version}; candidate selfcheck: {result.selfcheck}")
 
 
 @app.command()
@@ -1142,6 +1165,9 @@ def run(
     ),
     open_browser: bool = typer.Option(True, "--open/--no-open", help="open the page"),
     port: int = typer.Option(0, help="local port; 0 lets the system pick"),
+    update_check: bool = typer.Option(
+        True, "--update-check/--no-update-check", help="look for a newer release"
+    ),
 ) -> None:
     """The one command: read the inbox, run every planner and the draft return,
     write out/index.html, then serve the page on this computer and open it.
@@ -1151,11 +1177,18 @@ def run(
     from datetime import date
 
     from planner.dashboard import page, render, serve
-    from planner.engine import limits
+    from planner.engine import feed, limits
+    from planner.engine import update as upd
     from planner.ingest import ingest as _ingest
 
     lay = layout()
     lay.ensure()
+    if upd.staged(lay.root):
+        if upd.launcher_swaps(lay.root):
+            typer.echo("a staged update is waiting; swapping it in first")
+            upd.write_swap(lay.root, "in", rerun=True)
+            raise typer.Exit(code=upd.LAUNCHER_SWAP)
+        typer.echo(f"{upd.apply_staged(lay.root)}; restart to use it")
     rep = _ingest(lay)
     typer.echo(
         f"inbox: {len(rep.imported)} imported, {len(rep.pending)} awaiting "
@@ -1168,9 +1201,20 @@ def run(
     typer.echo(f"written {render.write_static(lay, pg)}")
     typer.echo(f"{pg.needed_count} needed, {len(pg.alerts)} alert(s)")
     if quiet:
+        if update_check and (line := feed.check(lay)):
+            typer.echo(line)
         return
     app_ = serve.App(lay, active, today)
     srv = serve.server(app_, port)
+    if update_check:
+        # in the background, so a slow download never holds up the page
+        import threading
+
+        def look() -> None:
+            if line := feed.check(lay):
+                app_.message = line
+
+        threading.Thread(target=look, daemon=True).start()
     address = serve.url(app_, srv)
     typer.echo(f"serving {address}  (Ctrl+C to stop)")
     if open_browser:
