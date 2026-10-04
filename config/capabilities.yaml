@@ -36,6 +36,7 @@ csv_bank: verified  # tests/test_csv.py (signed Amount; Debit/Credit)
 ledger_accounts_balances_lots: verified  # tests/test_portfolio.py; planner account / status
 roth_conversion_clock: verified  # tests/test_portfolio.py; planner convert; earlier of Jan 1 +5y and the access age
 magi_projection_lines: verified  # tests/test_plan.py; planner magi; engine-priced, unknown never zero
+magi_watch_lines: verified  # tests/test_plan.py::test_watch_lines_present; 110% safe harbor, NC 3.49% step, IRMAA tier 1 (engine CMS table), SS 50%/85% provisional income, Medicaid 80-hour work requirement from the se_hours log; tests/test_levers.py NC wait note
 roth_conversion_candidates: verified  # tests/test_plan.py; planner conversions; one engine sweep, each candidate costed
 spending_band: verified  # tests/test_spending.py::test_spending_band_clamps_and_the_drawdown_rule
 glide_path_and_monthly_cash: verified  # tests/test_spending.py::test_glide_path_table_stresses_and_monthly_cash

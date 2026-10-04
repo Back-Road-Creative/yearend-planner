@@ -224,6 +224,33 @@ def line_16(
     return line, round(line - regular, 2)
 
 
+IRMAA_STATUS = {
+    "SINGLE": "single",
+    "JOINT": "joint",
+    "SEPARATE": "separate",
+    "HEAD_OF_HOUSEHOLD": "head_of_household",
+    "SURVIVING_SPOUSE": "surviving_spouse",
+}
+
+
+def irmaa_first_tier(year: int, filing_status: str) -> float:
+    """The top of Medicare Part B's no-surcharge bracket (CMS, by filing
+    status): MAGI above it two years earlier adds the first IRMAA."""
+    irmaa = _system().parameters.gov.hhs.medicare.part_b.irmaa
+    scale = getattr(irmaa, IRMAA_STATUS[filing_status])(f"{year}-01-01")
+    return float(scale.thresholds[1]) - 1
+
+
+def ss_taxation_thresholds(year: int, filing_status: str) -> tuple[float, float]:
+    """IRC 86(c): provisional income above the first makes up to 50% of Social
+    Security taxable, above the second up to 85%."""
+    base = "gov.irs.social_security.taxability.threshold"
+    return (
+        _param(f"{base}.base.main.{filing_status}", year),
+        _param(f"{base}.adjusted_base.main.{filing_status}", year),
+    )
+
+
 def self_employment_parameters(year: int) -> dict[str, float]:
     """The Schedule SE constants the engine prices with, so the draft's Part I
     lines use the same wage base and rates: the Social Security wage base (line

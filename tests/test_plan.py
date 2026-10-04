@@ -4,6 +4,7 @@ $3,000 qualified dividends, a $40,000 conversion already recorded)."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ from typer.testing import CliRunner
 from planner.cli import app
 from planner.engine.household import Household, MissingInputError
 from planner.engine.tax import compute
-from planner.ingest.needs import enter
+from planner.ingest.needs import enter, needed
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import conversion, inputs, levers, magi
@@ -352,3 +353,76 @@ def test_levers_room_shrinks_by_the_exempt_interest(lay: Layout) -> None:
     assert ctx2.room == pytest.approx(ctx.room - 6000)
     assert by2["conversion"].amount == pytest.approx(by["conversion"].amount - 6000)
     assert levers.menu(lay, 2026).room == pytest.approx(ctx.room - 6000)
+
+
+def test_watch_lines_present(lay: Layout) -> None:
+    """The safe-harbor 110% trigger and the NC rate step are watched every
+    year; IRMAA only from 63 (its two-year lookback), Social Security taxation
+    only with benefits, the Medicaid work requirement only from its start year
+    and only when the household targets the Medicaid line."""
+    pj = magi.project(lay, 2026)
+    res = pj.result
+    by = {ln.name: ln for ln in pj.lines}
+    sh = by["safe harbor 110% for 2027 (AGI over 150,000)"]
+    assert (sh.limit, sh.measure, sh.value, sh.direction) == (
+        150000,
+        "AGI",
+        res.agi,
+        "watch",
+    )
+    nc = by["NC rate 3.99%, 3.49% scheduled 2027"]
+    assert nc.value == res.state_tax and nc.direction == "watch"
+    assert nc.limit == pytest.approx(res.state_tax * 0.0349 / 0.0399, abs=0.01)
+    assert not [
+        n for n in by if n.startswith(("IRMAA", "Social Security", "Medicaid work"))
+    ]
+
+    enter(lay, 2026, "birth_date", "1963-03-01")  # 63 at the end of 2026
+    enter(lay, 2026, "social_security", "24,000")
+    pj = magi.project(lay, 2026)
+    res = pj.result
+    by = {ln.name: ln for ln in pj.lines}
+    irmaa = by["IRMAA first tier (Medicare premiums in 2028)"]
+    assert (irmaa.limit, irmaa.value, irmaa.direction) == (109000, res.agi, "get under")
+    untaxed = res.aca_magi - res.agi  # no exempt interest here
+    provisional = res.agi - (24000 - untaxed) + 12000
+    half, most = by["Social Security 50% taxable"], by["Social Security 85% taxable"]
+    assert (half.limit, most.limit) == (25000, 34000)
+    assert half.measure == "provisional income"
+    assert half.value == pytest.approx(provisional, abs=0.01)
+
+    # the work requirement: from its start year, with the Medicaid objective
+    w = magi.Watch(
+        work_requirement_from=2027, medicaid_target=True, se_hours={1: 85, 2: 60}
+    )
+    assert not [
+        ln for ln in magi.lines(res, "SINGLE", w) if ln.name.startswith("Medicaid work")
+    ]
+    (work,) = [
+        ln
+        for ln in magi.lines(replace(res, year=2027), "SINGLE", w)
+        if ln.name.startswith("Medicaid work")
+    ]
+    assert (work.limit, work.value, work.over) == (80, 60, False)
+    assert work.measure == "fewest SE hours logged in a month"
+    quiet = replace(w, medicaid_target=False)
+    assert not [
+        ln
+        for ln in magi.lines(replace(res, year=2027), "SINGLE", quiet)
+        if ln.name.startswith("Medicaid work")
+    ]
+
+
+def test_se_hours_log_asked_from_2027_when_targeting_medicaid(lay: Layout) -> None:
+    def keys(year: int) -> set[str]:
+        return {s.need.key for s in needed(lay, year).items}
+
+    assert "se_hours" not in keys(2027)
+    enter(lay, 2027, "conversion_objective", "medicaid_under")
+    assert "se_hours" in keys(2027) and "se_hours" not in keys(2026)
+    assert enter(lay, 2027, "se_hours", "1:85, 2: 60") == {1: 85.0, 2: 60.0}
+    with pytest.raises(ValueError, match="month"):
+        enter(lay, 2027, "se_hours", "13:5")
+    w = magi.watch_for(lay, 2027, inputs.build(lay, 2026))
+    assert (w.work_requirement_from, w.medicaid_target) == (2027, True)
+    assert w.se_hours == {1: 85.0, 2: 60.0}

@@ -37,6 +37,9 @@
   roth_phaseout_joint_width:
     value: 10000
     source: "IRC 408A(c)(3)(A)"
+  nc_income_tax_rate_next:
+    value: 0.0399
+    source: "N.C.G.S. 105-153.7; 3.99% for 2026"
 2026:
   std_deduction_single:
     value: 16100
@@ -67,6 +70,9 @@
     source: "OBBBA; 80 hours/month"
   nc_income_tax_rate:
     value: 0.0399
+    source: "N.C.G.S. 105-153.7; 3.49% scheduled 2027 on revenue trigger"
+  nc_income_tax_rate_next:
+    value: 0.0349
     source: "N.C.G.S. 105-153.7; 3.49% scheduled 2027 on revenue trigger"
   nc_std_deduction_single:
     value: 12750

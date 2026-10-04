@@ -42,13 +42,18 @@ SCHEDULE_B_OVER = 1500.0  # interest or ordinary dividends over this need Schedu
 FILING = ("single", "married_joint", "married_separate", "head_of_household")
 
 
+# The Medicaid work requirement's first year (config/thresholds.yaml
+# medicaid_work_requirement_start; tests/test_config.py holds them equal).
+MEDICAID_WORK_FROM = 2027
+
+
 @dataclass(frozen=True)
 class Need:
     key: str
     label: str
     why: str
     source: str  # the document that supplies it, with where to get it
-    kind: str  # date | int | money | fraction | enum | str
+    kind: str  # date | int | money | fraction | enum | monthly | str
     scope: str = YEAR
     boxes: tuple[tuple[str, str], ...] = ()  # (form, box) ledger lookups, summed
     estimate: tuple[tuple[str, str], ...] = ()  # YTD facts that stand in meanwhile
@@ -411,6 +416,19 @@ NEEDS: tuple[Need, ...] = (
             "medicaid_over",
         ),
         unlocks=("Roth conversion", "Levers"),
+    ),
+    Need(
+        "se_hours",
+        "Self-employment hours by month (month:hours, ...)",
+        "the Medicaid work requirement asks 80 hours a month from "
+        f"{MEDICAID_WORK_FROM}; the plan watches the thinnest month",
+        "your own time log, month by month (1:85, 2:60)",
+        "monthly",
+        asked=lambda s: (
+            s.get("_year", 0) >= MEDICAID_WORK_FROM
+            and s.get("conversion_objective") == "medicaid_under"
+        ),
+        unlocks=("MAGI headroom",),
     ),
     Need(
         "roth_basis_contributions",
@@ -1023,6 +1041,22 @@ def _origin(f: db.FactRow) -> str:
     return f"{where} ({f.file_name} p.{f.page})" if f.page else where
 
 
+def _monthly(need: Need, s: str) -> dict[int, float]:
+    """ "1:85, 2:60" -> {1: 85.0, 2: 60.0}: hours per calendar month."""
+    out: dict[int, float] = {}
+    for part in filter(None, (p.strip() for p in s.split(","))):
+        month, sep, hours = part.partition(":")
+        if not sep or not month.strip().isdigit() or not 1 <= int(month) <= 12:
+            raise ValueError(f"{need.key}: month:hours with a month 1-12, got {part!r}")
+        value = _number(need, hours.strip(), "hours")
+        if not 0 <= value <= 744:  # 31 days x 24 hours
+            raise ValueError(f"{need.key}: hours in a month 0-744, got {hours.strip()}")
+        out[int(month)] = value
+    if not out:
+        raise ValueError(f"{need.key}: month:hours, ..., got {s!r}")
+    return out
+
+
 def parse_value(need: Need, text: str) -> Any:
     """Typed, validated; a bad answer is an error naming what is expected,
     never a guess."""
@@ -1062,6 +1096,8 @@ def parse_value(need: Need, text: str) -> Any:
         if not 0 <= v <= 1:  # also false for nan
             raise ValueError(f"{expected}, got {s}")
         return v
+    if need.kind == "monthly":
+        return _monthly(need, s)
     if need.kind == "enum":
         low = s.lower()
         if low not in need.choices:
@@ -1221,9 +1257,10 @@ def needed(lay: Layout, year: int) -> NeedsReport:
 
 
 def _so_far(report: NeedsReport) -> dict[str, Any]:
-    return {
+    got = {
         s.need.key: s.value for s in report.items if s.state in ("actual", "estimate")
     }
+    return got | {"_year": report.year}
 
 
 def _needed(conn: sqlite3.Connection, lay: Layout, year: int) -> NeedsReport:
