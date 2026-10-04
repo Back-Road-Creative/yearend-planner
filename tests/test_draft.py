@@ -12,11 +12,13 @@ import pytest
 from typer.testing import CliRunner
 
 from planner.cli import app
+from planner.engine import tax
 from planner.ingest.needs import enter, need_for, needed, parse_value
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
 from planner.taxprep import draft
+from tests.test_d400 import _lay as nc_lay
 
 runner = CliRunner()
 YEAR = 2025
@@ -532,7 +534,8 @@ def test_married_separate_tips_and_overtime_are_not_deducted_and_line_16_follows
     """The statute gives no tips or overtime deduction to married filing
     separately; the engine does not apply that rule. Line 16 is the tax on the
     form's own line 15 ($80,000 less the $15,750 standard deduction), not on
-    the engine's taxable income that still holds the deduction."""
+    the engine's taxable income that still holds the deduction, priced by the
+    Tax Table (row 64,250-64,300: 9,055 against the schedule's 9,049)."""
     _answers(
         senior_lay,
         wages="80,000",
@@ -545,7 +548,7 @@ def test_married_separate_tips_and_overtime_are_not_deducted_and_line_16_follows
     assert d.get("Sch 1-A", line) is None
     assert _need(d, "1040", "13b") == 0.0
     assert _need(d, "1040", "15") == 64_250.0
-    assert _need(d, "1040", "16") == 9_049.0
+    assert _need(d, "1040", "16") == 9_055.0
     assert any("married filing separately" in n for n in d.notes), d.notes
 
 
@@ -796,3 +799,24 @@ def test_schedule_b_left_out_at_1500_or_less(planner_home: Path) -> None:
     assert any("Schedule B is not required" in n for n in d.notes), d.notes
     keys = {s.need.key for s in needed(lay, YEAR).items}
     assert "foreign_accounts" not in keys  # asked only when Schedule B is required
+
+
+def test_source_names_file_and_page(planner_home: Path) -> None:
+    """A draft line's source names the document file and page as well as the
+    form, box and issuer, so a preparer can open the very page."""
+    d = draft.build(nc_lay(planner_home, 2000.0), YEAR)
+    src = {(ln.form, ln.line): ln.source for ln in d.lines}
+    assert "W-2 box 2 (Employer (synthetic); nc.pdf p.1)" in src[("1040", "25a")]
+    assert "nc.pdf p.1" in src[("1040", "2b")]
+
+
+@pytest.mark.engine
+def test_line_16_tables_only_the_ordinary_part() -> None:
+    """With $10,000 of preferential income on $50,000 taxable, the Tax Table
+    prices the $40,000 ordinary part (row 40,000-40,050: 4,565 against the
+    schedule's 4,561.50) and the worksheet total stays under the tax on all
+    $50,000."""
+    line, gap = tax.line_16(4000.0, 50000.0, 10000.0, YEAR, "SINGLE")
+    assert line == pytest.approx(4003.5) and gap == 3.5
+    line, gap = tax.line_16(9000.0, 50000.0, 10000.0, YEAR, "SINGLE")
+    assert line == 5920.0  # capped at the table tax on all 50,000

@@ -12,10 +12,12 @@ import pytest
 
 from planner.engine.household import Household
 from planner.engine.tax import (
+    bracket_tax,
     compute,
     compute_sweep,
     engine_slcsp,
     repayment_cap,
+    table_tax,
     thresholds,
     values,
 )
@@ -45,7 +47,8 @@ def test_zero_income_is_all_zero_with_full_headroom() -> None:
 
 def test_roth_conversion_40k_on_small_base() -> None:
     # AGI 44,000; taxable 44,000 - 16,100 = 27,900; 3,000 qualified dividends at 0%;
-    # ordinary 24,900 -> 10% x 12,400 + 12% x 12,500 = 2,740.
+    # ordinary 24,900 -> Tax Table row 24,900-24,950: 10% x 12,400 + 12% x 12,525
+    # on the midpoint = 2,743 (the rate schedule's 2,740).
     # NC: (44,000 - 12,750) x 3.99% = 1,246.88.
     h = Household(
         **BASE, interest=1000, qualified_dividends=3000, roth_conversion=40_000
@@ -53,7 +56,7 @@ def test_roth_conversion_40k_on_small_base() -> None:
     r = compute(2026, h)
     assert r.agi == pytest.approx(44_000, abs=D)
     assert r.taxable_income == pytest.approx(27_900, abs=D)
-    assert r.fed_income_tax_after_credits == pytest.approx(2_740, abs=D)
+    assert r.fed_income_tax_after_credits == pytest.approx(2_743, abs=D)
     assert r.ltcg_tax == pytest.approx(0, abs=D)
     assert r.qualified_div_and_ltcg_in_taxable == pytest.approx(3_000, abs=D)
     assert r.state_tax == pytest.approx(1_246.88, abs=D)
@@ -84,13 +87,13 @@ def test_self_employment_30k() -> None:
     # SE tax: 30,000 x 92.35% x 15.3% = 4,238.87; half (2,119.43) deducted,
     # AGI 27,880.57. QBI: 20% x (30,000 - 2,119.43) = 5,576.11, capped at 20% of
     # taxable income before QBI (27,880.57 - 16,100 = 11,780.57) = 2,356.11;
-    # taxable 9,424.46 -> 10% = 942.45.
+    # taxable 9,424.46 -> Tax Table row 9,400-9,450 (10% of 9,425) = 943.
     r = compute(2026, Household(**BASE, se_income=30_000))
     assert r.se_tax == pytest.approx(4_238.87, abs=D)
     assert r.agi == pytest.approx(27_880.57, abs=D)
     assert r.qbi_deduction == pytest.approx(2_356.11, abs=D)
-    assert r.fed_income_tax_after_credits == pytest.approx(942.45, abs=D)
-    assert r.fed_total_tax == pytest.approx(5_181.31, abs=D)
+    assert r.fed_income_tax_after_credits == pytest.approx(943, abs=D)
+    assert r.fed_total_tax == pytest.approx(5_181.87, abs=D)
     assert r.state_tax == pytest.approx(603.71, abs=D)
 
 
@@ -567,11 +570,37 @@ def test_se_health_insurance_deduction() -> None:
     # AGI 30,000 - 2,119.43 - 3,600 = 24,280.57. QBI (Reg. 1.199A-3(b)(1)(vi)
     # lowers it by both): 20% x 24,280.57 = 4,856.11, capped at 20% of taxable
     # income before QBI (24,280.57 - 16,100 = 8,180.57) = 1,636.11; taxable
-    # 6,544.46; tax 10% = 654.45. A zero benchmark means no premium tax credit, so
+    # 6,544.46; tax by the Tax Table row 6,500-6,550 = 653 (the rate schedule's
+    # 654.45). A zero benchmark means no premium tax credit, so
     # the Pub. 974 settlement leaves the 162(l) limit alone (test_se_health_ptc_*).
     h = Household(**BASE, se_income=30_000, se_health_premiums=3_600, slcsp_monthly=0)
     r = compute(2026, h)
     assert r.agi == pytest.approx(24_280.57, abs=D)
     assert r.qbi_deduction == pytest.approx(1_636.11, abs=D)
     assert r.taxable_income == pytest.approx(6_544.46, abs=D)
-    assert r.fed_income_tax_after_credits == pytest.approx(654.45, abs=D)
+    assert r.fed_income_tax_after_credits == pytest.approx(653, abs=D)
+
+
+@pytest.mark.engine
+@pytest.mark.parametrize(
+    ("amount", "want"),
+    [
+        (4.99, 0.0),  # under $5 owes nothing
+        (5.0, 1.0),  # the $5-$15 row: 10% of 10
+        (20.0, 2.0),  # the $15-$25 row
+        (2990.0, 299.0),  # $25 rows: 2,975-3,000, 10% of 2,987.50 = 298.75
+        (3000.0, 303.0),  # $50 rows from 3,000: 302.50 rounds half up
+        (45300.0, 5201.0),  # 45,300-45,350: 5,200.50 on the 45,325 midpoint
+        (45349.99, 5201.0),
+        (99999.0, 16909.0),  # the last row, 99,950-100,000
+        (100000.0, 16914.0),  # from $100,000 the rate schedule, to the cent
+    ],
+)
+def test_table_tax_rows_2025_single(amount: float, want: float) -> None:
+    assert table_tax(amount, 2025, "SINGLE") == pytest.approx(want, abs=0.001)
+
+
+@pytest.mark.engine
+def test_bracket_tax_is_the_rate_schedule() -> None:
+    assert bracket_tax(45300.0, 2025, "SINGLE") == pytest.approx(5197.5)
+    assert bracket_tax(0.0, 2025, "SINGLE") == 0.0

@@ -49,6 +49,7 @@ ENGINE = (
     "taxable_income_deductions",
     "taxable_income",
     "income_tax_before_credits",
+    "adjusted_net_capital_gain",
     "alternative_minimum_tax",
     "non_refundable_ctc",
     "income_tax_non_refundable_credits",
@@ -170,7 +171,7 @@ def _sum(facts: list[db.FactRow], pairs: tuple[tuple[str, str], ...]) -> float:
 def _cited(facts: list[db.FactRow], pairs: tuple[tuple[str, str], ...]) -> str:
     hits = sorted(
         {
-            f"{f.form} box {f.box} ({f.issuer})"
+            f"{f.form} box {f.box} ({f.issuer}; {f.file_name} p.{f.page})"
             for f in facts
             if (f.form, f.box) in pairs
         }
@@ -624,13 +625,24 @@ def build(lay: Layout, year: int) -> Draft:
     l15 = add(f, "15", "Taxable income", max(l11 - l14, 0.0), "11b - 14")
 
     # Form 1040 tax and credits
+    regular = v["income_tax_before_credits"] - v["alternative_minimum_tax"]
+    tax_16, table_gap = tax.line_16(
+        regular, l15, v["adjusted_net_capital_gain"], year, hh.filing_status
+    )
     l16 = add(
         f,
         "16",
         "Tax",
-        v["income_tax_before_credits"] - v["alternative_minimum_tax"],
-        "engine income_tax_before_credits less AMT",
+        tax_16,
+        "engine income_tax_before_credits less AMT"
+        + (", the ordinary part by the Tax Table" if table_gap else ""),
     )
+    if table_gap:
+        d.notes.append(
+            f"1040 line 16 follows the Tax Table (income under "
+            f"${tax.TAX_TABLE_TOP:,.0f} is taxed by its $50 rows): {l16:,.2f}, "
+            f"{table_gap:+,.2f} from the rate schedule's exact {regular:,.2f}"
+        )
     l17 = add(f, "17", "Amount from Schedule 2, line 3", s2_3, "Sch 2 line 3")
     l18 = add(f, "18", "Lines 16 and 17", l16 + l17, "16 + 17")
     l19 = add(
@@ -720,9 +732,9 @@ def build(lay: Layout, year: int) -> Draft:
         (l15, v["taxable_income"], "line 15 against the engine's taxable income"),
         (
             l22 - s2_1a + s2_12 - (l27 + l28 + l29),
-            v["income_tax"],
+            v["income_tax"] + table_gap,
             "line 22 (less 1a, plus NIIT, less refundable credits) against the "
-            "engine's income tax",
+            "engine's income tax (plus any Tax Table difference)",
         ),
     ):
         if got is not None and abs(got - want) > TOLERANCE:

@@ -8,7 +8,9 @@
 cases:
   # 2025 single, NC, $50,000 wages, no other income.
   # Hand-worked: std deduction 15,750 (P.L. 119-21 sec. 70102); taxable 34,250;
-  # tax 10% x 11,925 + 12% x 22,325 = 1,192.50 + 2,679.00 = 3,871.50 (Rev. Proc. 2024-40).
+  # tax 10% x 11,925 + 12% x 22,325 = 1,192.50 + 2,679.00 = 3,871.50 (Rev. Proc. 2024-40)
+  # by the schedule; under $100,000 the return takes the Tax Table row 34,250-34,300,
+  # priced at its midpoint: 3,874.50 -> 3,875 (Form 1040 instructions, line 16).
   # NC 2025: 4.25% x (50,000 - 12,750 std) = 1,583.13 (G.S. 105-153.7, 105-153.5).
   single_wages_2025:
     year: 2025
@@ -20,13 +22,14 @@ cases:
     filed:
       agi: 50000
       taxable_income: 34250
-      fed_income_tax_after_credits: 3871.50
+      fed_income_tax_after_credits: 3875
       se_tax: 0
-      fed_total_tax: 3871.50
+      fed_total_tax: 3875
       state_tax: 1583.13
   # 2026 single, NC, 1,000 interest + 3,000 qualified dividends + 40,000 Roth conversion.
   # AGI 44,000; taxable 44,000 - 16,100 = 27,900 (Rev. Proc. 2025-32); the 3,000 of
-  # qualified dividends sit at 0%; ordinary 24,900 -> 10% x 12,400 + 12% x 12,500 = 2,740.
+  # qualified dividends sit at 0%; ordinary 24,900 -> 10% x 12,400 + 12% x 12,500 = 2,740 by the
+  # schedule; the worksheet's line 22 takes the Tax Table row 24,900-24,950: 2,743.
   # NC: (44,000 - 12,750) x 3.99% = 1,246.88 (G.S. 105-153.7).
   roth_conversion_2026:
     year: 2026
@@ -40,7 +43,7 @@ cases:
     filed:
       agi: 44000
       taxable_income: 27900
-      fed_income_tax_after_credits: 2740
+      fed_income_tax_after_credits: 2743
       state_tax: 1246.88
   # 2026 single, NC, 100,000 long-term gains and nothing else.
   # Taxable 100,000 - 16,100 = 83,900, all preferential: 49,450 at 0%, the 34,450 above
@@ -60,7 +63,8 @@ cases:
   # SE tax 30,000 x 92.35% x 15.3% = 4,238.87 (Schedule SE); half (2,119.43) is an
   # adjustment, AGI 27,880.57. QBI: 20% x (30,000 - 2,119.43) = 5,576.11, capped at
   # 20% of taxable income before QBI (27,880.57 - 16,100 = 11,780.57) = 2,356.11
-  # (IRC 199A); taxable 9,424.46 -> 10% = 942.45; total 942.45 + 4,238.87 = 5,181.32.
+  # (IRC 199A); taxable 9,424.46 -> Tax Table row 9,400-9,450 (10% of 9,425 = 942.50)
+  # = 943; total 943 + 4,238.87 = 5,181.87.
   self_employment_2026:
     year: 2026
     household:
@@ -72,13 +76,14 @@ cases:
       se_tax: 4238.87
       agi: 27880.57
       qbi_deduction: 2356.11
-      fed_income_tax_after_credits: 942.45
-      fed_total_tax: 5181.32
+      fed_income_tax_after_credits: 943
+      fed_total_tax: 5181.87
   # The FPL lines. 2026 single, NC, wages only, benchmark silver premium $800 a month
   # ($9,600 a year). Two guidelines: Medicaid tests this year's $15,960 (138% =
   # 22,024.80, 42 CFR 435.119 with the 435.603(d) disregard); the premium tax credit
   # (IRC 36B, Form 8962 line 4) tests the prior year's $15,650 (400% = 62,600).
-  # Taxable = wages - 16,100 (Rev. Proc. 2025-32); tax 10% to 12,400, 12% to 50,400.
+  # Taxable = wages - 16,100 (Rev. Proc. 2025-32); tax 10% to 12,400, 12% to 50,400,
+  # read from the Tax Table row holding taxable income (priced at the row's midpoint).
   # Credit = 9,600 - applicable percentage x MAGI (Rev. Proc. 2025-25), none while
   # Medicaid-eligible (36B(c)(2)(B)). The credit is on Schedule 3, not in line 22.
   #
@@ -94,7 +99,7 @@ cases:
     filed:
       agi: 22024
       taxable_income: 5924
-      fed_income_tax_after_credits: 592.40
+      fed_income_tax_after_credits: 593
       aca_ptc: 0
   # 22,037: $1.02 a month over 138%. 140.8% of 15,650 -> 140%; applicable percentage
   # 3.14% + (1.40 - 1.33) / (1.50 - 1.33) x (4.19% - 3.14%) = 3.5724%;
@@ -110,10 +115,11 @@ cases:
     filed:
       agi: 22037
       taxable_income: 5937
-      fed_income_tax_after_credits: 593.70
+      fed_income_tax_after_credits: 593
       aca_ptc: 8812.76
   # 62,599: 399.99% of 15,650 -> 399%; 9.96% flat from 300% to 400% (Rev. Proc. 2025-25);
-  # credit 9,600 - 0.0996 x 62,599 = 3,365.14. Tax 1,240 + 12% x 34,099 = 5,331.88.
+  # credit 9,600 - 0.0996 x 62,599 = 3,365.14. Tax: row 46,450-46,500,
+  # 1,240 + 12% x 34,075 = 5,329.
   fpl_400_under_2026:
     year: 2026
     household:
@@ -125,7 +131,7 @@ cases:
     filed:
       agi: 62599
       taxable_income: 46499
-      fed_income_tax_after_credits: 5331.88
+      fed_income_tax_after_credits: 5329
       aca_ptc: 3365.14
   # 62,600: exactly 400.00%. IRC 36B(c)(1)(A) ("does not exceed 400 percent") and Form
   # 8962 line 5 (whole-percent truncation, line 5 = 400) keep the credit:
@@ -133,8 +139,8 @@ cases:
   # 4.00 (parameters/gov/aca/ptc_income_eligibility.yaml) and returns 0, so aca_ptc is
   # NOT a filed line here: the engine's figure is not the truth and must not be held as
   # one. The statutory value is the strict xfail in tests/test_tax.py::test_aca_400_cliff;
-  # the engine's figure is still in the candidate regression baseline. Tax 1,240 + 12%
-  # x 34,100 = 5,332.
+  # the engine's figure is still in the candidate regression baseline. Tax: row 46,500-46,550,
+  # 1,240 + 12% x 34,125 = 5,335.
   fpl_400_at_2026:
     year: 2026
     household:
@@ -146,9 +152,9 @@ cases:
     filed:
       agi: 62600
       taxable_income: 46500
-      fed_income_tax_after_credits: 5332
+      fed_income_tax_after_credits: 5335
   # 62,800: 401.28% of 15,650, over the cliff by every reading -> credit 0.
-  # Tax 1,240 + 12% x 34,300 = 5,356.
+  # Tax: row 46,700-46,750, 1,240 + 12% x 34,325 = 5,359.
   fpl_400_over_2026:
     year: 2026
     household:
@@ -160,11 +166,12 @@ cases:
     filed:
       agi: 62800
       taxable_income: 46700
-      fed_income_tax_after_credits: 5356
+      fed_income_tax_after_credits: 5359
       aca_ptc: 0
   # 2025 single, NC, wages 21,597 = 138% x 15,650 exactly (monthly 1,799.75): at the
   # Medicaid line, which qualifies at or below. Taxable 21,597 - 15,750 = 5,847;
-  # tax 10% = 584.70 (Rev. Proc. 2024-40; std deduction P.L. 119-21 sec. 70102).
+  # tax: row 5,800-5,850, 10% x 5,825 = 582.50 -> 583 (Rev. Proc. 2024-40; std
+  # deduction P.L. 119-21 sec. 70102).
   fpl_138_at_2025:
     year: 2025
     household:
@@ -175,4 +182,4 @@ cases:
     filed:
       agi: 21597
       taxable_income: 5847
-      fed_income_tax_after_credits: 584.70
+      fed_income_tax_after_credits: 583

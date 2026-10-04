@@ -135,3 +135,42 @@ def test_filed_schedule_c_lines_pair_with_the_drafts_sheet() -> None:
     for box in ("1", "7", "28", "31"):
         assert close.MAP[("1040-SCHC", box)] == ("Sch C", box)
     assert not hasattr(close, "FILED_ONLY_FORMS")
+
+
+# The synthetic household of tests/test_d400._lay, worked by hand on the 2025
+# forms: W-2 wages 60,250 (withheld 6,000 federal, 2,000 NC), interest 500 plus
+# 300 of savings-bond interest, single, born 1980, no use tax.
+# Line 16 is the Tax Table row 45,300-45,350 (tax on the 45,325 midpoint,
+# rounded), not the exact bracket figure 5,197.50.
+REFERENCE_2025 = {
+    "1040": {
+        "1z": 60250, "2a": 0, "2b": 800, "3a": 0, "3b": 0, "4b": 0, "6b": 0,
+        "7": 0, "8": 0, "9": 61050, "10": 0, "11": 61050, "12": 15750,
+        "13": 0, "15": 45300, "16": 5201, "22": 5201, "23": 0, "24": 5201,
+        "25d": 6000, "26": 0, "33": 6000, "34": 799,
+    },
+    "1040-SCH1": {"3": 0, "10": 0, "15": 0, "16": 0, "17": 0, "20": 0, "26": 0},
+    "1040-SCH2": {"2": 0, "4": 0, "21": 0},
+    "1040-SCH3": {"8": 0, "9": 0},
+    "NC-D400": {
+        "6": 61050, "12b": 48000, "15": 2040, "20a": 2000, "21a": 0,
+        "23": 2000, "26a": 40,
+    },
+}  # fmt: skip
+
+
+def test_reference_return_zero_delta_full(lay: Layout) -> None:
+    """The draft 1040 and D-400 reproduce the hand-worked return line for line:
+    every filed line is matched, none differs, none is left without a draft
+    line."""
+    enter(lay, 2025, "nc_use_tax", "0")
+    filed = [
+        db.Fact(form, 2025, "NC" if form == "NC-D400" else "self", line, "", v, 1)
+        for form, lines in REFERENCE_2025.items()
+        for line, v in lines.items()
+    ]
+    _file(lay, "reference-2025.pdf", filed)
+    c = close.close(lay, 2025, NOW)
+    assert [(x.key, x.filed, x.drafted) for x in c.deltas] == []
+    assert c.filed_only == []
+    assert c.matched == len(filed) == 42
