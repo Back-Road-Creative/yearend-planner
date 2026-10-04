@@ -4,7 +4,7 @@
 birth_date: null          # YYYY-MM-DD; the one fact no document supplies
 filing_status: null       # single | married_joint | married_separate | head_of_household
 state: null               # two-letter, e.g. NC
-county: null              # county name as the engine spells it, e.g. Macon
+county: null              # county, e.g. Macon or Macon County; read from the return's ZIP when one county
 spending_floor: null      # annual, dollars: the lowest the household can run on
 spending_ceiling: null    # annual, dollars: comfortable spending
 withdrawal_rate: null     # fraction of investable assets per year, e.g. 0.035

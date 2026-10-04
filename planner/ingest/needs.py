@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 
 from planner.config import ASSUMPTION_FIELDS, load_assumptions
+from planner.ingest.derive import county_from_zip
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 
@@ -47,6 +48,18 @@ class Need:
     # An estimate computed from the ledger when the boxes give nothing:
     # (conn, plan year) -> (value, origin) or None.
     derive: Callable[[sqlite3.Connection, int], tuple[float, str] | None] | None = None
+    # Words worked out from other answers and the ledger (the county from the
+    # return's ZIP): (config folder, conn, plan year, values so far) ->
+    # (value or None, origin or the reason there is none), or None for no lead.
+    # A value is an actual answer; a None value leaves the item missing, with
+    # the origin as its note.
+    derive_text: (
+        Callable[
+            [Path, sqlite3.Connection, int, dict[str, Any]],
+            tuple[str | None, str] | None,
+        ]
+        | None
+    ) = None
 
 
 @dataclass(frozen=True)
@@ -105,7 +118,16 @@ NEEDS: tuple[Need, ...] = (
         boxes=(("1040", "state"),),
     ),
     Need(
-        "county", "County", "the ACA benchmark (SLCSP) premium", _NONE, "str", PROFILE
+        "county",
+        "County",
+        "the ACA benchmark (SLCSP) premium",
+        "the ZIP on last year's filed return when it lies in one county; "
+        "otherwise type it",
+        "str",
+        PROFILE,
+        derive_text=lambda config, conn, year, values: _county_from_return(
+            config, conn, year, values
+        ),
     ),
     Need(
         "spending_floor",
@@ -739,6 +761,18 @@ def _text_box(
     return None if best is None else (best[1], best[2])
 
 
+def _county_from_return(
+    config: Path, conn: sqlite3.Connection, year: int, values: dict[str, Any]
+) -> tuple[str | None, str] | None:
+    """The county of the ZIP on the filed return, when that ZIP lies wholly in
+    one county of the household's state; otherwise the reason it cannot say."""
+    held = _text_box(conn, (("1040", "zip"),), year)
+    if held is None:
+        return None
+    name, note = county_from_zip(config, held[0], values.get("state"))
+    return name, f"{note} on {held[1]}" if name else note
+
+
 def _mortgage_pi(conn: sqlite3.Connection, year: int) -> tuple[float, str] | None:
     """Monthly principal and interest from two consecutive years of Form 1098.
 
@@ -834,8 +868,23 @@ def _needed(conn: sqlite3.Connection, lay: Layout, year: int) -> NeedsReport:
         if need.derive is not None and (calc := need.derive(conn, year)) is not None:
             report.items.append(Status(need, "estimate", calc[0], calc[1]))
             continue
+        note = ""
+        if need.derive_text is not None:
+            so_far = {
+                s.need.key: s.value
+                for s in report.items
+                if s.state in ("actual", "estimate")
+            }
+            if (said := need.derive_text(lay.config, conn, year, so_far)) is not None:
+                if said[0] is not None:
+                    report.items.append(Status(need, "actual", said[0], said[1]))
+                    continue
+                note = said[1]
         dh = profile_dh if need.scope == PROFILE else set(manual[MANUAL_DONT_HAVE])
-        report.items.append(Status(need, "dont_have" if need.key in dh else "missing"))
+        if need.key in dh:
+            report.items.append(Status(need, "dont_have"))
+        else:
+            report.items.append(Status(need, "missing", None, note))
     accounts = portfolio.load_accounts(lay)
     for number in portfolio.seen_accounts(conn):
         entry = accounts.get(number, {})

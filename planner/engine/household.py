@@ -100,6 +100,17 @@ class Household:
             }
         household: dict[str, Any] = {"members": ["p"], "state_name": {y: self.state}}
         if self.county:
+            if (
+                self.county != self.county.upper()
+                or " " in self.county
+                or not self.county.endswith(f"_{self.state}")
+            ):
+                raise ValueError(
+                    f"county {self.county!r} is not the engine's name for a county "
+                    f"of {self.state}: the county name, its kind and the state in "
+                    "capitals joined by underscores, like WAKE_COUNTY_NC "
+                    "(planner.ingest.derive.resolve_county turns a typed name into it)"
+                )
             household["county"] = {y: self.county}
         return {
             "people": {"p": person},

@@ -69,6 +69,7 @@ td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap
     <b>{{ st.need.label }}</b>
     <small>why: {{ st.need.why }}</small>
     <small>from: {{ st.need.source }}</small>
+    {% if st.origin %}<small>note: {{ st.origin }}</small>{% endif %}
     {% if live %}
     <form method="post" action="/enter?token={{ token }}" class="inline">
       <input type="hidden" name="key" value="{{ st.need.key }}">

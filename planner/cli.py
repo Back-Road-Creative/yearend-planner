@@ -510,6 +510,8 @@ def needed(
             typer.echo(f"needed    {st.need.key:28} {st.need.label}")
             typer.echo(f"          why: {st.need.why}")
             typer.echo(f"          from: {st.need.source}")
+            if st.origin:
+                typer.echo(f"          note: {st.origin}")
             typer.echo(
                 f"          type: planner enter --year {year} {st.need.key} <value>"
             )

@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from planner.engine.household import Household
-from planner.engine.tax import compute, compute_sweep, thresholds
+from planner.engine.tax import compute, compute_sweep, engine_slcsp, thresholds
 
 pytestmark = pytest.mark.engine
 BASE: dict[str, Any] = {"age": 55, "filing_status": "SINGLE", "state": "NC"}
@@ -90,3 +90,35 @@ def test_sweep_matches_point_computations() -> None:
     assert rows[0]["income_tax"] == pytest.approx(0, abs=D)
     with pytest.raises(ValueError):
         compute_sweep(2026, h, "taxable_roth_conversions", 10, 0, 5)
+
+
+# Average second-lowest-cost silver premium for a 40-year-old, plan year 2025,
+# by county: CMS, "Plan Year 2025 Qualified Health Plan Choice and Premiums in
+# HealthCare.gov" appendix (2025-qhp-premiums-choice-appendix.xlsx), sheet
+# "Avg. SLCSP Prem. 40yo-County", column PY25. CMS publishes these three North
+# Carolina counties only.
+CMS_PY25_SLCSP_40 = {
+    "WAKE_COUNTY_NC": 478.85,
+    "MECKLENBURG_COUNTY_NC": 484.17,
+    "GUILFORD_COUNTY_NC": 439.91,
+}
+
+
+@pytest.mark.parametrize(("county", "published"), sorted(CMS_PY25_SLCSP_40.items()))
+def test_slcsp_for_named_county(county: str, published: float) -> None:
+    # The engine prices the benchmark only for a household with income (it is 0
+    # at $0 wages); $30,000 of wages is a made-up figure that does not move it.
+    h = Household(
+        age=40, filing_status="SINGLE", state="NC", county=county, wages=30_000
+    )
+    assert engine_slcsp(2025, h) == pytest.approx(published, abs=D)
+
+
+def test_the_county_moves_the_benchmark() -> None:
+    # Macon County is in the engine's rating area 1, Wake in 13: same age and
+    # year, different benchmark.
+    macon = engine_slcsp(
+        2026, Household(**BASE, wages=30_000, county="MACON_COUNTY_NC")
+    )
+    wake = engine_slcsp(2026, Household(**BASE, wages=30_000, county="WAKE_COUNTY_NC"))
+    assert macon != wake and min(macon, wake) > 0

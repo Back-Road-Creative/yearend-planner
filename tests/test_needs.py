@@ -159,7 +159,7 @@ def test_filed_1040_answers_filing_status_and_state(lay: Layout) -> None:
     )
     assert by["filing_status"].origin == "1040 2025 self"
     assert (by["state"].state, by["state"].value) == ("actual", "NC")
-    assert by["county"].state == "missing"  # the ZIP is held; the county is 9h
+    assert by["county"].state == "missing"  # ZIP 27000 is in no county
     assert not [k for k in ("filing_status", "state") if by[k].state == "missing"]
 
 

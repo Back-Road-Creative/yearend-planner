@@ -8,7 +8,7 @@ self_employment_tax: verified  # tests/test_tax.py::test_self_employment_30k
 qbi_deduction: verified  # tests/test_tax.py::test_self_employment_30k
 nc_income_tax: verified  # tests/test_tax.py (3.99%, 12,750 std), tests/test_verify.py (2025)
 aca_premium_tax_credit: partial
-aca_slcsp_county: partial
+aca_slcsp_county: verified  # tests/test_tax.py::test_slcsp_for_named_county; Wake, Mecklenburg and Guilford within $1 of CMS's PY2025 county table (average SLCSP, 40-year-old; CMS publishes only these three NC counties)
 medicaid_expansion_magi: partial
 se_health_insurance_deduction: partial
 # Intake (not engine rules): what the templates read today.
@@ -19,6 +19,7 @@ pdf_ssa_statement: verified  # tests/test_forms.py
 pdf_1099_nec_k_1098_5498_5498sa_1099sa: verified  # tests/test_forms.py
 pdf_1099_r_distribution_code: verified  # tests/test_forms.py::test_1099r_letter_code
 pdf_1040_filing_status_state_zip: partial  # tests/test_needs.py; synthetic check marks only, a tax-software PDF's rendering is unconfirmed
+zip_to_county_crosswalk: verified  # tests/test_derive.py; config/zip_county.csv.gz is the Census 2020 ZCTA-to-county file (SOURCE.md); a ZIP spanning counties lists them and asks, never guesses
 mortgage_pi_from_two_1098s: verified  # tests/test_needs.py::test_two_consecutive_1098s_give_principal_and_interest
 ytd_facts_from_rows: verified  # tests/test_derive.py; planner derive / ingest
 pdf_scanned_ocr_confirm: verified  # tests/test_ocr.py; values land pending until planner confirm
