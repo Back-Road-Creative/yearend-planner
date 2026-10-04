@@ -4,7 +4,7 @@ Runs on any OS (uv installs Windows wheels for the target platform), but the
 proof that the result works is the Windows CI leg (``scripts/windows_proof.ps1``).
 
 Layout inside the zip (contents at the zip root, no top-level folder):
-    planner.cmd  LICENSE  README.md  VERSION
+    planner.cmd  LICENSE  README.md  GUIDE.md  VERSION
     python/      python.org embeddable 3.12 + Lib/site-packages from uv.lock
     planner/     the package          config/  templates/
 
@@ -39,7 +39,7 @@ PYTHON_EMBED_SHA256 = "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63
 # ``python -m planner`` and ``config/`` resolve from any location the user picks.
 PTH = "python312.zip\n.\nLib\\site-packages\n..\nimport site\n"
 
-SHIP = ("planner.cmd", "LICENSE", "README.md")
+SHIP = ("planner.cmd", "LICENSE", "README.md", "GUIDE.md")
 SHIP_DIRS = ("planner", "config", "templates")
 # never in a release: the user's figures, built output, restore leftovers
 PRIVATE = ("data", "out", "dist", "restore-staging", "data-previous", "data-restored")
