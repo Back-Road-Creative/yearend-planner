@@ -20,9 +20,10 @@ ROUND = 2
 class TaxResult:
     year: int
     engine_version: str
-    fed_income_tax_after_credits: float  # Form 1040 line 22
+    fed_income_tax_after_credits: float  # Form 1040 line 22 (before excess APTC, 8962)
     se_tax: float  # Schedule 2 line 4
     fed_total_tax: float  # Form 1040 line 24
+    refundable_credits: float  # Form 1040 lines 27-31 (paid out, not a cut in line 24)
     ltcg_tax: float  # capital-gains portion of income tax
     state_tax: float
     agi: float
@@ -191,6 +192,9 @@ def _compute(year: int, household: Household) -> TaxResult:
         name: float(_calc(sim, name, year)[0])
         for name in (
             "income_tax",
+            "income_tax_refundable_credits",
+            "net_investment_income_tax",
+            "additional_medicare_tax",
             "self_employment_tax",
             "income_tax_before_credits",
             "state_income_tax",
@@ -219,12 +223,30 @@ def _compute(year: int, household: Household) -> TaxResult:
             _calc(without, "income_tax_before_credits", year)[0]
         )
     fpg = v["tax_unit_fpg"]
+    # The engine's income_tax is the tax net of refundable credits and holds the
+    # net investment income tax; the draft's line 22 (planner.taxprep.draft) is
+    # before both. Line 24 is line 22 plus Schedule 2 line 21: SE tax (4),
+    # additional Medicare tax (11) and NIIT (12). The excess advance premium
+    # credit (8962, Schedule 2 line 1a) is a year-end reconciliation the engine
+    # does not price, so it is left to the draft.
+    line_22 = (
+        v["income_tax"]
+        + v["income_tax_refundable_credits"]
+        - v["net_investment_income_tax"]
+    )
+    line_24 = (
+        line_22
+        + v["self_employment_tax"]
+        + v["additional_medicare_tax"]
+        + v["net_investment_income_tax"]
+    )
     return TaxResult(
         year=year,
         engine_version=engine_version(),
-        fed_income_tax_after_credits=r(v["income_tax"]),
+        fed_income_tax_after_credits=r(line_22),
         se_tax=r(v["self_employment_tax"]),
-        fed_total_tax=r(v["income_tax"] + v["self_employment_tax"]),
+        fed_total_tax=r(line_24),
+        refundable_credits=r(v["income_tax_refundable_credits"]),
         ltcg_tax=r(max(ltcg_tax, 0.0)),
         state_tax=r(v["state_income_tax"]),
         agi=r(v["adjusted_gross_income"]),

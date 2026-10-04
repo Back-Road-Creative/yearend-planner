@@ -11,7 +11,7 @@ from planner.cli import app
 from planner.ingest import ingest
 from planner.ingest.needs import enter
 from planner.paths import Layout
-from planner.plan import esttax
+from planner.plan import esttax, magi
 from tests.test_spending import lay  # noqa: F401
 
 runner = CliRunner()
@@ -78,6 +78,19 @@ def test_safe_harbor_and_installments(lay: Layout) -> None:  # noqa: F811
     enter(lay, 2026, "fed_withheld", "500")
     small = esttax.estimate(lay, 2026, date(2026, 7, 10)).agencies[0]
     assert small.de_minimis and small.installments[-1].required == 0.0
+
+
+def test_current_year_tax_is_net_of_refundable_credits(lay: Layout) -> None:  # noqa: F811
+    """Form 2210 Part I and the 1040-ES worksheet take the EITC and other
+    refundable credits off line 24 before the 90% test; compute's fed_total_tax is
+    the gross line 24."""
+    enter(lay, 2026, "se_income", "12,345")
+    res = magi.project(lay, 2026).result
+    assert res.refundable_credits > 0
+    fed = esttax.estimate(lay, 2026, date(2026, 7, 10)).agencies[0]
+    assert fed.name == "fed"
+    assert fed.current_tax == round(res.fed_total_tax - res.refundable_credits, 2)
+    assert fed.current_tax < res.fed_total_tax
 
 
 def test_lumpy_income_flags_the_annualized_method(lay: Layout) -> None:  # noqa: F811

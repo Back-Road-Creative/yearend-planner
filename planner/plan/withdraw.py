@@ -147,8 +147,16 @@ def pick(
         ),
     )
     w.magi_before, w.magi_after = base.result.aca_magi, after.result.aca_magi
-    w.tax_before = r(base.result.fed_total_tax + base.result.state_tax)
-    w.tax_after = r(after.result.fed_total_tax + after.result.state_tax)
+    w.tax_before = r(
+        base.result.fed_total_tax
+        - base.result.refundable_credits
+        + base.result.state_tax
+    )
+    w.tax_after = r(
+        after.result.fed_total_tax
+        - after.result.refundable_credits
+        + after.result.state_tax
+    )
     if not lots and need > w.from_cash:
         w.notes.append("no taxable lots in the ledger (drop the cost-basis export)")
     if w.short:

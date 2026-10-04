@@ -241,10 +241,11 @@ def months(
         notes.append("no dividend or interest rows in the ledger for the year")
     try:
         res = project(lay, year, overrides).result
-        est = r((res.fed_total_tax + res.state_tax) / 4)
+        tax = res.fed_total_tax - res.refundable_credits + res.state_tax
+        est = r(tax / 4)
         notes.append(
             f"estimated payments are a quarter of the projected year's tax "
-            f"({res.fed_total_tax + res.state_tax:,.2f}); the next year repeats it"
+            f"({tax:,.2f}); the next year repeats it"
         )
     except MissingInputError as exc:
         est = 0.0

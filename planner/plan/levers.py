@@ -139,7 +139,7 @@ class WhatIf:
 
 
 def cost(res: TaxResult) -> float:
-    return r(res.fed_total_tax + res.state_tax - res.aca_ptc)
+    return r(res.fed_total_tax + res.state_tax - res.refundable_credits - res.aca_ptc)
 
 
 def crossings(before: list[Line], after: list[Line]) -> tuple[str, ...]:

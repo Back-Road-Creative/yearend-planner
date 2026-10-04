@@ -5,7 +5,9 @@ How each part works, phase by phase. The one-page start is the [README](README.m
 ## Engine (Phase 1)
 
 `planner compute <household.yaml>` prints every figure for one household-year as JSON:
-federal income tax after credits, SE tax, total tax (1040 line 24), tax attributable to
+federal income tax after credits (line 22, before any excess advance premium credit),
+SE tax, total tax (1040 line 24: line 22 plus Schedule 2 line 21, so it holds SE tax, the
+additional Medicare tax and NIIT; refundable credits are payments, not a cut in it), tax attributable to
 qualified dividends and long-term gains, NC tax, AGI, ACA MAGI, taxable income, QBI
 deduction, premium tax credit, FPL percentages, monthly Medicaid MAGI, and the headroom
 left under the 0% capital-gains ceiling and the top of the 12% bracket. All figures come
@@ -226,7 +228,10 @@ the planning numbers no document supplies) and shows the distance to every
 watched line: the standard deduction, the 0% LTCG ceiling, the 12% bracket
 top, the Medicaid line (tested monthly), the ACA 250% and 400% lines and NIIT.
 Unknown inputs are named and left out, never treated as zero; unknown
-qualified dividends are priced as ordinary and flagged.
+qualified dividends are priced as ordinary and flagged. Tax-exempt interest
+(1099-INT box 8, 1099-DIV box 12, or a typed answer) is one of those inputs:
+it is not income, but ACA MAGI adds it back, so the room to the 250% and 400%
+lines, the Medicaid line, the conversion sizes and the levers all shrink by it.
 
 `planner conversions --year 2026` sizes this year's Roth conversion from a
 traditional IRA in one engine sweep: a candidate per line (fill to the 0% LTCG
@@ -403,8 +408,9 @@ where its figure came from: the form and box, a YTD estimate, a typed answer,
 an engine variable, or the arithmetic of other lines. `--json` gives the same
 lines for other tools. The engine prices the tax; the draft adds what it does
 not see: withholding from W-2 box 2 and box 4 of the 1099s (box 6 of the
-SSA-1099), the federal estimated payments recorded for the year, and tax-exempt
-interest from 1099-INT box 8 and 1099-DIV box 12.
+SSA-1099), and the federal estimated payments recorded for the year. Tax-exempt
+interest (1099-INT box 8, 1099-DIV box 12) comes from the Needed panel, the
+same figure the plan prices.
 
 Form 8962 is reconciled month by month from the 1095-A (premium, benchmark and
 advance columns summed across policies): each month's credit is the smaller of

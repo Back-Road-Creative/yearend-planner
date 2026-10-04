@@ -35,6 +35,7 @@ MONEY = {
     "wages": "wages",
     "se_income": "se_income",
     "interest": "interest",
+    "tax_exempt_interest": "tax_exempt_interest",
     "short_term_gains": "short_term_gains",
     "long_term_gains": "long_term_gains",
     "ira_distributions": "ira_distributions",

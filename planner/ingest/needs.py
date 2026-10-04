@@ -603,6 +603,16 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("MAGI headroom", "Glide path", "Draft 1040", "NC D-400 draft"),
     ),
     Need(
+        "tax_exempt_interest",
+        "Tax-exempt interest",
+        "ACA MAGI and Social Security taxation (Form 1040 line 2a)",
+        "1099-INT box 8 and 1099-DIV box 12, exempt-interest dividends; type 0 if none",
+        "money",
+        boxes=(("1099-INT", "8"), ("1099-DIV", "12")),
+        doc="vg_tax",
+        unlocks=("MAGI headroom", "ACA credit", "Draft 1040"),
+    ),
+    Need(
         "ordinary_dividends",
         "Ordinary dividends",
         "ordinary income and MAGI",

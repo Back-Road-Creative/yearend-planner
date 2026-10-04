@@ -7,6 +7,8 @@ federal_ltcg_rates: verified  # tests/test_tax.py (0% band, 15% above)
 self_employment_tax: verified  # tests/test_tax.py::test_self_employment_30k
 qbi_deduction: verified  # tests/test_tax.py::test_self_employment_30k
 nc_income_tax: verified  # tests/test_tax.py (3.99%, 12,750 std), tests/test_verify.py (2025)
+federal_total_tax_line_24: verified  # tests/test_tax.py::test_fed_total_tax_matches_draft_line_24; engine total = draft 1040 line 24 (SE tax, additional Medicare tax, NIIT; refundable credits kept out); excess APTC (Sch 2 line 1a) stays in the draft
+aca_magi_tax_exempt_interest: verified  # tests/test_plan.py::test_aca_magi_adds_exempt_interest; 1099-INT box 8 and 1099-DIV box 12 reach the plan household, the MAGI lines, conversion sizes and levers
 aca_premium_tax_credit: partial
 aca_slcsp_county: verified  # tests/test_tax.py::test_slcsp_for_named_county; Wake, Mecklenburg and Guilford within $1 of CMS's PY2025 county table (average SLCSP, 40-year-old; CMS publishes only these three NC counties)
 medicaid_expansion_magi: partial

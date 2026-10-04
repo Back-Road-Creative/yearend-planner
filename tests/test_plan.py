@@ -15,7 +15,7 @@ from planner.engine.tax import compute
 from planner.ingest.needs import enter
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.plan import conversion, inputs, magi
+from planner.plan import conversion, inputs, levers, magi
 
 runner = CliRunner()
 
@@ -112,6 +112,57 @@ def test_projection_is_the_engine_on_the_fixture_household(lay: Layout) -> None:
     assert with_hsa.result.agi == pytest.approx(pj.result.agi - 4400)
 
 
+def _add_box_12(lay: Layout, amount: float) -> None:
+    """A synthetic 1099-DIV whose only figure is box 12 (exempt-interest dividends)."""
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    db.add_document(
+        conn,
+        fingerprint="synthetic-div-12",
+        file_name="synthetic-div.pdf",
+        kind="pdf",
+        pages=1,
+        batch="b2",
+        facts=[
+            db.Fact(
+                "1099-DIV", 2026, "Example Fund (synthetic)", "12", "Exempt", amount, 1
+            )
+        ],
+    )
+    conn.close()
+
+
+@pytest.mark.engine
+def test_aca_magi_adds_exempt_interest(lay: Layout) -> None:
+    before = magi.project(lay, 2026)
+    assert before.inputs.household.tax_exempt_interest == 0
+    assert "tax_exempt_interest" in before.inputs.unknown
+    _add_box_12(lay, 6_000.0)
+    pj = magi.project(lay, 2026)
+    assert pj.inputs.household.tax_exempt_interest == 6000
+    assert pj.inputs.origins["tax_exempt_interest"].startswith("1099-DIV 2026")
+    # box 12 is not taxable income: AGI is unchanged, ACA MAGI is AGI plus it
+    assert pj.result.agi == pytest.approx(before.result.agi)
+    assert pj.result.aca_magi == pytest.approx(pj.result.agi + 6000)
+    assert pj.aca_addbacks == pytest.approx(6000)
+    by, was = {ln.name: ln for ln in pj.lines}, {ln.name: ln for ln in before.lines}
+    for name in ("ACA CSR 250% FPL", "ACA 400% FPL cliff"):
+        assert by[name].room == pytest.approx(was[name].room - 6000)
+    assert by["Medicaid 138% FPL (monthly)"].value == pytest.approx(
+        was["Medicaid 138% FPL (monthly)"].value + 500
+    )
+
+
+@pytest.mark.engine
+def test_conversion_room_shrinks_by_the_exempt_interest(lay: Layout) -> None:
+    enter(lay, 2026, "conversion_margin", "1,000")
+    enter(lay, 2026, "conversion_cap", "120,000")
+    base = {c.name: c for c in conversion.size(lay, 2026, step=1000).candidates}
+    _add_box_12(lay, 6_000.0)
+    shrunk = {c.name: c for c in conversion.size(lay, 2026, step=1000).candidates}
+    assert shrunk["aca_400"].amount == base["aca_400"].amount - 6000
+    assert shrunk["aca_400"].aca_magi == pytest.approx(base["aca_400"].aca_magi)
+
+
 @pytest.mark.engine
 def test_conversion_candidates_are_priced_from_one_sweep(lay: Layout) -> None:
     enter(lay, 2026, "conversion_margin", "1,000")
@@ -175,3 +226,18 @@ def test_a_county_that_is_not_the_states_blocks_the_plan_with_the_reason(
     enter(lay, 2026, "county", "Harris")
     with pytest.raises(MissingInputError, match="not a county of NC"):
         inputs.build(lay, 2026)
+
+
+@pytest.mark.engine
+def test_levers_room_shrinks_by_the_exempt_interest(lay: Layout) -> None:
+    ctx, found, _ = levers.catalog(lay, 2026)
+    by = {lv.key: lv for lv in found}
+    assert ctx.room_line is not None and ctx.room is not None
+    assert by["conversion"].available
+    _add_box_12(lay, 6_000.0)
+    ctx2, found2, _ = levers.catalog(lay, 2026)
+    by2 = {lv.key: lv for lv in found2}
+    assert ctx2.room_line is not None and ctx2.room_line.name == ctx.room_line.name
+    assert ctx2.room == pytest.approx(ctx.room - 6000)
+    assert by2["conversion"].amount == pytest.approx(by["conversion"].amount - 6000)
+    assert levers.menu(lay, 2026).room == pytest.approx(ctx.room - 6000)
