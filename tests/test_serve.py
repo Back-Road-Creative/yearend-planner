@@ -7,6 +7,7 @@ from __future__ import annotations
 import html
 import http.client
 import re
+import socket
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -96,6 +97,28 @@ def test_token_and_host_are_required(live: tuple[serve.App, int]) -> None:
     assert "default-src 'none'" in headers["content-security-policy"]
     assert headers["cache-control"] == "no-store"
     assert 'action="/upload?token=tok"' in text
+
+
+def test_refused_post_reads_its_body_before_answering(
+    live: tuple[serve.App, int],
+) -> None:
+    """A refusal sent with the body unread closes a socket holding unread
+    bytes, which Windows answers with a reset: the client sees an abort, not
+    the 403. The server waits for the whole body, then refuses."""
+    _, port = live
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
+        head = (
+            f"POST /enter?token=nope HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+            "Content-Type: application/x-www-form-urlencoded\r\n"
+            "Content-Length: 18\r\n\r\n"
+        )
+        s.sendall(head.encode() + b"key=state")
+        s.settimeout(1)
+        with pytest.raises(TimeoutError):
+            s.recv(1)
+        s.settimeout(5)
+        s.sendall(b"&value=NC")
+        assert s.recv(64).startswith(b"HTTP/1.0 403")
 
 
 @pytest.mark.engine
