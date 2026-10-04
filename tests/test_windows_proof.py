@@ -1,7 +1,7 @@
 """The Windows proof's throwaway account password must always pass Windows'
 complexity rule (three character classes). A plain 24-of-62 draw can miss
-digits, and New-LocalUser then throws InvalidPasswordException (PR #28 run
-37223332004)."""
+digits, and New-LocalUser then throws InvalidPasswordException (PR #28's
+windows-proof job)."""
 
 import re
 import shutil
