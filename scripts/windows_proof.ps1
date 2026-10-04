@@ -65,9 +65,17 @@ try {
     if ($o -notlike "*$expected*") { throw 'selfcheck offline did not print the figure' }
 } finally { Remove-NetFirewallRule -DisplayName 'planner-proof-block' }
 
+function New-ProofPassword {
+    # Windows wants three character classes; a plain 24-of-62 draw can miss the
+    # digits and New-LocalUser throws. One of each class, then 21 more, shuffled.
+    $picks = @((48..57 | Get-Random), (65..90 | Get-Random), (97..122 | Get-Random))
+    $picks += (48..57 + 65..90 + 97..122) | Get-Random -Count 21
+    -join ($picks | Sort-Object { Get-Random } | ForEach-Object { [char]$_ })
+}
+
 Write-Host '== 5. standard user'
 $user = 'plannerproof'
-$pw = -join ((48..57 + 65..90 + 97..122) | Get-Random -Count 24 | ForEach-Object { [char]$_ })
+$pw = New-ProofPassword
 $sec = ConvertTo-SecureString $pw -AsPlainText -Force
 New-LocalUser -Name $user -Password $sec -PasswordNeverExpires | Out-Null
 Add-LocalGroupMember -Group 'Users' -Member $user
