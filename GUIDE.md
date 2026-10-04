@@ -554,6 +554,16 @@ over the start and the car loan interest by $200 for each $1,000 or part of
 one; the engine cuts tips and overtime smoothly, so the draft follows the form
 and a note gives the gap (up to $100).
 
+Schedule B is drawn when taxable interest or ordinary dividends are over
+$1,500, and left out (with a note saying so) when both are $1,500 or less.
+Line 1 takes a row per payer from 1099-INT boxes 1 and 3, line 5 a row per payer
+from 1099-DIV box 1a; a figure typed with no form behind it is one more row,
+asking for the payer's name. Lines 4 and 6 must equal 1040 lines 2b and 3b, or a
+`CHECK:` says by how much. Line 3 is 0: Form 8815 (savings bond interest spent
+on tuition) is not drafted. Part III is asked, never assumed: while Schedule B is
+required, `planner needed` lists `foreign_accounts` (yes or no), and lines 7a
+and 8 carry the answer; a yes leaves the FBAR question and the country to you.
+
 Social Security benefits now come from SSA-1099 box 5
 (`planner needed` asks for them), and the 1040 template reads the 2025 form's
 7a, 11a, 12e and 13a lines.
@@ -657,6 +667,7 @@ something another command already prints:
 | `draft.html` | the same draft laid out to print; Print, then Save as PDF |
 | `form-8949.csv` | Form 8949 rows by box, columns (a)-(h) and the account (`planner gains`) |
 | `schedule-c.txt` | the Schedule C summary and any uncategorised rows (`planner categorize`) |
+| `schedule-b.csv` | Schedule B by part, line and payer, written only when Schedule B is required (else a note says why) |
 | `carryforward.csv` | the capital loss carried to next year |
 | `basis.csv` | cost basis of each open lot, and each Roth conversion's basis and penalty-free date |
 | `estimated-payments.csv` | federal and NC estimated payments, the installment, and where each came from |

@@ -26,6 +26,7 @@ FILES = {
     "draft.html": "the same draft, laid out to print (Print, then Save as PDF)",
     "form-8949.csv": "Form 8949 rows, columns (a)-(h) by box",
     "schedule-c.txt": "Schedule C summary and any uncategorised bank rows",
+    "schedule-b.csv": "Schedule B rows by part, line and payer (when required)",
     "carryforward.csv": "what carries to next year: capital losses",
     "basis.csv": "cost basis of the open lots, and each Roth conversion",
     "estimated-payments.csv": "federal and NC estimated payments, with origin",
@@ -157,6 +158,26 @@ def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
         ],
     )
     (folder / "schedule-c.txt").write_text(schedule_c.render(sc), encoding="utf-8")
+    sched_b = folder / "schedule-b.csv"
+    rows_b = [ln for ln in d.lines if ln.form == "Sch B"]
+    if rows_b:
+        _csv(
+            sched_b,
+            ("part", "line", "payer", "amount", "source"),
+            [
+                (
+                    "I" if ln.line <= "4" else "II" if ln.line <= "6" else "III",
+                    ln.line,
+                    ln.label,
+                    _money(ln.value),
+                    ln.source,
+                )
+                for ln in rows_b
+            ],
+        )
+    else:
+        sched_b.unlink(missing_ok=True)  # an earlier run's, no longer required
+        pack.notes.extend(n for n in d.notes if n.startswith("Schedule B is not"))
     _csv(
         folder / "carryforward.csv",
         ("item", "amount", "source"),
@@ -221,7 +242,7 @@ def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
         ],
     )
     n = _originals(lay, year, folder / "originals.zip")
-    pack.written = list(FILES)
+    pack.written = [name for name in FILES if (folder / name).exists()]
     if not n:
         pack.notes.append(f"no archived originals for {year} (originals.zip is empty)")
     if inv.outstanding:

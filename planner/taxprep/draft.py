@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 
 from planner.engine import tax
 from planner.engine.household import Household
-from planner.ingest.needs import need_values
+from planner.ingest.needs import need_values, schedule_b_required
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
@@ -276,7 +276,7 @@ def build(lay: Layout, year: int) -> Draft:
     try:
         facts = db.facts_for(conn, year)
         pays = esttax.payments(conn, lay, year)
-        typed = need_values(conn, lay, year, d400.KEYS)
+        typed = need_values(conn, lay, year, (*d400.KEYS, "foreign_accounts"))
         cg = capgains.build(conn, lay, year)
         h = hsa.build(conn, lay, year)
         sc = schedule_c.build(conn, lay, year)
@@ -698,6 +698,7 @@ def build(lay: Layout, year: int) -> Draft:
     if cg.lots or cg.lines:
         limit = 1500.0 if hh.filing_status == "SEPARATE" else 3000.0
         _schedule_d(sheet, d, cg, l7, l11 - l14, limit)
+    _schedule_b(sheet, d, facts, l2b, l3b, typed["foreign_accounts"])
     if hh.state == "NC":
         married = hh.filing_status == "JOINT"
         d400.lay_lines(add, d.notes, v, facts, nc_paid, year, l11, typed, married)
@@ -706,6 +707,7 @@ def build(lay: Layout, year: int) -> Draft:
 
     # The lines against the engine's own totals: a gap is a mapping the draft
     # missed, and is said, never hidden.
+    sb_4, sb_6 = d.get("Sch B", "4"), d.get("Sch B", "6")
     for got, want, what in (
         (
             l9,
@@ -713,6 +715,8 @@ def build(lay: Layout, year: int) -> Draft:
             "line 9 against the engine's gross income less its loss deduction",
         ),
         (l11, v["adjusted_gross_income"], "line 11a against the engine's AGI"),
+        (sb_4, l2b, "Schedule B line 4 against 1040 line 2b"),
+        (sb_6, l3b, "Schedule B line 6 against 1040 line 3b"),
         (l15, v["taxable_income"], "line 15 against the engine's taxable income"),
         (
             l22 - s2_1a + s2_12 - (l27 + l28 + l29),
@@ -721,7 +725,7 @@ def build(lay: Layout, year: int) -> Draft:
             "engine's income tax",
         ),
     ):
-        if abs(got - want) > TOLERANCE:
+        if got is not None and abs(got - want) > TOLERANCE:
             d.notes.append(f"CHECK: {what}: {got:,.2f} vs {want:,.2f}")
     if exempt:
         d.notes.append(
@@ -1042,6 +1046,99 @@ def _schedule_1a(
     return total, form_rounded
 
 
+INTEREST_BOXES = (("1099-INT", "1"), ("1099-INT", "3"))
+DIVIDEND_BOXES = (("1099-DIV", "1a"),)
+
+
+def _payers(
+    sheet: _Sheet,
+    line: str,
+    facts: list[db.FactRow],
+    pairs: tuple[tuple[str, str], ...],
+    total: float,
+    origin: str,
+) -> float:
+    """One Schedule B row per payer from its forms' boxes; a figure the forms
+    do not show (typed on the Needed panel) is one more row to name."""
+    payers = sorted({f.issuer for f in facts if (f.form, f.box) in pairs})
+    shown = 0.0
+    for name in payers:
+        mine = [f for f in facts if f.issuer == name]
+        shown += sheet.add("Sch B", line, name, _sum(mine, pairs), _cited(mine, pairs))
+    rest = round(total - shown, 2)
+    if abs(rest) > TOLERANCE:
+        sheet.add(
+            "Sch B",
+            line,
+            "No form names this payer: write the payer's name",
+            rest,
+            f"{origin} less the forms",
+        )
+        shown += rest
+    return round(shown, 2)
+
+
+def _schedule_b(
+    sheet: _Sheet,
+    d: Draft,
+    facts: list[db.FactRow],
+    l2b: float,
+    l3b: float,
+    foreign: object,
+) -> None:
+    """Schedule B when interest or ordinary dividends are over $1,500: a row
+    per payer, lines 4 and 6 tied to 1040 lines 2b and 3b, Part III from the
+    Needed panel's typed answer."""
+    if not schedule_b_required(l2b, l3b):
+        d.notes.append(
+            f"Schedule B is not required: taxable interest {l2b:,.2f} and ordinary "
+            f"dividends {l3b:,.2f} are each $1,500 or less"
+        )
+        return
+    add = sheet.add
+    l1 = _payers(sheet, "1", facts, INTEREST_BOXES, l2b, "1040 line 2b")
+    l2 = add("Sch B", "2", "Total interest", l1, "sum of line 1")
+    l3 = add(
+        "Sch B",
+        "3",
+        "Excludable savings bond interest (Form 8815)",
+        0.0,
+        "Form 8815 is not drafted: no education exclusion is taken",
+    )
+    add("Sch B", "4", "Taxable interest", l2 - l3, "2 - 3; to 1040 line 2b")
+    l5 = _payers(sheet, "5", facts, DIVIDEND_BOXES, l3b, "1040 line 3b")
+    add("Sch B", "6", "Total ordinary dividends", l5, "sum of line 5; to 1040 line 3b")
+    if foreign not in ("yes", "no"):
+        d.unknown.append("foreign_accounts")
+        d.notes.append(
+            "Schedule B Part III (foreign accounts and trusts, lines 7a-8) is "
+            "unanswered: type foreign_accounts on the Needed panel"
+        )
+        return
+    word = "Yes" if foreign == "yes" else "No"
+    src = "Needed panel foreign_accounts"
+    add(
+        "Sch B",
+        "7a",
+        f"Foreign account interest or signature authority: {word}",
+        0.0,
+        src,
+    )
+    add(
+        "Sch B",
+        "8",
+        f"Foreign trust distribution, grantor or transferor: {word}",
+        0.0,
+        src,
+    )
+    if foreign == "yes":
+        d.notes.append(
+            "Schedule B Part III: a yes needs line 7a's FinCEN Form 114 (FBAR) "
+            "question, line 7b's country and line 8 settled account by account; "
+            "an FBAR is due when the accounts together top $10,000 at any time"
+        )
+
+
 def _schedule_d(
     sheet: _Sheet,
     d: Draft,
@@ -1092,6 +1189,7 @@ ORDER = (
     SCH_1A,
     "Sch 2",
     "Sch 3",
+    "Sch B",
     "Sch C",
     "Sch D",
     "Sch SE",

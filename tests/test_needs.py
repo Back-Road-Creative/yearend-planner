@@ -160,11 +160,14 @@ def test_bad_answers_are_refused_not_guessed(lay: Layout) -> None:
         enter(lay, 2026, "net_worth", "1")
 
 
+ALWAYS = sum(n.asked is None for n in NEEDS)  # foreign_accounts only with Schedule B
+
+
 def test_cli_needed_enter_dont_have(lay: Layout) -> None:
     r = runner.invoke(app, ["needed", "--year", "2026"])
     assert r.exit_code == 0, r.output
     assert "needed    birth_date" in r.output and "type: planner enter" in r.output
-    assert r.output.strip().endswith(f"{len(NEEDS)} needed")
+    assert r.output.strip().endswith(f"{ALWAYS} needed")
     r = runner.invoke(app, ["enter", "spending_floor", "36,000", "--year", "2026"])
     assert r.exit_code == 0 and "entered spending_floor = 36000" in r.output
     r = runner.invoke(app, ["enter", "filing_status", "widowed", "--year", "2026"])
@@ -174,7 +177,7 @@ def test_cli_needed_enter_dont_have(lay: Layout) -> None:
     r = runner.invoke(app, ["needed", "--year", "2026", "--all"])
     assert "actual    spending_floor" in r.output
     assert "dont-have ss_estimate_62" in r.output
-    assert f"{len(NEEDS) - 2} needed" in r.output
+    assert f"{ALWAYS - 2} needed" in r.output
 
 
 def test_loop_ends_when_nothing_is_missing(lay: Layout) -> None:
@@ -378,7 +381,7 @@ def test_cli_needed_groups_by_document(lay: Layout) -> None:
             > head
         )
     assert "document  Typed answers" in r.output
-    assert r.output.strip().endswith(f"{len(NEEDS)} needed")
+    assert r.output.strip().endswith(f"{ALWAYS} needed")
 
 
 def test_undo_dont_have_puts_the_item_back(lay: Layout) -> None:

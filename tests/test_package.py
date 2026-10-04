@@ -65,7 +65,10 @@ def test_taxpack_writes_every_file(lay: Layout) -> None:
     pack = package.build(lay, 2025)
     folder = lay.out / "tax-2025"
     assert pack.folder == folder
-    assert sorted(p.name for p in folder.iterdir()) == sorted(package.FILES)
+    # Schedule B is written only when required; this household's is not
+    assert sorted(p.name for p in folder.iterdir()) == sorted(
+        set(package.FILES) - {"schedule-b.csv"}
+    )
     d = draft.build(lay, 2025)
     assert (folder / "draft.txt").read_text(encoding="utf-8") == draft.render(d)
     page = (folder / "draft.html").read_text(encoding="utf-8")
@@ -162,3 +165,36 @@ def test_html_escapes_sources() -> None:
     d.notes.append("note <i>")
     page = package.html_page(d)
     assert "&lt;b&gt;Acme &amp; Co&lt;/b&gt;" in page and "note &lt;i&gt;" in page
+
+
+def test_taxpack_writes_schedule_b_only_when_required(lay: Layout) -> None:
+    pack = package.build(lay, 2025)
+    assert d_has_no_sched_b(pack)
+    assert any("Schedule B is not required" in n for n in pack.notes), pack.notes
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    db.add_document(
+        conn,
+        fingerprint="synthetic-int",
+        file_name="synthetic-int.pdf",
+        kind="pdf",
+        pages=1,
+        batch="b9",
+        facts=[
+            db.Fact("1099-INT", 2025, "Example Bank (synthetic)", "1", "x", 2500.0, 1)
+        ],
+    )
+    conn.close()
+    pack = package.build(lay, 2025)
+    rows = _rows(pack.folder / "schedule-b.csv")
+    assert ("I", "1", "Example Bank (synthetic)", "2500.00") in [
+        (r["part"], r["line"], r["payer"], r["amount"]) for r in rows
+    ]
+    assert "schedule-b.csv" in pack.written
+    assert "Schedule B" in (pack.folder / "draft.html").read_text(encoding="utf-8")
+
+
+def d_has_no_sched_b(pack: package.Pack) -> bool:
+    return (
+        not (pack.folder / "schedule-b.csv").exists()
+        and "schedule-b.csv" not in pack.written
+    )
