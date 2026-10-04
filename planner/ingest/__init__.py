@@ -309,7 +309,7 @@ def ingest(
         years = [f.tax_year for f in forms] + [r.tax_year for r in rows if r.tax_year]
         year = min(years) if years else datetime.now(UTC).year
         archived = archive(path, archive_root, year, fp)
-        db.set_archived(conn, doc_id, str(archived.relative_to(lay.data)))
+        db.set_archived(conn, doc_id, archived.relative_to(lay.data).as_posix())
         labels = [f"{f.form} {f.tax_year} ({f.issuer})" for f in forms]
         for source in dict.fromkeys(r.source for r in rows):
             n = sum(1 for r in rows if r.source == source)
