@@ -65,6 +65,7 @@ MAP: dict[tuple[str, str], tuple[str, str]] = {
     ("1040-SCH2", "21"): ("Sch 2", "21"),
     ("1040-SCH3", "8"): ("Sch 3", "8"),
     ("1040-SCH3", "9"): ("Sch 3", "9"),
+    **{("1040-SCHC", b): ("Sch C", b) for b in ("1", "7", "28", "31")},
     ("1040-SCHSE", "12"): ("Sch SE", "12"),
     ("1040-SCHSE", "13"): ("Sch SE", "13"),
     **{("1040-SCHD", b): ("Sch D", b) for b in ("7", "15", "16")},
@@ -73,7 +74,6 @@ MAP: dict[tuple[str, str], tuple[str, str]] = {
         for b in ("6", "12b", "15", "20a", "21a", "23", "26a", "28", "34")
     },
 }
-FILED_ONLY_FORMS = ("1040-SCHC",)  # Schedule C is its own command, not the draft
 REQUIRED = {"federal": ("1040", "24"), "NC": ("NC-D400", "15")}
 
 
@@ -130,7 +130,7 @@ def closed(lay: Layout, year: int) -> dict[str, float] | None:
 
 def filed_facts(conn: Any, year: int) -> tuple[list[db.FactRow], int]:
     """(accepted filed-return facts, count still pending confirmation)."""
-    forms = {f for f, _ in MAP} | set(FILED_ONLY_FORMS)
+    forms = {f for f, _ in MAP}
     keep = [
         f
         for f in db.facts_for(conn, tax_year=year)

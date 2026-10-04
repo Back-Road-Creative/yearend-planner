@@ -15,14 +15,16 @@ forms, not a filing.
 from __future__ import annotations
 
 import dataclasses
+import math
 from dataclasses import dataclass, field
 
 from planner.engine import tax
+from planner.engine.household import Household
 from planner.ingest.needs import need_values
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
-from planner.taxprep import capgains, d400, hsa
+from planner.taxprep import capgains, d400, hsa, schedule_c
 from planner.taxprep.expected import inventory
 
 ENGINE = (
@@ -68,6 +70,10 @@ ENGINE = (
     "aca_required_contribution_percentage",
     "is_aca_ptc_eligible",
     "aca_ptc",
+    "tip_income_deduction",
+    "overtime_income_deduction",
+    "auto_loan_interest_deduction",
+    "additional_senior_deduction",
 )
 PRIOR = ("tax_unit_fpg",)
 WITHHELD = (
@@ -90,6 +96,35 @@ TOLERANCE = 1.0
 # months can sit up to $6 from the annual figure the engine prices.
 ROUNDING = 12.0
 SEHI = "self_employed_health_insurance_ald"
+# Schedule 1-A (Form 1040) 2025, amounts as printed on the form. P.L. 119-21
+# allows the four deductions for tax years 2025 through 2028 (the engine's
+# deductions list ends with 2028).
+SCH_1A_YEARS = range(2025, 2029)
+SCH_1A = "Sch 1-A"
+TIPS_CAP = 25_000.0  # line 7
+OVERTIME_CAP = (12_500.0, 25_000.0)  # line 15: single or other, joint
+CAR_LOAN_CAP = 10_000.0  # line 24
+SENIOR_AMOUNT = 6_000.0  # line 35
+SENIOR_RATE = 0.06  # line 34
+SENIOR_AGE = 65  # born before January 2 of year - 64, so 65 on December 31
+# MAGI where each phase-out starts (lines 9, 17, 26, 32): single or other, joint.
+TIPS_FROM = (150_000.0, 300_000.0)
+OVERTIME_FROM = (150_000.0, 300_000.0)
+CAR_LOAN_FROM = (100_000.0, 200_000.0)
+SENIOR_FROM = (75_000.0, 150_000.0)
+# Lines 11-12 and 19-20 cut $100 for each whole $1,000 of MAGI over the start;
+# lines 28-29 cut $200 for each $1,000 or part of one. The engine cuts 10% of
+# the exact excess for tips and overtime, so the form can leave up to $100 more.
+CUT_TIPS = CUT_OVERTIME = 100.0
+CUT_CAR_LOAN = 200.0
+ROUNDING_GAP = 100.0
+# The engine variable behind each Schedule 1-A deduction line.
+ENGINE_LINE = {
+    "13": "tip_income_deduction",
+    "21": "overtime_income_deduction",
+    "30": "auto_loan_interest_deduction",
+    "37": "additional_senior_deduction",
+}
 # The Needed-panel keys a return reads (the others drive the plan, not the 1040).
 TAX_KEYS = (*inputs.MONEY, "ordinary_dividends", "qualified_dividends")
 
@@ -236,6 +271,7 @@ def build(lay: Layout, year: int) -> Draft:
         typed = need_values(conn, lay, year, d400.KEYS)
         cg = capgains.build(conn, lay, year)
         h = hsa.build(conn, lay, year)
+        sc = schedule_c.build(conn, lay, year)
     finally:
         conn.close()
     paid = [p for p in pays if p.agency == "fed"]
@@ -256,7 +292,14 @@ def build(lay: Layout, year: int) -> Draft:
         hh = dataclasses.replace(
             hh, other={**hh.other, "us_govt_interest_person": int(round(us))}
         )
-    v = tax.values(year, hh, (*ENGINE, *d400.ENGINE), PRIOR)
+    # Tips and overtime need a joint return if married (Schedule 1-A lines
+    # 4-5 and 14-15; P.L. 119-21 secs. 70201-70202). The engine does not apply
+    # that rule, so a separate filer's engine run holds neither: its taxable
+    # income, tax and credits are then the return's own.
+    priced = hh
+    if hh.filing_status == "SEPARATE" and year in SCH_1A_YEARS:
+        priced = dataclasses.replace(hh, qualified_tips=0, qualified_overtime=0)
+    v = tax.values(year, priced, (*ENGINE, *d400.ENGINE), PRIOR)
     d = Draft(
         year,
         tax.engine_version(),
@@ -306,14 +349,28 @@ def build(lay: Layout, year: int) -> Draft:
                     "or advance credit differ from the 1095-A"
                 )
 
+    # Schedule C from the categorised bank rows, then Schedule SE from its line
+    # 31; Schedule 1 carries both results.
+    for line, label, value, src in schedule_c.sheet(sc):
+        add("Sch C", line, label, value, src)
+    profit, profit_src = v["self_employment_income"], origin("se_income")
+    line_31 = sc.lines.get("31")
+    if line_31 is not None:
+        d.notes.extend(sc.notes)
+        d.notes.append(schedule_c.NOT_BUILT)
+        if abs(line_31 - profit) <= TOLERANCE:
+            profit, profit_src = line_31, "Sch C line 31"
+        else:
+            d.notes.append(
+                f"CHECK: Schedule C line 31 {line_31:,.2f} vs the household's "
+                f"self-employment income {profit:,.2f} on Schedule 1 line 3 (typed, "
+                "a 1099 estimate, or Schedule C facts out of date: run "
+                f"planner categorize --year {year})"
+            )
+    se = _schedule_se(sheet, d, v, profit, profit_src) if profit else None
+
     # Schedule 1
-    s1_3 = add(
-        "Sch 1",
-        "3",
-        "Business income",
-        v["self_employment_income"],
-        origin("se_income"),
-    )
+    s1_3 = add("Sch 1", "3", "Business income", profit, profit_src)
     s1_9 = 0.0
     if h.lines.get("16"):
         add("Sch 1", "8f", "Income from Form 8889", h.lines["16"], "Form 8889 line 16")
@@ -337,12 +394,12 @@ def build(lay: Layout, year: int) -> Draft:
         ),
         ("17", "Self-employed health insurance", SEHI),
     ):
-        src = (
-            "premiums less the premium tax credit, settled with it (IRS Pub. 974)"
-            if var == SEHI and hh.se_health_premiums
-            else f"engine {var}"
-        )
-        named += add("Sch 1", ln, label, v[var], src)
+        value, src = v[var], f"engine {var}"
+        if var == SEHI and hh.se_health_premiums:
+            src = "premiums less the premium tax credit, settled with it (IRS Pub. 974)"
+        elif var == "self_employment_tax_ald" and se:
+            value, src = se[1], "Sch SE line 13"
+        named += add("Sch 1", ln, label, value, src)
     add(
         "Sch 1",
         "20",
@@ -361,31 +418,6 @@ def build(lay: Layout, year: int) -> Draft:
         "engine above_the_line_deductions less loss_ald",
     )
 
-    # Schedule SE
-    if v["self_employment_income"]:
-        add("Sch SE", "2", "Net profit", v["self_employment_income"], "Sch 1 line 3")
-        add(
-            "Sch SE",
-            "4a",
-            "Net earnings (x 92.35%)",
-            v["taxable_self_employment_income"],
-            "engine taxable_self_employment_income",
-        )
-        add(
-            "Sch SE",
-            "12",
-            "Self-employment tax",
-            v["self_employment_tax"],
-            "engine self_employment_tax",
-        )
-        add(
-            "Sch SE",
-            "13",
-            "Deduction for half of SE tax",
-            v["self_employment_tax_ald"],
-            "engine self_employment_tax_ald",
-        )
-
     # Schedule 2
     s2_1a = add(
         "Sch 2", "1a", "Excess advance PTC repayment", excess_aptc, "Form 8962 line 29"
@@ -399,7 +431,11 @@ def build(lay: Layout, year: int) -> Draft:
     )
     s2_3 = add("Sch 2", "3", "Lines 1z and 2", s2_1a + s2_2, "1z + 2")
     s2_4 = add(
-        "Sch 2", "4", "Self-employment tax", v["self_employment_tax"], "Sch SE line 12"
+        "Sch 2",
+        "4",
+        "Self-employment tax",
+        se[0] if se else v["self_employment_tax"],
+        "Sch SE line 12" if se else "engine self_employment_tax",
     )
     s2_11 = add(
         "Sch 2",
@@ -527,13 +563,34 @@ def build(lay: Layout, year: int) -> Draft:
         v["qualified_business_income_deduction"],
         "engine qualified_business_income_deduction",
     )
-    l13b = add(
-        f,
-        "13b",
-        "Schedule 1-A deductions (incl. the senior deduction)",
-        max(v["taxable_income_deductions"] - l12 - l13a, 0.0),
-        "engine taxable_income_deductions less 12e and 13a",
-    )
+    if year in SCH_1A_YEARS:
+        total_1a, form_rounded = _schedule_1a(sheet, d, v, hh, l11)
+        if form_rounded:
+            # The form's rounded phase-out leaves more deduction than the
+            # engine's: price again on the form's figure, so line 15 and the
+            # tax on it (line 16) and the credits and taxes that follow agree.
+            v = tax.values(
+                year,
+                dataclasses.replace(priced, tax_unit_inputs=form_rounded),
+                (*ENGINE, *d400.ENGINE),
+                PRIOR,
+            )
+        l13b = add(
+            f,
+            "13b",
+            "Additional deductions (Schedule 1-A)",
+            total_1a,
+            "Sch 1-A line 38",
+        )
+    else:
+        l13b = add(
+            f,
+            "13b",
+            "Other deductions",
+            max(v["taxable_income_deductions"] - l12 - l13a, 0.0),
+            f"engine taxable_income_deductions less 12e and 13a (Schedule 1-A "
+            f"covers {SCH_1A_YEARS[0]} through {SCH_1A_YEARS[-1]}, not {year})",
+        )
     l14 = add(f, "14", "Total deductions", l12 + l13a + l13b, "12e + 13a + 13b")
     l15 = add(f, "15", "Taxable income", max(l11 - l14, 0.0), "11b - 14")
 
@@ -645,6 +702,309 @@ def build(lay: Layout, year: int) -> Draft:
     return d
 
 
+def _schedule_se(
+    sheet: _Sheet, d: Draft, v: dict[str, float], profit: float, profit_src: str
+) -> tuple[float, float]:
+    """Schedule SE Part I, line by line: (self-employment tax on line 12, the
+    deduction for half of it on line 13). The Social Security wage base, the
+    rates and the $400 floor are the engine's own parameters; the engine's
+    totals are checked against the lines."""
+    p = tax.self_employment_parameters(d.year)
+    add = sheet.add
+    share = p["net_earnings_share"]
+    l2 = add("Sch SE", "2", "Net profit or (loss) from Schedule C", profit, profit_src)
+    l3 = add("Sch SE", "3", "Combine lines 1a, 1b and 2", l2, "line 2 (no farm profit)")
+    l4a = add(
+        "Sch SE",
+        "4a",
+        f"Net earnings (x {share:.2%})",
+        l3 * share if l3 > 0 else l3,
+        f"3 x {share:.2%}" if l3 > 0 else "line 3 (a loss)",
+    )
+    l4c = add(
+        "Sch SE",
+        "4c",
+        "Combine lines 4a and 4b",
+        l4a,
+        "line 4a (no optional method)",
+    )
+    if l4c < p["floor"]:
+        why = f"line 4c under ${p['floor']:,.0f}: no self-employment tax"
+        l12 = add("Sch SE", "12", "Self-employment tax", 0.0, why)
+        l13 = add("Sch SE", "13", "Deduction for half of SE tax", 0.0, why)
+    else:
+        l6 = add("Sch SE", "6", "Add lines 4c and 5b", l4c, "line 4c (no church pay)")
+        l7 = add(
+            "Sch SE",
+            "7",
+            "Social Security wage base",
+            p["wage_base"],
+            "Schedule SE line 7 (engine gov.irs.payroll.social_security.cap)",
+        )
+        l8a = add(
+            "Sch SE",
+            "8a",
+            "Social Security wages and tips",
+            v["employment_income"],
+            "wages: W-2 box 1 stands in for boxes 3 and 7, which are not read",
+        )
+        l8d = add(
+            "Sch SE",
+            "8d",
+            "Add lines 8a, 8b and 8c",
+            l8a,
+            "line 8a (no Form 4137 or 8919)",
+        )
+        l9 = add("Sch SE", "9", "Wage base left", max(l7 - l8d, 0.0), "7 - 8d")
+        ss = p["social_security_rate"]
+        l10 = add(
+            "Sch SE",
+            "10",
+            f"Social Security part (x {ss:.1%})",
+            min(l6, l9) * ss,
+            f"smaller of 6 and 9, x {ss:.1%}",
+        )
+        md = p["medicare_rate"]
+        l11 = add(
+            "Sch SE", "11", f"Medicare part (x {md:.1%})", l6 * md, f"6 x {md:.1%}"
+        )
+        l12 = add("Sch SE", "12", "Self-employment tax", l10 + l11, "10 + 11")
+        l13 = add(
+            "Sch SE",
+            "13",
+            "Deduction for half of SE tax",
+            l12 * p["deductible_share"],
+            f"12 x {p['deductible_share']:.0%}",
+        )
+    for got, want, what in (
+        (l12, v["self_employment_tax"], "line 12 against the engine's SE tax"),
+        (l13, v["self_employment_tax_ald"], "line 13 against the engine's deduction"),
+    ):
+        if abs(got - want) > TOLERANCE:
+            d.notes.append(f"CHECK: Schedule SE {what}: {got:,.2f} vs {want:,.2f}")
+    return l12, l13
+
+
+def _phased(
+    sheet: _Sheet,
+    lines: tuple[str, ...],
+    amount: float,
+    cap: float,
+    magi: float,
+    start: float,
+    cut: float,
+    *,
+    up: bool,
+    what: str,
+) -> float:
+    """One Schedule 1-A part's lines: the amount held to its cap, the MAGI
+    over the phase-out start in whole $1,000s (rounded up or down as the part
+    says), and the cut taken for each. ``lines`` are the form's cap, MAGI,
+    start, excess, thousands, cut and result lines, in that order."""
+    cap_ln, magi_ln, start_ln, over_ln, count_ln, cut_ln, out_ln = lines
+    add = sheet.add
+    held = add(
+        SCH_1A,
+        cap_ln,
+        f"Smaller of the {what} or ${cap:,.0f}",
+        min(amount, cap),
+        "as printed",
+    )
+    add(SCH_1A, magi_ln, "Modified AGI", magi, "line 3")
+    add(SCH_1A, start_ln, "Phase-out starts", start, "as printed")
+    taken = 0.0
+    over = magi - start
+    if over > 0:
+        add(SCH_1A, over_ln, "MAGI over the start", over, f"{magi_ln} - {start_ln}")
+        steps = math.ceil(round(over / 1000, 9)) if up else math.floor(over / 1000)
+        add(
+            SCH_1A,
+            count_ln,
+            "Thousands of dollars over",
+            steps,
+            f"{over_ln} / 1,000, whole number",
+        )
+        taken = add(
+            SCH_1A, cut_ln, "Reduction", steps * cut, f"{count_ln} x ${cut:,.0f}"
+        )
+    return add(
+        SCH_1A,
+        out_ln,
+        f"Deduction for {what}",
+        max(held - taken, 0.0),
+        f"{cap_ln} - {cut_ln}"
+        if over > 0
+        else f"line {cap_ln} (MAGI is not over the start)",
+    )
+
+
+def _schedule_1a(
+    sheet: _Sheet, d: Draft, v: dict[str, float], hh: Household, agi: float
+) -> tuple[float, dict[str, float]]:
+    """Schedule 1-A (Form 1040), whose line 38 is 1040 line 13b: (the total, the
+    engine variables whose figure the form's rounding moves, with the form's
+    figure, for the caller to price again). Part II to IV lines are drawn for
+    the figures the household carries; Part V for a filer 65 or over at year
+    end. Each part is checked against the engine's; a gap that is not the
+    form's rounding is a CHECK, never absorbed. The engine run `v` holds no
+    tips or overtime for a married filing separately return."""
+    add = sheet.add
+    magi = add(SCH_1A, "1", "Adjusted gross income", agi, "1040 line 11b")
+    add(SCH_1A, "3", "Modified AGI", magi, "line 1 (no income excluded on lines 2a-2d)")
+    k = 1 if hh.filing_status == "JOINT" else 0
+    separate = hh.filing_status == "SEPARATE"
+    form: dict[str, float] = {}
+    skipped: set[str] = set()
+    if hh.qualified_tips and not hh.tipped_occupation_code:
+        d.notes.append(
+            "Schedule 1-A Part II is not drafted: tips need a Treasury tipped "
+            "occupation code (IRS.gov/TippedOccupations), and none is on file"
+        )
+    elif hh.qualified_tips:
+        if separate:
+            skipped.add("13")
+        else:
+            add(
+                SCH_1A,
+                "6",
+                "Qualified tips",
+                hh.qualified_tips,
+                "household qualified tips (lines 4a-5 not split)",
+            )
+            form["13"] = _phased(
+                sheet,
+                ("7", "8", "9", "10", "11", "12", "13"),
+                hh.qualified_tips,
+                TIPS_CAP,
+                magi,
+                TIPS_FROM[k],
+                CUT_TIPS,
+                up=False,
+                what="qualified tips",
+            )
+    if hh.qualified_overtime:
+        if separate:
+            skipped.add("21")
+        else:
+            add(
+                SCH_1A,
+                "14c",
+                "Qualified overtime compensation",
+                hh.qualified_overtime,
+                "household qualified overtime (lines 14a-14b not split)",
+            )
+            form["21"] = _phased(
+                sheet,
+                ("15", "16", "17", "18", "19", "20", "21"),
+                hh.qualified_overtime,
+                OVERTIME_CAP[k],
+                magi,
+                OVERTIME_FROM[k],
+                CUT_OVERTIME,
+                up=False,
+                what="qualified overtime",
+            )
+    if hh.car_loan_interest:
+        add(
+            SCH_1A,
+            "23",
+            "Qualified passenger vehicle loan interest",
+            hh.car_loan_interest,
+            "household car loan interest (line 22 columns not split)",
+        )
+        form["30"] = _phased(
+            sheet,
+            ("24", "25", "26", "27", "28", "29", "30"),
+            hh.car_loan_interest,
+            CAR_LOAN_CAP,
+            magi,
+            CAR_LOAN_FROM[k],
+            CUT_CAR_LOAN,
+            up=True,
+            what="car loan interest",
+        )
+    if not (hh.qualified_tips or hh.qualified_overtime or hh.car_loan_interest):
+        d.notes.append(
+            "Schedule 1-A Parts II to IV (tips, overtime, car loan interest) are "
+            "drafted only for figures the household carries, and the Needed panel "
+            "does not ask for them: if you had qualified tips or overtime pay, or "
+            "paid interest on a new car loan, add them with a preparer"
+        )
+    if hh.age >= SENIOR_AGE and not separate:
+        add(SCH_1A, "31", "Modified AGI", magi, "line 3")
+        add(SCH_1A, "32", "Phase-out starts", SENIOR_FROM[k], "as printed")
+        over = magi - SENIOR_FROM[k]
+        cut = 0.0
+        if over > 0:
+            add(SCH_1A, "33", "MAGI over the start", over, "31 - 32")
+            cut = add(
+                SCH_1A, "34", "Reduction", over * SENIOR_RATE, f"33 x {SENIOR_RATE:.0%}"
+            )
+        l35 = add(
+            SCH_1A,
+            "35",
+            "Deduction before the age test",
+            max(SENIOR_AMOUNT - cut, 0.0),
+            f"{SENIOR_AMOUNT:,.0f} - 34"
+            if over > 0
+            else f"{SENIOR_AMOUNT:,.0f} (line 33 is zero or less)",
+        )
+        l36a = add(
+            SCH_1A,
+            "36a",
+            "Your deduction",
+            l35,
+            f"line 35 (age {hh.age} at year end; a valid SSN is assumed)",
+        )
+        form["37"] = add(
+            SCH_1A,
+            "37",
+            "Enhanced deduction for seniors",
+            l36a,
+            "36a (line 36b is not drafted)",
+        )
+        if k:
+            d.notes.append(
+                "Schedule 1-A line 36b: a joint return adds the spouse's $6,000 "
+                "(born before January 2, 1961); the household holds one person, so "
+                "it is not drafted"
+            )
+    elif hh.age >= SENIOR_AGE:
+        skipped.add("37")
+    if skipped:
+        d.notes.append(
+            "Schedule 1-A: tips, overtime and the senior deduction need a joint "
+            "return if married; none is taken for married filing separately"
+        )
+    total = add(
+        SCH_1A,
+        "38",
+        "Total additional deductions",
+        sum(form.values()),
+        "13 + 21 + 30 + 37",
+    )
+    engine = {line: v[name] for line, name in ENGINE_LINE.items()}
+    form_rounded: dict[str, float] = {}  # engine variable -> the form's figure
+    for line, want in engine.items():
+        got = form.get(line, 0.0)
+        gap = got - want
+        if abs(gap) <= TOLERANCE:
+            continue
+        if line in ("13", "21") and abs(gap) <= ROUNDING_GAP:
+            form_rounded[ENGINE_LINE[line]] = got
+            d.notes.append(
+                f"Schedule 1-A line {line}: the form rounds the phase-out down to "
+                f"whole $1,000s ({got:,.2f}); the engine phases out smoothly "
+                f"({want:,.2f}); the draft follows the form, so line 15 is "
+                f"{abs(gap):,.2f} lower and line 16 is priced on that lower income"
+            )
+        else:
+            d.notes.append(
+                f"CHECK: Schedule 1-A line {line} {got:,.2f} vs engine {want:,.2f}"
+            )
+    return total, form_rounded
+
+
 def _schedule_d(
     sheet: _Sheet,
     d: Draft,
@@ -692,8 +1052,10 @@ def _schedule_d(
 ORDER = (
     "1040",
     "Sch 1",
+    SCH_1A,
     "Sch 2",
     "Sch 3",
+    "Sch C",
     "Sch D",
     "Sch SE",
     "8949",

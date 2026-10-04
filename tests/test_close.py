@@ -128,3 +128,10 @@ def test_close_without_a_draft_still_records(planner_home: Path) -> None:
     assert close.closed(lay, 2025) == {"1040 24": 1234.0}
     enter(lay, 2025, "state", "NC")  # the record survives later edits
     assert close.closed(lay, 2025) == {"1040 24": 1234.0}
+
+
+def test_filed_schedule_c_lines_pair_with_the_drafts_sheet() -> None:
+    """Schedule C is part of the draft now, so the filed lines compare to it."""
+    for box in ("1", "7", "28", "31"):
+        assert close.MAP[("1040-SCHC", box)] == ("Sch C", box)
+    assert not hasattr(close, "FILED_ONLY_FORMS")

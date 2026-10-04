@@ -46,7 +46,21 @@ class Household:
     hsa_contribution: int = 0  # health_savings_account_ald (tax-unit level)
     slcsp_monthly: int | None = None  # benchmark silver premium; None = engine estimate
     aptc: int = 0  # advance premium tax credit paid for the year (1095-A column C)
+    # Schedule 1-A inputs (tax years 2025 to 2028): qualified tips (part of wages),
+    # the overtime premium (part of wages) and qualified passenger vehicle loan
+    # interest. Nothing in the Needed panel fills them yet: the default is none.
+    qualified_tips: int = 0
+    # Treasury tipped-occupation code (IRS.gov/TippedOccupations); the tips
+    # deduction needs one, so tips without it carry no deduction.
+    tipped_occupation_code: int = 0
+    qualified_overtime: int = 0
+    car_loan_interest: int = 0
     other: dict[str, int] = field(default_factory=dict)
+    # Tax-unit variables the engine takes as given instead of computing: the
+    # draft return sets a Schedule 1-A deduction to the form's own figure (the
+    # form rounds its phase-out; the engine does not) so the tax is priced on
+    # the form's taxable income.
+    tax_unit_inputs: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         missing = [
@@ -90,6 +104,9 @@ class Household:
             "social_security": {y: self.social_security},
             "traditional_ira_contributions": {y: self.traditional_ira_contribution},
             "self_employed_health_insurance_premiums": {y: self.se_health_premiums},
+            "tip_income": {y: self.qualified_tips},
+            "treasury_tipped_occupation_code": {y: self.tipped_occupation_code},
+            "fsla_overtime_premium": {y: self.qualified_overtime},
         }
         for k, v in self.other.items():
             person[k] = {y: v}
@@ -100,6 +117,8 @@ class Household:
             "filing_status": {y: self.filing_status},
             "health_savings_account_ald": {y: self.hsa_contribution},
         }
+        for k, amount in self.tax_unit_inputs.items():
+            tax_unit[k] = {y: amount}
         if self.slcsp_monthly is not None:
             tax_unit["slcsp"] = {
                 f"{y}-{m:02d}": self.slcsp_monthly for m in range(1, 13)
@@ -110,6 +129,7 @@ class Household:
         household: dict[str, Any] = {
             "members": ["p"],
             "state_name": {yr: self.state for yr in years},
+            "qualified_passenger_vehicle_loan_interest": {y: self.car_loan_interest},
         }
         if self.county:
             if (

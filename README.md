@@ -49,7 +49,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `dashboard` | Write the dashboard as a static page, out/index.html, for printing and backup: the Needed panel, every planner, the draft return and the alerts, each panel tagged actual, estimate or unavailable. |
 | `derive` | Recompute the YTD facts (realized gains, dividends, interest, bank flows) for one year from the imported rows; supersedes the previous run. |
 | `dont-have` | Mark an item as not available; it leaves the Needed list and the plan shows it as unavailable instead of guessing. `--undo` puts it back. |
-| `draft` | The draft return: Form 1040 with its schedules and forms, and the NC D-400 with Schedule S, every line priced by the engine and naming its source. |
+| `draft` | The draft return: Form 1040 with Schedules 1, 1-A, 2, 3, C, D and SE and the other forms, and the NC D-400 with Schedule S, every line priced by the engine and naming its source. |
 | `enter` | Type one answer the documents did not supply; profile answers go to data/profile/assumptions.yaml, year answers to data/manual/<year>.yaml. |
 | `esttax` | The safe harbor and the four installments, federal and NC: what was paid (bank rows to the IRS or NCDOR, plus `planner paid`), each due date's shortfall, and the next payment. |
 | `facts` | List the accepted facts in the ledger, each with its source file and page. |

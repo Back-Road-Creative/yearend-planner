@@ -497,10 +497,16 @@ listed and left out, never guessed into a line, and while any remain
 `planner needed` asks for them. Depreciation and the home office are not built
 from bank rows.
 
+`planner draft` carries the result as its own Schedule C sheet: lines 1, 2, 3,
+7, the expense lines you categorised, 28, 29 and 31, each naming how many bank
+rows stand behind it. Schedule 1 line 3 and Schedule SE line 2 then read line 31
+("Sch C line 31"); a typed self-employment figure that differs from line 31 by
+more than a dollar is kept and flagged with a `CHECK:`.
+
 ## The draft return (Phase 4i)
 
-`planner draft --year 2025` lays the year onto Form 1040, Schedules 1, 2, 3 and
-SE and Form 8962 (line numbers follow the 2025 forms), and every line names
+`planner draft --year 2025` lays the year onto Form 1040, Schedules 1, 1-A, 2, 3,
+C and SE and Form 8962 (line numbers follow the 2025 forms), and every line names
 where its figure came from: the form and box, a YTD estimate, a typed answer,
 an engine variable, or the arithmetic of other lines. `--json` gives the same
 lines for other tools. The engine prices the tax; the draft adds what it does
@@ -519,7 +525,25 @@ from 2026 under P.L. 119-21). Without a 1095-A no credit is claimed and the
 draft says what the engine would allow. Four totals (gross income, AGI,
 taxable income, income tax) are checked against the engine and any gap is
 printed as `CHECK:`. Unknown inputs, YTD estimates and forms still to come are
-listed under the lines. Social Security benefits now come from SSA-1099 box 5
+listed under the lines. Schedule SE is drawn line by line (2, 3, 4a, 4c, 6, 7, 8a, 8d, 9, 10, 11, 12,
+13): the wage base, the 12.4% and 2.9% rates and the $400 floor are the
+engine's own parameters, W-2 wages use up the wage base, and net earnings under
+$400 owe nothing. Lines 12 and 13 feed Schedule 2 line 4 and Schedule 1 line 15,
+and are checked against the engine's totals.
+
+Schedule 1-A (tax years 2025 to 2028) is its own sheet, and its line 38 is
+1040 line 13b. Part I takes AGI from line 11b. Part V, the $6,000 senior
+deduction, is drawn for a filer 65 by year end (6% of the AGI over $75,000,
+$150,000 joint). Parts II to IV (tips, overtime, car loan interest) are drawn
+for the figures a household carries (`qualified_tips` with a
+`tipped_occupation_code`, `qualified_overtime`, `car_loan_interest`); the Needed
+panel does not ask for them yet, so without them the draft says so. The form
+cuts the tips and overtime deductions by $100 for each whole $1,000 of income
+over the start and the car loan interest by $200 for each $1,000 or part of
+one; the engine cuts tips and overtime smoothly, so the draft follows the form
+and a note gives the gap (up to $100).
+
+Social Security benefits now come from SSA-1099 box 5
 (`planner needed` asks for them), and the 1040 template reads the 2025 form's
 7a, 11a, 12e and 13a lines.
 
@@ -647,7 +671,8 @@ D-400 into the inbox, run `planner ingest`, then `planner close --year 2025`.
     the planner pairs the lines by what they hold. For example, filed 1040
     line 11 is draft line 11a.
   - Filed lines the draft has no line for are listed separately: line 5b,
-    line 34 on a refund, and Schedule C, which `planner categorize` covers.
+    and line 34 on a refund. Filed Schedule C lines 1, 7, 28 and 31 are paired
+    with the draft's Schedule C sheet once bank rows are categorised.
 - **The record.** The filed figures are written to
   `data/private/returns/2025-closed.yaml`, and next year's rollover reads
   them. It is your own data: it stays in the private folder, is never in the
