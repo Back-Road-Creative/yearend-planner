@@ -48,7 +48,8 @@ class Household:
     aptc: int = 0  # advance premium tax credit paid for the year (1095-A column C)
     # Schedule 1-A inputs (tax years 2025 to 2028): qualified tips (part of wages),
     # the overtime premium (part of wages) and qualified passenger vehicle loan
-    # interest. Nothing in the Needed panel fills them yet: the default is none.
+    # interest. The Needed panel asks for each (planner.plan.inputs reads them);
+    # the default is none.
     qualified_tips: int = 0
     # Treasury tipped-occupation code (IRS.gov/TippedOccupations); the tips
     # deduction needs one, so tips without it carry no deduction.

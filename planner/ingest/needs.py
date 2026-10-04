@@ -574,6 +574,46 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("MAGI headroom", "Levers", "Draft 1040", "Expected forms"),
     ),
     Need(
+        "qualified_tips",
+        "Qualified tips (already in wages)",
+        "the Schedule 1-A tips deduction, tax years 2025 to 2028 (P.L. 119-21 sec. 70201)",
+        "the employer's W-2, or the separate statement of qualified tips an "
+        "employer may give for 2025 (IRS Notice 2025-62), or your own tip records; "
+        "type 0 if none",
+        "money",
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "tipped_occupation_code",
+        "Treasury tipped-occupation code for those tips (3 digits)",
+        "the tips deduction is allowed only for an occupation on the Treasury list",
+        "the code for your occupation on IRS.gov/TippedOccupations; type 0 if "
+        "none or no tips",
+        "int",
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "qualified_overtime",
+        "Qualified overtime premium (already in wages)",
+        "the Schedule 1-A overtime deduction, tax years 2025 to 2028 (P.L. 119-21 sec. 70202)",
+        "the employer's W-2, or the separate statement of qualified overtime "
+        "compensation an employer may give for 2025 (IRS Notice 2025-62), or your "
+        "pay stubs: only the extra half in time-and-a-half pay counts; type 0 if none",
+        "money",
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "car_loan_interest",
+        "Interest paid on a qualifying new-vehicle loan",
+        "the Schedule 1-A car loan interest deduction, tax years 2025 to 2028 "
+        "(P.L. 119-21 sec. 70203, IRC sec. 163(h)(4))",
+        "the lender's year-end statement of interest paid on a loan taken out "
+        "after 2024 to buy a new car, minivan, SUV, pickup or motorcycle made in the "
+        "United States; type 0 if none",
+        "money",
+        unlocks=("Draft 1040",),
+    ),
+    Need(
         "se_income",
         "Self-employment net income",
         "SE tax, QBI, Schedule C",
@@ -919,7 +959,13 @@ def need_for(key: str) -> Need:
 # Bounds on typed answers: amounts that may be negative, whole-number ranges,
 # and the cap past which a figure is a typo rather than a fact.
 SIGNED = frozenset({"se_income", "short_term_gains", "long_term_gains"})
-INT_RANGE = {"ss_claim_age": (62, 70), "hsa_months": (0, 12)}
+# The Treasury tipped-occupation list (IRS.gov/TippedOccupations) numbers its
+# occupations with three-digit codes; 0 is "none".
+INT_RANGE = {
+    "ss_claim_age": (62, 70),
+    "hsa_months": (0, 12),
+    "tipped_occupation_code": (0, 999),
+}
 MONEY_MAX = 100_000_000
 TEXT_MAX = 200
 

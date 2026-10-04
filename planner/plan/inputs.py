@@ -47,6 +47,9 @@ MONEY = {
     "slcsp_monthly": "slcsp_monthly",
     "aptc": "aptc",
     "hsa_contribution": "hsa_contribution",
+    "qualified_tips": "qualified_tips",
+    "qualified_overtime": "qualified_overtime",
+    "car_loan_interest": "car_loan_interest",
 }
 # The income lines a typed total_income is measured against: Form 1040 line 9
 # less wages (the line the total sets) and Social Security (the engine decides
@@ -65,6 +68,8 @@ TOTAL_INCOME_LINES = (
 CAPITAL_LOSS_LIMIT = 3000
 CAPITAL_LOSS_LIMIT_MFS = 1500
 CONVERSION_TARGETS = ("manual", "auto")
+# Needed-panel key -> Household field, a whole-number code rather than dollars.
+CODES = {"tipped_occupation_code": "tipped_occupation_code"}
 OVERRIDES = (
     "q4_dividend_estimate",
     "planned_st_sales",
@@ -125,6 +130,9 @@ class Inputs:
     origins: dict[str, str] = field(default_factory=dict)  # key -> where it came from
     estimates: list[str] = field(default_factory=list)  # keys standing in from YTD
     unknown: list[str] = field(default_factory=list)  # keys left out (not zero)
+    # Age for the tax tests that count a filer as one year older on the day
+    # before the birthday (65 and over: the standard deduction, Schedule 1-A).
+    tax_age: int | None = None
     notes: list[str] = field(default_factory=list)
     overrides: Overrides = field(default_factory=Overrides)
 
@@ -133,6 +141,16 @@ def age_at_year_end(birth: str, year: int) -> int:
     b = date.fromisoformat(birth)
     end = date(year, 12, 31)
     return end.year - b.year - ((end.month, end.day) < (b.month, b.day))
+
+
+def tax_age(birth: str, year: int) -> int:
+    """Age on December 31 for the tests that count a filer as reaching an age
+    on the day before the birthday (IRS Pub. 501, "considered 65 on the day
+    before your 65th birthday"): someone born January 1 is a year older than
+    the calendar says. Contribution limits, glide paths and the plan keep
+    ``age_at_year_end``."""
+    b = date.fromisoformat(birth)
+    return age_at_year_end(birth, year) + ((b.month, b.day) == (1, 1))
 
 
 def _recorded_conversions(conn: sqlite3.Connection, year: int) -> float:
@@ -177,6 +195,9 @@ def build(
                 out.estimates.append(key)
         elif not key.startswith("account:"):
             out.unknown.append(key)
+    tips = value.get("qualified_tips")
+    if not (tips and float(tips) > 0) and "tipped_occupation_code" in out.unknown:
+        out.unknown.remove("tipped_occupation_code")  # moot without tips
     missing = [k for k in REQUIRED if value.get(k) is None]
     if missing:
         raise MissingInputError(
@@ -191,6 +212,10 @@ def build(
     for key, name in MONEY.items():
         if value.get(key) is not None:
             fields[name] = int(round(float(value[key])))
+    for key, name in CODES.items():
+        if value.get(key) is not None:
+            fields[name] = int(value[key])
+    out.tax_age = tax_age(str(value["birth_date"]), year)
     ordinary = value.get("ordinary_dividends")
     qualified = value.get("qualified_dividends")
     if ordinary is not None and qualified is None:
