@@ -317,7 +317,7 @@ def ingest(
         item = Imported(
             file_name=path.name,
             forms=tuple(labels),
-            archived_as=str(archived.relative_to(lay.data)),
+            archived_as=archived.relative_to(lay.data).as_posix(),
         )
         (report.pending if any(f.ocr for f in forms) else report.imported).append(item)
     prune_empty_folders(inbox)
