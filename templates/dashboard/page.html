@@ -25,6 +25,9 @@ ul.notes { margin:6px 0 0; padding-left:18px; color:var(--muted); font-size:13px
 .need:first-of-type { border-top:0; }
 .need b { display:block; }
 .need small { display:block; color:var(--muted); }
+.doc { border-top:2px solid var(--line); padding:8px 0; }
+.doc h3 { margin:.2rem 0; font-size:1rem; }
+.doc p { margin:.1rem 0; color:var(--muted); }
 td.crop { width:60%; }
 td.crop img { display:block; max-width:100%; height:auto; border:1px solid var(--line); background:#fff; }
 form.confirm .inline { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
@@ -67,29 +70,37 @@ td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap
 <section id="needed">
   <h2>Needed <span class="tag {{ 'actual' if not p.needed_count else 'unavailable' }}">{{ p.needed_count }} open</span></h2>
   {% if not p.needed_count %}<p class="done">Nothing more is needed: every input is on hand.</p>{% endif %}
-  {% for st in p.needed %}
-  <div class="need">
-    <b>{{ st.need.label }}</b>
-    <small>why: {{ st.need.why }}</small>
-    <small>from: {{ st.need.source }}</small>
-    {% if st.origin %}<small>note: {{ st.origin }}</small>{% endif %}
-    {% if live %}
-    <form method="post" action="/enter?token={{ token }}" class="inline">
-      <input type="hidden" name="key" value="{{ st.need.key }}">
-      {% if st.need.choices %}
-      <select name="value">{% for c in st.need.choices %}<option>{{ c }}</option>{% endfor %}</select>
+  {% for g in p.needed_groups %}
+  <div class="doc"{% if g.doc %} id="doc-{{ g.doc.key }}"{% endif %}>
+    <h3>{{ g.title }} <small>({{ g.items|length }} open)</small></h3>
+    {% if g.doc %}<p class="path">download: {{ g.doc.path }}</p>{% endif %}
+    <p class="unlocks">unlocks: {{ g.unlocks|join(', ') }}</p>
+    {% for st in g.items %}
+    <div class="need">
+      <b>{{ st.need.label }}</b>
+      <small>why: {{ st.need.why }}</small>
+      <small>{{ 'look for' if g.doc else 'from' }}: {{ st.need.source }}</small>
+      <small>unlocks: {{ st.need.unlocks|join(', ') }}</small>
+      {% if st.origin %}<small>note: {{ st.origin }}</small>{% endif %}
+      {% if live %}
+      <form method="post" action="/enter?token={{ token }}" class="inline">
+        <input type="hidden" name="key" value="{{ st.need.key }}">
+        {% if st.need.choices %}
+        <select name="value">{% for c in st.need.choices %}<option>{{ c }}</option>{% endfor %}</select>
+        {% else %}
+        <input name="value" placeholder="{{ st.need.kind }}" aria-label="{{ st.need.label }}">
+        {% endif %}
+        <button type="submit">Save</button>
+      </form>
+      <form method="post" action="/dont-have?token={{ token }}" class="inline">
+        <input type="hidden" name="key" value="{{ st.need.key }}">
+        <button type="submit" class="plain">I don't have this</button>
+      </form>
       {% else %}
-      <input name="value" placeholder="{{ st.need.kind }}" aria-label="{{ st.need.label }}">
+      <small>type: <code>planner enter --year {{ p.year }} {{ st.need.key }} &lt;value&gt;</code></small>
       {% endif %}
-      <button type="submit">Save</button>
-    </form>
-    <form method="post" action="/dont-have?token={{ token }}" class="inline">
-      <input type="hidden" name="key" value="{{ st.need.key }}">
-      <button type="submit" class="plain">I don't have this</button>
-    </form>
-    {% else %}
-    <small>type: <code>planner enter --year {{ p.year }} {{ st.need.key }} &lt;value&gt;</code></small>
-    {% endif %}
+    </div>
+    {% endfor %}
   </div>
   {% endfor %}
   {% for e in p.late_forms %}

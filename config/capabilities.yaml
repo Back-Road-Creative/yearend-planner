@@ -27,6 +27,7 @@ ocr_crop_beside_value_edit_before_accept: verified  # tests/test_ocr.py::test_cr
 pdf_mixed_text_and_scanned_pages: verified  # tests/test_ocr.py::test_mixed_pdf_ocrs_scanned_pages; text pages accepted from the text layer, bare pages OCR'd and pending; without an engine the file imports with a note naming the unread pages
 zip_subfolders_nested_corrupt: verified  # tests/test_ingest.py::test_zip_with_subfolder_imports; folders and nested ZIPs (5 deep) unpack, a corrupt/locked/escaping ZIP goes to UNMATCHED once, no overwrite
 needed_panel_registry_diff: verified  # tests/test_needs.py; planner needed / enter / dont-have
+needed_grouped_by_document: partial  # tests/test_needs.py::test_vanguard_items_group_into_one_download, tests/test_dashboard.py::test_needed_grouped_by_document; one entry per document with its download path and the outputs it unlocks (planner needed and the page); Vanguard and other issuers' click paths are the planner's best description of their sites and are not checked against the live pages
 csv_vanguard_download: verified  # tests/test_csv.py (holdings + transactions blocks)
 csv_vanguard_cost_basis_realized_income: partial  # synthetic headers; real export confirms
 csv_bank: verified  # tests/test_csv.py (signed Amount; Debit/Credit)

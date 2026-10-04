@@ -10,7 +10,18 @@ from typer.testing import CliRunner
 
 from planner.cli import app
 from planner.ingest import ingest
-from planner.ingest.needs import NEEDS, dont_have, enter, need_for, needed, parse_value
+from planner.ingest.needs import (
+    DOCS,
+    NEEDS,
+    OUTPUTS,
+    account_need,
+    dont_have,
+    enter,
+    group_by_document,
+    need_for,
+    needed,
+    parse_value,
+)
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import rollover
@@ -287,3 +298,57 @@ def test_a_refinanced_loan_counts_only_the_current_lender(lay: Layout) -> None:
     # 2024-2025 old lender: (7,000 + 200,000 - 195,000) / 12
     assert (st.state, st.value) == ("estimate", 1000.0)
     assert "Old Lender" in st.origin and "New Lender" not in st.origin
+
+
+def test_every_need_names_its_outputs_and_a_known_document() -> None:
+    for n in (*NEEDS, account_need("X1"), account_need("X1", death=True)):
+        assert n.unlocks, n.key
+        assert set(n.unlocks) <= set(OUTPUTS), (n.key, n.unlocks)
+        assert n.doc == "" or n.doc in DOCS, (n.key, n.doc)
+        # a download path names where to click, not just who issues it
+        assert n.doc == "" or ">" in DOCS[n.doc].path or "/" in DOCS[n.doc].path
+        assert n.where
+    # an item a document supplies never reads like a typed answer
+    assert all(n.doc for n in NEEDS if n.key in ("interest", "wages", "prior_agi"))
+    assert not any(n.doc for n in NEEDS if n.key in ("birth_date", "inflation"))
+
+
+def test_vanguard_items_group_into_one_download(lay: Layout) -> None:
+    missing = needed(lay, 2026).by_state("missing")
+    groups = group_by_document(missing)
+    by_doc = {g.doc.key: g for g in groups if g.doc is not None}
+    vg = by_doc["vg_tax"]
+    assert [s.need.key for s in vg.items] == [
+        "interest",
+        "ordinary_dividends",
+        "qualified_dividends",
+    ]
+    assert vg.doc is not None and "Tax center" in vg.doc.path
+    assert "Vanguard > Cost basis" in by_doc["vg_realized"].doc.path  # type: ignore[union-attr]
+    assert [s.need.key for s in by_doc["vg_realized"].items] == [
+        "short_term_gains",
+        "long_term_gains",
+    ]
+    # outputs are the union, each named once, in first-seen order
+    assert len(vg.unlocks) == len(set(vg.unlocks))
+    assert "Draft 1040" in vg.unlocks
+    # typed answers come last, as one group with no document
+    assert groups[-1].doc is None and groups[-1].title == "Typed answers"
+    assert sum(len(g.items) for g in groups) == len(missing)
+
+
+def test_cli_needed_groups_by_document(lay: Layout) -> None:
+    r = runner.invoke(app, ["needed", "--year", "2026"])
+    assert r.exit_code == 0, r.output
+    lines = r.output.splitlines()
+    head = next(i for i, ln in enumerate(lines) if ln.startswith("document  Vanguard"))
+    block = "\n".join(lines[head : head + 4])
+    assert f"download: {DOCS['vg_tax'].path}" in block and "unlocks:" in block
+    assert r.output.count(DOCS["vg_tax"].path) == 1
+    for key in ("interest", "ordinary_dividends", "qualified_dividends"):
+        assert (
+            lines.index(next(ln for ln in lines if ln.startswith(f"needed    {key} ")))
+            > head
+        )
+    assert "document  Typed answers" in r.output
+    assert r.output.strip().endswith(f"{len(NEEDS)} needed")

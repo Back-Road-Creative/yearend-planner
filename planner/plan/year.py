@@ -74,7 +74,7 @@ def _needed(lay: Layout, year: int, _today: date, _ov: Overrides) -> Section:
         f"{len(missing)} missing, {len(estimates)} standing in from YTD, "
         f"{len(rep.by_state('actual'))} actual"
     ]
-    lines += [f"missing  {s.need.key:30} {s.need.source}" for s in missing]
+    lines += [f"missing  {s.need.key:30} {s.need.where}" for s in missing]
     lines += [f"estimate {s.need.key:30} {s.origin}" for s in estimates]
     return Section("needed", True, lines)
 

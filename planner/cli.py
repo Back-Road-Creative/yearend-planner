@@ -489,11 +489,13 @@ def needed(
     all: bool = typer.Option(False, "--all", help="also list what is already covered"),
     as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
 ) -> None:
-    """What the plan still lacks for a year: each missing item, why, and the
-    document that supplies it, then every form past its due date that the
-    return needs. Empty when the intake loop is done."""
+    """What the plan still lacks for a year, grouped by the document that
+    supplies it (one download closes several): its download path, the outputs
+    the group unlocks, then each missing item and why, then every form past its
+    due date that the return needs. Empty when the intake loop is done."""
     from datetime import date
 
+    from planner.ingest.needs import group_by_document
     from planner.ingest.needs import needed as _needed
     from planner.ledger import db
     from planner.taxprep import schedule_c
@@ -507,19 +509,25 @@ def needed(
         conn.close()
     loose = len(sc.uncategorised) if sc.business or sc.receipts_forms else 0
     late = inventory(layout(), year, date.fromisoformat(as_of) if as_of else None).late
-    for st in rep.items:
-        if st.state == "missing":
+    for g in group_by_document(rep.by_state("missing")):
+        typer.echo(f"document  {g.title} ({len(g.items)} open)")
+        if g.doc:
+            typer.echo(f"          download: {g.doc.path}")
+        typer.echo(f"          unlocks: {', '.join(g.unlocks)}")
+        for st in g.items:
             typer.echo(f"needed    {st.need.key:28} {st.need.label}")
             typer.echo(f"          why: {st.need.why}")
-            typer.echo(f"          from: {st.need.source}")
+            typer.echo(f"          {'look for' if g.doc else 'from'}: {st.need.source}")
+            typer.echo(f"          unlocks: {', '.join(st.need.unlocks)}")
             if st.origin:
                 typer.echo(f"          note: {st.origin}")
             typer.echo(
                 f"          type: planner enter --year {year} {st.need.key} <value>"
             )
-        elif st.state == "estimate":
+    for st in rep.items:
+        if st.state == "estimate":
             typer.echo(f"estimate  {st.need.key:28} {st.value:,.2f}  ({st.origin})")
-        elif all:
+        elif all and st.state != "missing":
             tag = "dont-have" if st.state == "dont_have" else "actual   "
             val = "" if st.value is None else f" {st.value}"
             typer.echo(f"{tag} {st.need.key:28}{val}  ({st.origin})")
@@ -734,7 +742,7 @@ def rollover(
             continue
         shown = "" if st.value is None else str(st.value)
         text = typer.prompt(
-            f"  {st.need.label} [{st.need.source}]", default=shown, show_default=True
+            f"  {st.need.label} [{st.need.where}]", default=shown, show_default=True
         ).strip()
         if text and text != shown:
             try:

@@ -124,7 +124,14 @@ compared the day the form lands.
 Intake is a loop: drop everything you have, run `planner needed --year 2026`, and the
 planner lists only what is still missing, why the plan wants it, which document
 supplies it (with where to download it), and the `planner enter` line that types it
-instead. Every fact a planner or tax line relies on is declared once in
+instead. Items are grouped by document, so one download closes several: `planner needed`
+prints a `document` line (for example *Vanguard tax forms*) with its exact download path
+(`Vanguard > My Accounts > Tax center > ...`, or `Vanguard > Cost basis > Realized
+gains/losses > Export CSV` for realized gains), the plan outputs the whole group unlocks
+(MAGI headroom, Draft 1040, ...), and then each item in it with where to look in the
+document. Items no document supplies (birth date, spending band, return assumptions) come
+last under *Typed answers*. The click paths describe each issuer's site as the planner
+knows it; if a site has moved, the document's name is still right. Every fact a planner or tax line relies on is declared once in
 `planner/ingest/needs.py` with the form boxes that supply it; the report diffs that
 registry against the ledger, the profile and the typed answers. A figure a form has not
 supplied yet but the year-to-date rows cover (dividends, interest, realized gains) shows
@@ -557,8 +564,9 @@ whole year. It is a static copy for printing and backup. `planner run` (Phase
 5b) serves the same page live, with the forms that answer it.
 
 - **Top to bottom:**
-  1. Needed: each missing item, why it is needed and which document supplies
-     it, forms past their due date, and uncategorised bank rows. Inputs
+  1. Needed: missing items grouped by the document that supplies them, each
+     group with its download path and the outputs it unlocks, then every item
+     with why it is needed; forms past their due date, and uncategorised bank rows. Inputs
      standing in from year-to-date figures are listed under it.
   2. OCR values awaiting confirm, if any.
   3. The planners: glide path, spending band, MAGI headroom, levers, the

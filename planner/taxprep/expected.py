@@ -22,7 +22,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
 
-from planner.ingest.needs import load_profile, need_value
+from planner.ingest.needs import DOCS, load_profile, need_value
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import calendar
@@ -61,14 +61,13 @@ DUE = {
 JAN_31 = (1, 31)
 AFTER_FILING = ("5498", "5498-SA")
 WHERE = {
-    "W-2": "your employer's payroll or HR portal (tax documents)",
+    "W-2": DOCS["w2"].path,
     "1099-NEC": "each client's payment portal or email; ask any client who paid "
     "you and sent none",
     "1099-K": "the payment processor's dashboard (tax forms)",
-    "1095-A": "HealthCare.gov (or your state's marketplace) > your application "
-    "> tax forms",
-    "1098": "your loan servicer's website > documents or tax forms",
-    "SSA-1099": "ssa.gov/myaccount > replacement documents",
+    "1095-A": DOCS["f1095a"].path,
+    "1098": DOCS["f1098"].path,
+    "SSA-1099": DOCS["ssa_1099"].path,
 }
 INSTITUTION = "the institution's tax center (Vanguard: My Accounts > Tax center)"
 # A placeholder issuer matches any issuer of that form.
