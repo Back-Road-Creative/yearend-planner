@@ -42,7 +42,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `categorize` | Schedule C from the bank rows: categorise them by a rule (a piece of the description) or one row at a time, then see the lines and what is left. |
 | `check-config` | Load config/ and report; exit non-zero on a malformed file. |
 | `close` | Close the year from the filed return: every filed line beside the draft's, and the filed figures kept as the year's record. |
-| `compute` | Every tax figure for one household-year, as JSON. |
+| `compute` | Every tax figure for one household-year, as JSON, with the self-employed health deduction settled against the premium tax credit (IRS Pub. 974). |
 | `confirm` | Values read by OCR wait here. |
 | `conversions` | Size this year's Roth conversion: one engine sweep, a candidate per watched line, each with its federal and NC tax, ACA credit change, Medicaid effect and the cash needed from outside the IRA. |
 | `convert` | Record a Roth conversion; the planner dates when its principal becomes penalty-free. |

@@ -163,3 +163,27 @@ def test_exempt_interest_reaches_line_2a_and_aca_magi(lay: Layout) -> None:
     assert "1099-INT 2025" in line.source and "1099-DIV 2025" in line.source
     assert any("tax-exempt interest (1040 line 2a)" in n for n in d.notes)
     assert not [n for n in d.notes if n.startswith("CHECK")], d.notes
+
+
+@pytest.mark.engine
+def test_draft_settles_the_se_health_deduction_with_the_credit(lay: Layout) -> None:
+    """Pub. 974: Schedule 1 line 17 is the premiums less the credit on Form 8962
+    line 24, and the credit is priced on the income that deduction leaves. The
+    draft carries both settled; it no longer warns that it does not iterate."""
+    enter(lay, YEAR, "se_health_premiums", str(int(12 * PREMIUM)))  # 1095-A col A
+    d = draft.build(lay, YEAR)
+    assert not [n for n in d.notes if n.startswith("CHECK")], d.notes
+    assert not [n for n in d.notes if "does not iterate" in n or "do not iterate" in n]
+    line_17, credit = d.get("Sch 1", "17"), d.get("8962", "24")
+    assert line_17 is not None and credit is not None
+    paid = 12 * PREMIUM
+    assert 0 < line_17 < paid and credit > 0
+    # the two settle to the premiums (the 8962 monthly contribution is rounded)
+    assert line_17 + credit == pytest.approx(paid, abs=12)
+    # household income carries the settled deduction, not the full premiums
+    assert d.get("8962", "2a") == pytest.approx(d.get("1040", "11a") or 0, abs=0.02)
+    assert d.get("1040", "11a") == pytest.approx(
+        41_000 - (d.get("Sch 1", "15") or 0) - line_17, abs=0.01
+    )
+    src = next(ln.source for ln in d.lines if (ln.form, ln.line) == ("Sch 1", "17"))
+    assert "Pub. 974" in src

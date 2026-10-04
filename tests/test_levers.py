@@ -60,6 +60,19 @@ def test_catalog_sizes_from_the_ledger_and_names_what_it_needs(
 
 
 @pytest.mark.engine
+def test_se_health_lever_counts_the_advance_credit_in_the_premiums(
+    lots: Layout,  # noqa: F811
+) -> None:
+    """premium_monthly is what you pay after the advance credit; the household
+    carries the premiums before it, so the lever adds the advance back."""
+    enter(lots, 2026, "aptc", "1,200")
+    _, found, _ = levers.catalog(lots, 2026, AS_OF)
+    lever = next(lv for lv in found if lv.key == "se_health")
+    assert lever.delta == (("se_health_premiums", 4_800),)  # 300 x 12 + 1,200
+    assert "1,200 advance credit" in lever.why and "Pub. 974" in lever.side_effects
+
+
+@pytest.mark.engine
 def test_menu_ranks_the_moves_and_gets_under_the_cliff(lots: Layout) -> None:  # noqa: F811
     m = levers.menu(answered(lots), 2026, AS_OF)
     assert m.target is not None and m.target.name == CLIFF

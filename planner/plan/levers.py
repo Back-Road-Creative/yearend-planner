@@ -347,8 +347,10 @@ def _se_health(c: _Ctx) -> Lever:
     monthly = c.profile.get("premium_monthly")
     if monthly is None:
         return _none(key, LOWER, label, due, "needs premium_monthly (planner needed)")
-    paid = r(min(float(monthly) * 12, c.hh.se_income))
-    amount = r(paid - c.hh.se_health_premiums)
+    # premium_monthly is what you pay after the advance credit; the household
+    # carries the premiums before it (the engine takes the credit off, Pub. 974)
+    gross = r(float(monthly) * 12 + c.hh.aptc)
+    amount = r(gross - c.hh.se_health_premiums)
     if amount <= 0:
         return _none(key, LOWER, label, due, "already claimed in full")
     return Lever(
@@ -358,10 +360,13 @@ def _se_health(c: _Ctx) -> Lever:
         amount,
         due,
         AUTOMATIC,
-        f"premiums you paid {paid:,.0f} (net of the advance credit) less "
+        f"premiums for the year {gross:,.0f} (your {float(monthly) * 12:,.0f} plus "
+        f"the {c.hh.aptc:,.0f} advance credit) less "
         f"{c.hh.se_health_premiums:,.0f} already counted",
-        "not allowed for months you could join an employer's plan; the credit and "
-        "this deduction settle together on Form 8962",
+        "the deduction is the premiums less the premium tax credit you are allowed "
+        "and no more than your profit less half the SE tax; the two settle together "
+        "(IRS Pub. 974), so the move is worth less than the premium; not allowed for "
+        "months you could join an employer's plan",
         (("se_health_premiums", int(round(amount))),),
     )
 

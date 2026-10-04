@@ -15,7 +15,6 @@ forms, not a filing.
 from __future__ import annotations
 
 import dataclasses
-import math
 from dataclasses import dataclass, field
 
 from planner.engine import tax
@@ -81,15 +80,16 @@ WITHHELD = (
     ("1099-B", "4"),
     ("SSA-1099", "6"),
 )
-# Form 8962 line 28: the cap on repaying excess advance credit, by household
-# income as a percent of the poverty line (under 200, 300, 400; none at 400 and
-# over). Rev. Proc. 2024-35 for 2025; P.L. 119-21 sec. 71305 removes the cap
-# from 2026. A year missing here repays in full (the worse case), and says so.
-REPAY_CAP = {2025: {"SINGLE": (375.0, 975.0, 1625.0), "other": (750.0, 1950.0, 3250.0)}}
-UNCAPPED_FROM = 2026
+# Form 8962 line 28's repayment cap lives with the engine's credit settlement.
+repayment_cap = tax.repayment_cap
+UNCAPPED_FROM = tax.UNCAPPED_FROM
 MONTHS = tuple(f"{m:02d}" for m in range(1, 13))
 MONTH_LINE = {m: str(11 + n) for n, m in enumerate(MONTHS, 1)}  # Jan = line 12
 TOLERANCE = 1.0
+# Form 8962 rounds the monthly contribution (line 8b) to whole dollars: twelve
+# months can sit up to $6 from the annual figure the engine prices.
+ROUNDING = 12.0
+SEHI = "self_employed_health_insurance_ald"
 # The Needed-panel keys a return reads (the others drive the plan, not the 1040).
 TAX_KEYS = (*inputs.MONEY, "ordinary_dividends", "qualified_dividends")
 
@@ -135,17 +135,6 @@ def _cited(facts: list[db.FactRow], pairs: tuple[tuple[str, str], ...]) -> str:
     return ", ".join(hits) if hits else "no form shows any"
 
 
-def repayment_cap(year: int, filing_status: str, pct: float) -> float | None:
-    """Form 8962 line 28; None means no cap (repay the whole excess)."""
-    if year >= UNCAPPED_FROM or pct >= 400:
-        return None
-    caps = REPAY_CAP.get(year)
-    if caps is None:
-        return None
-    band = caps["SINGLE" if filing_status == "SINGLE" else "other"]
-    return band[0] if pct < 200 else band[1] if pct < 300 else band[2]
-
-
 class _Sheet:
     def __init__(self, out: Draft) -> None:
         self.out = out
@@ -175,7 +164,7 @@ def _form_8962(
             box[f.box] = box.get(f.box, 0.0) + f.value
     src = "1095-A " + ", ".join(sorted({f.issuer for f in facts if f.form == "1095-A"}))
     fpl = v["tax_unit_fpg@prior"]
-    pct = math.floor(100 * v["aca_magi_fraction"])
+    pct = tax.poverty_percent(v["aca_magi_fraction"])
     figure = round(v["aca_required_contribution_percentage"], 4)
     sheet.add(
         "8962", "1", "Tax family size", v["tax_unit_size"], "engine tax_unit_size"
@@ -293,11 +282,29 @@ def build(lay: Layout, year: int) -> Draft:
             f"the engine prices a {v['aca_ptc']:,.0f} premium tax credit; it is "
             "claimed (and any advance reconciled) only on Form 8962 from the 1095-A"
         )
-    if has_8962 and hh.se_health_premiums:
-        d.notes.append(
-            "the self-employed health deduction and the premium tax credit depend "
-            "on each other (Rev. Proc. 2014-41); the draft does not iterate them"
-        )
+    if hh.se_health_premiums and v["se_health_ptc"] >= 0:
+        premiums = float(hh.se_health_premiums)
+        if not v["se_health_converged"]:
+            d.notes.append(
+                "the self-employed health deduction and the premium tax credit have "
+                "no settled answer here (income sits at the 400% cliff, where the "
+                "credit ends as the deduction falls); Schedule 1 line 17 is the "
+                "planner's two-pass figure, not a fixed point of the Pub. 974 "
+                "iteration: check it with a preparer"
+            )
+        elif has_8962 and abs(premiums - v["se_health_ptc"] - v[SEHI]) < TOLERANCE:
+            # the deduction is premiums less the credit; the engine priced that
+            # credit, Form 8962 reads it month by month from the 1095-A
+            e24 = d.get("8962", "24") or 0.0
+            if abs(premiums - e24 - v[SEHI]) > ROUNDING:
+                d.notes.append(
+                    f"CHECK Schedule 1 line 17 ({v[SEHI]:,.0f}) is the premiums "
+                    f"({premiums:,.0f}) less the engine's credit "
+                    f"{v['se_health_ptc']:,.0f}; "
+                    f"Form 8962 line 24 from the 1095-A is {e24:,.0f} (IRS Pub. 974 "
+                    "wants the two to agree): the Needed-panel premiums, benchmark "
+                    "or advance credit differ from the 1095-A"
+                )
 
     # Schedule 1
     s1_3 = add(
@@ -328,9 +335,14 @@ def build(lay: Layout, year: int) -> Draft:
             "SEP, SIMPLE and qualified plans",
             "self_employed_pension_contribution_ald",
         ),
-        ("17", "Self-employed health insurance", "self_employed_health_insurance_ald"),
+        ("17", "Self-employed health insurance", SEHI),
     ):
-        named += add("Sch 1", ln, label, v[var], f"engine {var}")
+        src = (
+            "premiums less the premium tax credit, settled with it (IRS Pub. 974)"
+            if var == SEHI and hh.se_health_premiums
+            else f"engine {var}"
+        )
+        named += add("Sch 1", ln, label, v[var], src)
     add(
         "Sch 1",
         "20",

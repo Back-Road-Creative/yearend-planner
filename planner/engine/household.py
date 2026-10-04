@@ -39,9 +39,13 @@ class Household:
     roth_conversion: int = 0
     social_security: int = 0
     traditional_ira_contribution: int = 0
+    # Premiums for the year's self-employed health plan, before any premium tax
+    # credit (1095-A column A summed). The engine settles the deduction itself
+    # (planner.engine.tax, IRS Pub. 974): the credit comes off the premiums.
     se_health_premiums: int = 0
     hsa_contribution: int = 0  # health_savings_account_ald (tax-unit level)
     slcsp_monthly: int | None = None  # benchmark silver premium; None = engine estimate
+    aptc: int = 0  # advance premium tax credit paid for the year (1095-A column C)
     other: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

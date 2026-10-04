@@ -774,9 +774,10 @@ NEEDS: tuple[Need, ...] = (
     ),
     Need(
         "se_health_premiums",
-        "Health premiums paid (self-employed)",
-        "the SE health deduction and ACA reconciliation",
-        "the premiums paid, month by month",
+        "Health premiums paid (self-employed), before any premium tax credit",
+        "the SE health deduction and ACA reconciliation (the deduction is these "
+        "premiums less the credit you are allowed, IRS Pub. 974)",
+        "the marketplace or insurer billing statement, or 1095-A column A summed",
         "money",
         doc="insurer",
         unlocks=("Levers", "Draft 1040"),
@@ -790,6 +791,17 @@ NEEDS: tuple[Need, ...] = (
         boxes=(("1095-A", "slcsp_01"),),
         doc="f1095a",
         unlocks=("ACA credit", "MAGI headroom"),
+    ),
+    Need(
+        "aptc",
+        "Advance premium tax credit paid for the year",
+        "Form 8962: any of it above the credit you are allowed is repaid",
+        "column C summed over the year (the monthly boxes are added), "
+        "or your marketplace account's year-end statement",
+        "money",
+        boxes=tuple(("1095-A", f"aptc_{m:02d}") for m in range(1, 13)),
+        doc="f1095a",
+        unlocks=("ACA credit", "Draft 1040"),
     ),
 )
 
