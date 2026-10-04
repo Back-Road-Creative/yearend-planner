@@ -123,8 +123,19 @@ def paths() -> None:
 
 
 @app.command()
-def selfcheck() -> None:
-    """Run one real federal calculation through the tax engine and print it."""
+def selfcheck(
+    regression: bool = typer.Option(
+        False,
+        "--regression",
+        help="run every shipped reference case and print the engine's figures "
+        "(what planner update holds a candidate to)",
+    ),
+) -> None:
+    """Run one real federal calculation through the tax engine and print it;
+    --regression runs the shipped reference cases instead."""
+    if regression:
+        _regression()
+        return
     from planner.engine.selfcheck import YEARS_LABEL, format_years, run
 
     result = run()
@@ -137,6 +148,23 @@ def selfcheck() -> None:
     if not result.income_tax > 0:
         typer.echo("selfcheck failed: tax is not positive", err=True)
         raise typer.Exit(code=1)
+
+
+def _regression() -> None:
+    from planner.engine import verify
+    from planner.engine.tax import engine_version
+
+    cases = verify.reference_cases()
+    if not cases:
+        typer.echo("selfcheck failed: no reference cases", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"policyengine-us {engine_version()}: {len(cases)} reference cases")
+    values = verify.regression_values()
+    typer.echo(verify.format_regression(values))
+    for name, report in verify.verify_file(verify.REFERENCE):
+        typer.echo(
+            f"{name}: {report.n_ok}/{len(report.lines)} filed lines within $1.00"
+        )
 
 
 @app.command()
@@ -189,26 +217,34 @@ def sweep(
 
 @app.command()
 def verify(
-    filed_return: Path = typer.Argument(..., help="data/private/returns/<year>.yaml"),
+    filed_return: Path | None = typer.Argument(
+        None,
+        help="data/private/returns/<year>.yaml; none: the shipped reference cases",
+    ),
     tolerance: float = typer.Option(
         1.0, help="dollars of allowed difference per line", min=0
     ),
 ) -> None:
     """Recompute a filed year from its inputs; compare each line to what was filed."""
-    from planner.engine.verify import verify_return
+    from planner.engine import verify as verify_
 
-    report = verify_return(filed_return, tolerance)
-    for line in report.lines:
-        mark = "ok " if line.ok else "DIFF"
+    failed = False
+    for name, report in verify_.verify_file(
+        filed_return or verify_.REFERENCE, tolerance
+    ):
+        typer.echo(name)
+        for line in report.lines:
+            mark = "ok " if line.ok else "DIFF"
+            typer.echo(
+                f"{mark} {line.name:32} filed {line.filed:>12,.2f} "
+                f"engine {line.engine:>12,.2f}"
+            )
         typer.echo(
-            f"{mark} {line.name:32} filed {line.filed:>12,.2f} "
-            f"engine {line.engine:>12,.2f}"
+            f"{report.year}: {report.n_ok}/{len(report.lines)} lines "
+            f"within ${tolerance:,.2f}"
         )
-    typer.echo(
-        f"{report.year}: {report.n_ok}/{len(report.lines)} lines "
-        f"within ${tolerance:,.2f}"
-    )
-    if not report.passed:
+        failed = failed or not report.passed
+    if failed:
         raise typer.Exit(code=1)
 
 
@@ -1429,7 +1465,7 @@ def run(
 
     from planner import backup as backup_
     from planner.dashboard import page, render, serve
-    from planner.engine import feed, limits
+    from planner.engine import feed, limits, verify
     from planner.engine import update as upd
     from planner.ingest import ingest as _ingest
     from planner.plan import rollover
@@ -1442,6 +1478,14 @@ def run(
             upd.write_swap(lay.root, "in", rerun=True)
             raise typer.Exit(code=upd.LAUNCHER_SWAP)
         typer.echo(f"{upd.apply_staged(lay.root)}; restart to use it")
+    # the first run records the pinned engine's output as the baseline every
+    # later engine is held to; a new engine version is recorded the same way
+    try:
+        baseline_note = verify.ensure_baseline(lay.root)
+    except ValueError as exc:
+        baseline_note = f"engine baseline: {exc}"
+    if baseline_note:
+        typer.echo(baseline_note)
     # the update check comes first (at most weekly, so rarely a wait); its
     # outcome is on disk before the page is built, so the header shows it
     update_line = feed.check(lay) if update_check else ""

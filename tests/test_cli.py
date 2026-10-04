@@ -77,14 +77,17 @@ def test_compute_and_sweep_cli(repo_root: Path) -> None:
 
 
 @pytest.mark.engine
-def test_verify_cli_passes_on_the_synthetic_return(repo_root: Path) -> None:
+def test_verify_cli_passes_on_the_shipped_reference_cases(repo_root: Path) -> None:
     from planner.cli import app
 
-    res = CliRunner().invoke(
-        app, ["verify", str(repo_root / "tests/fixtures/2025_return.yaml")]
-    )
-    assert res.exit_code == 0, res.output
-    assert "DIFF" not in res.output
+    for args in (
+        ["verify"],  # no file: the cases the release ships
+        ["verify", str(repo_root / "planner/engine/reference.yaml")],
+    ):
+        res = CliRunner().invoke(app, args)
+        assert res.exit_code == 0, res.output
+        assert "DIFF" not in res.output
+        assert "single_wages_2025" in res.output and "2025: 6/6" in res.output
 
 
 def test_update_without_args_exits_2(planner_home: Path) -> None:
@@ -92,3 +95,26 @@ def test_update_without_args_exits_2(planner_home: Path) -> None:
 
     res = CliRunner().invoke(app, ["update"])
     assert res.exit_code == 2
+
+
+@pytest.mark.engine
+def test_first_run_records_the_engine_baseline_and_prints_the_delta(
+    planner_home: Path,
+) -> None:
+    import json
+
+    from planner.cli import app
+    from planner.engine import verify
+
+    args = ["run", "--quiet", "--no-update-check", "--year", "2025"]
+    first = CliRunner().invoke(app, args)
+    assert first.exit_code == 0, first.output
+    assert "engine baseline recorded for policyengine-us" in first.output
+    assert "delta from the filed return:" in first.output
+    assert "reference cases: 18/18 lines within $1.00" in first.output
+    saved = json.loads((planner_home / "data" / "engine-baseline.json").read_text())
+    version = saved["pinned"]
+    assert set(saved["engines"]) == {version}
+    assert set(saved["engines"][version]["values"]) == set(verify.regression_values())
+    again = CliRunner().invoke(app, args)
+    assert again.exit_code == 0 and "baseline recorded" not in again.output

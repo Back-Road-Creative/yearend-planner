@@ -69,14 +69,14 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `rollover` | Roll the year that ended into the next: carry AGI, total tax, NC tax and the capital loss carryforward (filed figures once closed, else the draft's), keep a snapshot of the ledger and the year's dashboard, make next year the active one, refresh its limits and print the checklist. |
 | `rows` | List imported CSV rows (holdings, lots, transactions, income, bank lines). |
 | `run` | The one command: read the inbox, run every planner and the draft return, write out/index.html, then serve the page on this computer and open it. |
-| `selfcheck` | Run one real federal calculation through the tax engine and print it. |
+| `selfcheck` | Run one real federal calculation through the tax engine and print it; --regression runs the shipped reference cases instead and prints the engine's figure for each. |
 | `spend` | The spending band: rate x balance clamped to the floor and ceiling, the drawdown rule against the inflation-adjusted peak, and the return-band table under the floor and planning returns (real dollars). |
 | `status` | The portfolio today: every account, total, accessible and locked money, the all-time peak, YTD income by type, unrealized gains and the carryforward. |
 | `sweep` | Sweep one input across a range in a single engine run; one JSON row per step. |
 | `taxpack` | Everything a preparer asks for in out/tax-<year>/: the draft return (text and printable HTML), Form 8949 CSV, Schedule C, carryforward and basis, estimated payments, the form inventory, and the originals ZIP. |
 | `thresholds` | The sourced limits in config/thresholds.yaml for a year, checked against the engine's own parameters. |
-| `update` | Swap in a newer release after its own selfcheck passes; --rollback undoes it; --check looks for one on the update feed now (the automatic check runs at most weekly); --allow-major installs a release that jumps a major version of the planner or policyengine-us. |
-| `verify` | Recompute a filed year from its inputs; compare each line to what was filed. |
+| `update` | Swap in a newer release after its own selfcheck passes and its regression matches the engine baseline within $5; --rollback undoes it; --check looks for one on the update feed now (the automatic check runs at most weekly); --allow-major installs a release that jumps a major version of the planner or policyengine-us. |
+| `verify` | Recompute a filed year from its inputs; compare each line to what was filed. With no file it checks the shipped reference cases. |
 | `version` | Print the planner version (the release's VERSION file when there is one). |
 | `washsales` | Every loss sale with a buy of the same symbol within 30 days either side, across all accounts, and the symbols whose window is still open. |
 | `whatif` | Recompute the full year with the chosen levers and show it before and after, side by side. |

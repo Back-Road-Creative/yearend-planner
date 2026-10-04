@@ -3,6 +3,7 @@ shell stub that prints the selfcheck line, so the swap logic is tested on any OS
 
 from __future__ import annotations
 
+import json
 import sys
 import zipfile
 from datetime import date
@@ -11,8 +12,13 @@ from pathlib import Path
 import pytest
 
 from planner.engine import update as upd
+from tests.conftest import (
+    STUB_BASELINE_VALUE,
+    STUB_CASE_KEY,
+    stub_interpreter,
+    write_baseline,
+)
 
-STUB_OK = "#!/bin/sh\necho 'stub selfcheck ok'\n"
 STUB_BAD = "#!/bin/sh\necho broken >&2\nexit 1\n"
 EXEC_MODE = 0o755
 
@@ -23,13 +29,15 @@ def make_release(
     ok: bool = True,
     years: str | None = None,
     engine: str | None = None,
+    regression: float | None = STUB_BASELINE_VALUE,
 ) -> Path:
     """``years`` is the tax-years line the stub selfcheck prints after its first
-    line; ``engine`` the policyengine-us version in the candidate's dist-info."""
+    line; ``engine`` the policyengine-us version in the candidate's dist-info;
+    ``regression`` the reference value its regression run prints (None: none)."""
     z = tmp_path / f"rel-{version}.zip"
-    stub = (
-        STUB_OK if years is None else STUB_OK + f"echo 'tax years published: {years}'\n"
-    )
+    stub = stub_interpreter(regression)
+    if years is not None:
+        stub += f"echo 'tax years published: {years}'\n"
     with zipfile.ZipFile(z, "w") as zf:
         zf.writestr("VERSION", version + "\n")
         zf.writestr("planner.cmd", "rem\n")
@@ -52,6 +60,7 @@ def install_live(root: Path, version: str) -> None:
     (root / "VERSION").write_text(version + "\n")
     (root / "data" / "private").mkdir(parents=True)
     (root / "data" / "private" / "keep.txt").write_text("mine")
+    write_baseline(root)
 
 
 def test_bad_sha_is_refused_before_anything_is_touched(tmp_path: Path) -> None:
@@ -170,3 +179,81 @@ def test_a_new_major_engine_or_planner_is_held_unless_allowed(
             big, upd.sha256(big), root, python_exe="python", allow_major=True
         )
         assert again.version == "1.0.0"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="sh stub interpreter")
+@pytest.mark.parametrize(("printed", "held"), [(1006.0, True), (1004.0, False)])
+def test_candidate_off_baseline_by_6_is_held(
+    tmp_path: Path, printed: float, held: bool
+) -> None:
+    """The reference value is 1000.00 in the baseline: a candidate that prints
+    $6 off is refused, $4 off passes (the limit is $5)."""
+    root = tmp_path / "root"
+    install_live(root, "0.1.0")
+    z = make_release(tmp_path, "0.2.0", regression=printed)
+    if held:
+        with pytest.raises(upd.UpdateError, match="regression") as err:
+            upd.stage(z, upd.sha256(z), root, python_exe="python")
+        text = str(err.value)
+        assert STUB_CASE_KEY in text and "1,000.00" in text and "1,006.00" in text
+        assert upd.staged(root) is None
+        assert (root / "VERSION").read_text().strip() == "0.1.0"
+    else:
+        assert upd.stage(z, upd.sha256(z), root, python_exe="python").version == "0.2.0"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="sh stub interpreter")
+def test_the_limit_is_five_dollars_exactly(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    install_live(root, "0.1.0")
+    z = make_release(tmp_path, "0.2.0", regression=STUB_BASELINE_VALUE + 5.0)
+    assert upd.stage(z, upd.sha256(z), root, python_exe="python").version == "0.2.0"
+    z2 = make_release(tmp_path, "0.2.1", regression=STUB_BASELINE_VALUE - 5.01)
+    with pytest.raises(upd.UpdateError, match="regression"):
+        upd.stage(z2, upd.sha256(z2), root, python_exe="python")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="sh stub interpreter")
+def test_a_candidate_that_runs_no_regression_is_refused(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    install_live(root, "0.1.0")
+    z = make_release(tmp_path, "0.2.0", regression=None)
+    with pytest.raises(upd.UpdateError, match="no regression values"):
+        upd.stage(z, upd.sha256(z), root, python_exe="python")
+    assert not (root / upd.PREVIOUS).exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="sh stub interpreter")
+def test_a_candidate_missing_a_baseline_value_is_refused(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    install_live(root, "0.1.0")
+    path = root / "data" / "engine-baseline.json"
+    record = json.loads(path.read_text())
+    record["engines"]["2.21.0"]["values"]["other_case.agi"] = 5.0
+    path.write_text(json.dumps(record))
+    z = make_release(tmp_path, "0.2.0")
+    with pytest.raises(upd.UpdateError, match=r"other_case\.agi.*not in the candidate"):
+        upd.stage(z, upd.sha256(z), root, python_exe="python")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="sh stub interpreter")
+def test_a_regression_failure_is_checked_against_the_pinned_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no baseline yet, staging records the running engine's output first
+    and holds the candidate to it."""
+    from planner.engine import verify
+
+    monkeypatch.setattr(verify, "engine_version", lambda: "2.21.0")
+    monkeypatch.setattr(
+        verify,
+        "regression_values",
+        lambda path=verify.REFERENCE: {STUB_CASE_KEY: 1000.0},
+    )
+    root = tmp_path / "root"
+    install_live(root, "0.1.0")
+    (root / "data" / "engine-baseline.json").unlink()
+    z = make_release(tmp_path, "0.2.0", regression=1009.0)
+    with pytest.raises(upd.UpdateError, match="regression"):
+        upd.stage(z, upd.sha256(z), root, python_exe="python")
+    assert verify.load_baseline(root)["pinned"] == "2.21.0"  # type: ignore[index]

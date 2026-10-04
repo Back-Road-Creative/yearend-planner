@@ -81,6 +81,8 @@ def test_release_zip_ships_tracked_files_only(
     with zipfile.ZipFile(out) as zf:
         names = zf.namelist()
         assert "planner/cli.py" in names and "config/thresholds.yaml" in names
+        # the candidate's regression runs on these cases, so they ship
+        assert "planner/engine/reference.yaml" in names
         assert not [n for n in names if n.startswith(PRIVATE_TOPS)]
         assert "config/my-notes.yaml" not in names
         assert "planner/scratch.py" not in names

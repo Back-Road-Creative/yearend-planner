@@ -30,3 +30,32 @@ def test_selfcheck_reports_the_years_the_engine_publishes() -> None:
     years = published_years()
     assert 2025 in years and 2026 in years and list(years) == sorted(years)
     assert run(2026, 50_000).years == years
+
+
+@pytest.mark.engine
+def test_selfcheck_regression_prints_every_reference_value() -> None:
+    from typer.testing import CliRunner
+
+    from planner.cli import app
+    from planner.engine import verify
+
+    res = CliRunner().invoke(app, ["selfcheck", "--regression"])
+    assert res.exit_code == 0, res.output
+    printed = verify.parse_regression(res.output)
+    assert printed == {k: round(v, 2) for k, v in verify.regression_values().items()}
+    cases = verify.reference_cases()
+    assert {k.split(".")[0] for k in printed} == set(cases)
+    assert f"{len(cases)} reference cases" in res.output
+
+
+def test_selfcheck_regression_without_cases_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from typer.testing import CliRunner
+
+    from planner.cli import app
+    from planner.engine import verify
+
+    monkeypatch.setattr(verify, "reference_cases", lambda path=verify.REFERENCE: {})
+    res = CliRunner().invoke(app, ["selfcheck", "--regression"])
+    assert res.exit_code == 1 and "no reference cases" in res.output

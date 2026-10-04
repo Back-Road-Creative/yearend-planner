@@ -22,10 +22,11 @@ from planner.dashboard import page
 from planner.engine import feed
 from planner.engine import update as upd
 from planner.paths import Layout
+from tests.conftest import stub_interpreter, write_baseline
 
 runner = CliRunner()
 posix = pytest.mark.skipif(sys.platform == "win32", reason="sh stub interpreter")
-STUB_OK = "#!/bin/sh\necho 'stub selfcheck ok'\n"
+STUB_OK = stub_interpreter()
 STUB_BAD = "#!/bin/sh\necho broken >&2\nexit 1\n"
 
 
@@ -70,6 +71,7 @@ def lay(planner_home: Path) -> Layout:
     (planner_home / "python").mkdir()
     lay = Layout(planner_home)
     lay.ensure()
+    write_baseline(lay.root)
     return lay
 
 
