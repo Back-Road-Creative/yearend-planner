@@ -1624,6 +1624,7 @@ def run(
     from planner.engine import update as upd
     from planner.ingest import ingest as _ingest
     from planner.plan import rollover
+    from planner.taxprep import close as close_
 
     lay = layout()
     lay.ensure()
@@ -1652,6 +1653,8 @@ def run(
         f"confirm, {len(rep.duplicates)} duplicate, {len(rep.unmatched)} not read"
     )
     today = date.fromisoformat(as_of) if as_of else None
+    for closing in close_.on_drop(lay, today or date.today()):
+        typer.echo(close_.render(closing), nl=False)
     ro = rollover.refresh(lay, today)
     if ro is not None and ro.new:
         typer.echo(rollover.render(ro), nl=False)

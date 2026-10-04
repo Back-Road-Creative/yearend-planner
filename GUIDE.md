@@ -694,7 +694,13 @@ How a run behaves:
 ## Closing the year from the filed return (Phase 4m)
 
 Once the return is filed, drop the filed 1040 (with its schedules) and the NC
-D-400 into the inbox, run `planner ingest`, then `planner close --year 2025`.
+D-400 on the page (or into the inbox before `planner run`). A filed 1040 with
+line 24 for a year that has ended closes that year on its own: the page shows
+a Filed return panel with every line that differs from the draft, and next
+year's prior-year figures switch to the filed ones. A filed return read by
+OCR closes the year once its values are confirmed. Dropping it again changes
+nothing; an amended return closes the year again as a new version. In a
+terminal, `planner ingest` then `planner close --year 2025` does the same.
 
 - **The delta.** Each filed line read by the form templates is set beside
   the draft's line, and every line more than $1 apart is listed with the gap.
@@ -883,7 +889,7 @@ year by default). Rolling over:
 
 - **Carries forward what next year needs.** AGI, total tax and NC tax feed
   the safe-harbor estimates, and the capital loss carried forward lands on
-  next year's Schedule D. Until `planner close` records the filed return,
+  next year's Schedule D. Until the filed return closes the year,
   these come from the draft and show as estimates. After that, they come
   from the filed figures.
 - **Keeps a snapshot** of the ledger and of that year's dashboard in

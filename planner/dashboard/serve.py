@@ -5,7 +5,8 @@ must carry the per-run token that ``planner run`` puts in the address it
 opens; a request without it, or addressed to another host name, is refused.
 One request at a time (the ledger is a single SQLite file). Each action
 (a dropped file, a typed answer, a don't-have and its undo, a waived form,
-a categorised bank row, a confirm, the tax pack) runs,
+a categorised bank row, a confirm, the tax pack) runs (a filed return
+dropped or confirmed closes its year),
 leaves a one-line result on the page, and redirects back to it, so the page
 always shows the ledger as it is now."""
 
@@ -30,7 +31,7 @@ from planner.ingest import confirm, ingest, needs, ocr
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import rollover
-from planner.taxprep import expected, package, schedule_c
+from planner.taxprep import close, expected, package, schedule_c
 
 HOST = "127.0.0.1"
 MAX_BODY = 200 * 1024 * 1024  # one drop of documents
@@ -77,7 +78,13 @@ class App:
             f"in the ledger, {len(rep.unmatched)} not read"
             + "".join(f"\n{name}: {why}" for name, why in rep.unmatched)
             + "".join(f"\n{name}: {note}" for name, note in rep.notes)
+            + self._close_filed()
         )
+
+    def _close_filed(self) -> str:
+        """Close any ended year whose filed return just arrived."""
+        done = close.on_drop(self.lay, self.as_of or date.today())
+        return "".join("\n" + close.render(c).rstrip() for c in done)
 
     def enter(self, key: str, value: str) -> str:
         try:
@@ -180,7 +187,11 @@ class App:
                 changed = _changed(conn, int(doc), typed)
                 facts = confirm.accept(conn, int(doc), {b: typed[b] for b in changed})
                 fixed = f", {len(changed)} corrected" if changed else ""
-                return f"accepted {len(facts)} value(s) from document {doc}{fixed}"
+                conn.close()  # the closing reads the ledger afresh
+                return (
+                    f"accepted {len(facts)} value(s) from document {doc}{fixed}"
+                    + self._close_filed()
+                )
             if action == "reject":
                 where = confirm.reject(self.lay, conn, int(doc))
                 return f"rejected document {doc}; the file is at {where}"

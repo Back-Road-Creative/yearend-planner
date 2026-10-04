@@ -13,7 +13,7 @@ figures, never committed or shared.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -128,6 +128,39 @@ def closed(lay: Layout, year: int) -> dict[str, float] | None:
     return {str(k): float(v) for k, v in versions[-1]["filed"].items()}
 
 
+def latest(lay: Layout, year: int) -> dict[str, Any] | None:
+    """The latest closed version of ``year`` as written (its filed figures,
+    documents, and the lines that differ from the draft), or None while open."""
+    versions = _versions(lay, year)
+    if not versions:
+        return None
+    out = {"year": year, "matched": 0, "lines": [], **versions[-1]}
+    out["documents"] = list(out.get("documents") or [])
+    return out
+
+
+def on_drop(lay: Layout, today: date) -> list[Closing]:
+    """Close every ended year whose filed 1040 (line 24) is in the ledger and
+    differs from its last closed record. Dropping the filed return on the page,
+    or in the inbox before ``planner run``, closes the year: no terminal."""
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    try:
+        years = sorted(
+            {
+                f.tax_year
+                for f in db.facts_for(conn, None, "1040")
+                if f.box == "24" and f.issuer in FILERS and f.tax_year < today.year
+            }
+        )
+        filed = {
+            y: {f"{f.form} {f.box}": f.value for f in filed_facts(conn, y)[0]}
+            for y in years
+        }
+    finally:
+        conn.close()
+    return [close(lay, y) for y in years if filed[y] != closed(lay, y)]
+
+
 def filed_facts(conn: Any, year: int) -> tuple[list[db.FactRow], int]:
     """(accepted filed-return facts, count still pending confirmation)."""
     forms = {f for f, _ in MAP}
@@ -208,6 +241,11 @@ def close(lay: Layout, year: int, now: datetime | None = None) -> Closing:
             "documents": out.documents,
             "filed": dict(sorted(filed.items())),
             "deltas": len(out.deltas),
+            "matched": out.matched,
+            "lines": [
+                {"key": x.key, "label": x.label, "filed": x.filed, "drafted": x.drafted}
+                for x in (*out.deltas, *out.filed_only)
+            ],
         }
     )
     path = record_path(lay, year)

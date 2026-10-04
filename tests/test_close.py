@@ -4,7 +4,7 @@ closing as version 2."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -174,3 +174,16 @@ def test_reference_return_zero_delta_full(lay: Layout) -> None:
     assert [(x.key, x.filed, x.drafted) for x in c.deltas] == []
     assert c.filed_only == []
     assert c.matched == len(filed) == 42
+
+
+def test_on_drop_closes_each_ended_year_once(lay: Layout) -> None:
+    d = draft.build(lay, 2025)
+    assert close.on_drop(lay, date(2026, 4, 10)) == []  # nothing filed yet
+    _file(lay, "filed-2025.pdf", _filed(d))
+    assert close.on_drop(lay, date(2025, 12, 1)) == []  # 2025 has not ended
+    (c,) = close.on_drop(lay, date(2026, 4, 10))
+    assert (c.version, c.new, c.deltas) == (1, True, [])
+    assert close.on_drop(lay, date(2026, 4, 11)) == []  # already closed
+    rec = close.latest(lay, 2025)
+    assert rec is not None and rec["matched"] == 4
+    assert [x["key"] for x in rec["lines"]] == ["1040 5b"]
