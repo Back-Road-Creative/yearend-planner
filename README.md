@@ -696,3 +696,23 @@ as `data-previous/` until the next clean `planner run`. Until then,
 the backed-up `thresholds.yaml` that the current one lacks are copied over.
 If a planner window has `data/` open, the restore stops and asks you to
 close it.
+
+## Typed answers are checked; old data is flagged (Phase 8b)
+
+Every typed answer is checked before it is stored, on the Needed panel and in
+`planner enter`. A bad answer is refused with what was expected, and nothing is
+saved:
+
+- **Amounts** may carry `$`, commas or (parentheses) for a negative. They must be finite,
+  at most 100,000,000, and not negative except gains and self-employment income.
+- **Whole numbers** have their ranges (Social Security claim age 62-70, HSA months 0-12).
+- **Fractions** run from 0 to 1, or take a percent such as `4%`.
+- **Dates** are YYYY-MM-DD, between 1900 and today.
+- **Choices** must be one of the listed options.
+- **Text** is at most 200 characters, with no control characters.
+
+On the command line, years must fall between 1990 and 2100, and amounts, ports
+and steps have bounds too. Click rejects a bad value with "Invalid value".
+
+More than 90 days after the last document import, a banner atop the page says
+how old the figures are. The plan still runs.

@@ -10,6 +10,7 @@ or don't-have. Only facts no dropped document supplied are ever asked.
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -593,30 +594,74 @@ def need_for(key: str) -> Need:
     raise KeyError(f"no such item: {key}")
 
 
+# Bounds on typed answers: amounts that may be negative, whole-number ranges,
+# and the cap past which a figure is a typo rather than a fact.
+SIGNED = frozenset({"se_income", "short_term_gains", "long_term_gains"})
+INT_RANGE = {"ss_claim_age": (62, 70), "hsa_months": (0, 12)}
+MONEY_MAX = 100_000_000
+TEXT_MAX = 200
+
+
+def _number(need: Need, s: str, what: str) -> float:
+    cleaned = s.replace("$", "").replace(",", "").replace(" ", "")
+    neg = cleaned.startswith("(") and cleaned.endswith(")")
+    try:
+        v = float(cleaned.strip("()"))
+    except ValueError:
+        v = math.nan
+    if not math.isfinite(v):
+        raise ValueError(f"{need.key}: {what}, got {s!r}")
+    return -v if neg else v
+
+
 def parse_value(need: Need, text: str) -> Any:
-    """Typed, validated; a bad answer is an error, never a guess."""
+    """Typed, validated; a bad answer is an error naming what is expected,
+    never a guess."""
     s = text.strip()
     if need.kind == "date":
         from datetime import date
 
-        return date.fromisoformat(s).isoformat()
-    if need.kind in ("int", "money"):
-        cleaned = s.replace("$", "").replace(",", "")
-        neg = cleaned.startswith("(") and cleaned.endswith(")")
-        cleaned = cleaned.strip("()")
-        value = int(round(float(cleaned)))
-        return -value if neg else value
+        try:
+            d = date.fromisoformat(s)
+        except ValueError:
+            raise ValueError(f"{need.key}: a date as YYYY-MM-DD, got {s!r}") from None
+        if not date(1900, 1, 1) <= d <= date.today():
+            raise ValueError(f"{need.key}: between 1900-01-01 and today, got {s}")
+        return d.isoformat()
+    if need.kind == "money":
+        value = int(round(_number(need, s, "a dollar amount")))
+        if value < 0 and need.key not in SIGNED:
+            raise ValueError(f"{need.key}: not negative, got {s}")
+        if abs(value) > MONEY_MAX:
+            raise ValueError(f"{need.key}: over {MONEY_MAX:,}; check the figure")
+        return value
+    if need.kind == "int":
+        v = _number(need, s, "a whole number")
+        if v != int(v):
+            raise ValueError(f"{need.key}: a whole number, got {s}")
+        lo, hi = INT_RANGE.get(need.key, (0, MONEY_MAX))
+        if not lo <= v <= hi:
+            raise ValueError(f"{need.key}: between {lo} and {hi}, got {s}")
+        return int(v)
     if need.kind == "fraction":
-        v = float(s.rstrip("%"))
+        expected = f"{need.key}: a fraction between 0 and 1 (or a percent)"
+        try:
+            v = float(s.rstrip("%"))
+        except ValueError:
+            raise ValueError(f"{expected}, got {s!r}") from None
         v = v / 100 if s.endswith("%") or v > 1 else v
-        if not 0 <= v <= 1:
-            raise ValueError(f"{need.key}: a fraction between 0 and 1")
+        if not 0 <= v <= 1:  # also false for nan
+            raise ValueError(f"{expected}, got {s}")
         return v
     if need.kind == "enum":
         low = s.lower()
         if low not in need.choices:
             raise ValueError(f"{need.key}: one of {', '.join(need.choices)}")
         return low
+    if len(s) > TEXT_MAX:
+        raise ValueError(f"{need.key}: at most {TEXT_MAX} characters")
+    if any(not c.isprintable() for c in s):
+        raise ValueError(f"{need.key}: no control characters")
     return s
 
 
