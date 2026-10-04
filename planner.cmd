@@ -18,8 +18,10 @@ uv sync --frozen --directory "%~dp0" || exit /b 1
 :run
 set "PLANNER_LAUNCHER=cmd"
 "%PLANNER_PY%" -m planner %*
-if not errorlevel 75 exit /b %errorlevel%
-if errorlevel 76 exit /b %errorlevel%
+set "PLANNER_RC=%errorlevel%"
+rem double-clicked (no arguments) and it failed: keep the window open to read why
+if "%~1"=="" if %PLANNER_RC% NEQ 0 if %PLANNER_RC% NEQ 75 pause
+if %PLANNER_RC% NEQ 75 exit /b %PLANNER_RC%
 rem 75: an update or rollback waits for python.exe to let go of python\.
 rem data\update\swap.cmd moves the folders, this file included, so the call
 rem and the exit share one line: cmd has parsed both before the file moves.
