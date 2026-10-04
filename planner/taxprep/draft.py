@@ -1,6 +1,7 @@
-"""The draft federal return: Form 1040 with Schedules 1, 2, 3, D and SE and
-Forms 8949, 8889 and 8962, every line priced by the engine from the household
-the Needed panel confirmed, and every line naming where its figure came from.
+"""The draft return: Form 1040 with Schedules 1, 2, 3, D and SE and Forms
+8949, 8889 and 8962, and for a North Carolina resident the D-400 with its
+Schedule S, every line priced by the engine from the household the Needed panel
+confirmed, and every line naming where its figure came from.
 
 The engine prices the year; this module lays its figures onto the form lines
 (line numbers follow the 2025 forms) and adds what the engine does not see:
@@ -18,10 +19,11 @@ import math
 from dataclasses import dataclass, field
 
 from planner.engine import tax
+from planner.ingest.needs import need_values
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
-from planner.taxprep import capgains, hsa
+from planner.taxprep import capgains, d400, hsa
 from planner.taxprep.expected import inventory
 
 ENGINE = (
@@ -242,11 +244,14 @@ def build(lay: Layout, year: int) -> Draft:
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
         facts = db.facts_for(conn, year)
-        paid = [p for p in esttax.payments(conn, lay, year) if p.agency == "fed"]
+        pays = esttax.payments(conn, lay, year)
+        typed = need_values(conn, lay, year, d400.KEYS)
         cg = capgains.build(conn, lay, year)
         h = hsa.build(conn, lay, year)
     finally:
         conn.close()
+    paid = [p for p in pays if p.agency == "fed"]
+    nc_paid = [(p.date, p.amount, p.origin) for p in pays if p.agency == "nc"]
     hh = inp.household
     if h.lines:
         other = dict(hh.other)
@@ -262,7 +267,12 @@ def build(lay: Layout, year: int) -> Draft:
         hh = dataclasses.replace(
             hh, other={**hh.other, "tax_exempt_interest_income": int(round(exempt))}
         )
-    v = tax.values(year, hh, ENGINE, PRIOR)
+    us = _sum(facts, d400.US_INTEREST)
+    if us:  # taxable federally, subtracted on NC Schedule S line 18
+        hh = dataclasses.replace(
+            hh, other={**hh.other, "us_govt_interest_person": int(round(us))}
+        )
+    v = tax.values(year, hh, (*ENGINE, *d400.ENGINE), PRIOR)
     d = Draft(
         year,
         tax.engine_version(),
@@ -595,6 +605,11 @@ def build(lay: Layout, year: int) -> Draft:
     if cg.lots or cg.lines:
         limit = 1500.0 if hh.filing_status == "SEPARATE" else 3000.0
         _schedule_d(sheet, d, cg, l7, l11 - l14, limit)
+    if hh.state == "NC":
+        married = hh.filing_status == "JOINT"
+        d400.lay_lines(add, d.notes, v, facts, nc_paid, year, l11, typed, married)
+    else:
+        d.notes.append(f"no state return drafted for {hh.state}: only NC's D-400 is")
 
     # The lines against the engine's own totals: a gap is a mapping the draft
     # missed, and is said, never hidden.
@@ -667,19 +682,33 @@ def _schedule_d(
         )
 
 
-ORDER = ("1040", "Sch 1", "Sch 2", "Sch 3", "Sch D", "Sch SE", "8949", "8889", "8962")
+ORDER = (
+    "1040",
+    "Sch 1",
+    "Sch 2",
+    "Sch 3",
+    "Sch D",
+    "Sch SE",
+    "8949",
+    "8889",
+    "8962",
+    d400.FORM,
+    d400.SCHED,
+)
 HEADINGS = {
     "1040": "Form 1040",
     "8949": "Form 8949",
     "8889": "Form 8889 (health savings accounts)",
     "8962": "Form 8962",
+    d400.FORM: "NC Form D-400",
+    d400.SCHED: "NC D-400 Schedule S (additions and deductions)",
     "Carryover": "Capital loss carryover to next year",
 }
 
 
 def render(d: Draft) -> str:
     out = [
-        f"Draft {d.year} federal return (policyengine-us {d.engine_version}); line "
+        f"Draft {d.year} return (policyengine-us {d.engine_version}); line "
         "numbers follow the 2025 forms. A draft to check against the forms, not "
         "a filing.",
     ]

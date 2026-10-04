@@ -310,6 +310,30 @@ NEEDS: tuple[Need, ...] = (
         boxes=(("W-2", "17"), ("1099-R", "14")),
     ),
     Need(
+        "nc_additions",
+        "NC additions to federal AGI (D-400 Schedule S line 16)",
+        "added to federal AGI on D-400 line 7",
+        "D-400 Schedule S Part A (most returns have none; type 0 when none)",
+        "money",
+    ),
+    Need(
+        "nc_other_deductions",
+        "Other NC deductions (D-400 Schedule S lines 20-40)",
+        "subtracted from federal AGI on D-400 line 9: Bailey and uniformed "
+        "services retirement, and the other Schedule S Part B items",
+        "D-400 Schedule S Part B; the planner fills lines 18 and 19 itself "
+        "(type 0 when none)",
+        "money",
+    ),
+    Need(
+        "nc_use_tax",
+        "NC consumer use tax owed (D-400 line 18)",
+        "tax on purchases no sales tax was collected on",
+        "your purchase records, or the use tax table in the D-400 instructions "
+        "(the draft uses the table until you type it)",
+        "money",
+    ),
+    Need(
         "wages",
         "Wages",
         "ordinary income",
@@ -331,9 +355,9 @@ NEEDS: tuple[Need, ...] = (
         "interest",
         "Taxable interest",
         "ordinary income",
-        "1099-INT (" + _VG + ")",
+        "1099-INT boxes 1 and 3 (" + _VG + ")",
         "money",
-        boxes=(("1099-INT", "1"),),
+        boxes=(("1099-INT", "1"), ("1099-INT", "3")),
         estimate=(("YTD", "interest"),),
     ),
     Need(

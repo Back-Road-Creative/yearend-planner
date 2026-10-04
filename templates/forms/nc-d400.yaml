@@ -1,5 +1,5 @@
 # NC Form D-400. Lines 6, 12b, 15 and 20a are the ones the planner relies on; the
-# payment lines (21a, 23, 26a, 28) follow the printed form and are optional.
+# payment lines (21a, 23, 26a, 28, 34) follow the 2025 D-401 instructions and are optional.
 form: NC-D400
 years: [2024, 2025, 2026]
 match: ["D-400", "Individual Income Tax Return"]
@@ -13,4 +13,5 @@ boxes:
   "21a": {label: "NC estimated tax paid", pattern: 'Estimated Tax[\s.]*21a\.?\s+AMOUNT'}
   "23": {label: "Total payments", pattern: 'Total Payments[\s.]*23\.?\s+AMOUNT'}
   "26a": {label: "Amount due", pattern: 'Pay This Amount[\s.]*26a\.?\s+AMOUNT'}
-  "28": {label: "Refund", pattern: 'Amount to be Refunded[\s.]*28\.?\s+AMOUNT'}
+  "28": {label: "Overpayment", pattern: 'Overpayment[\s.]*28\.?\s+AMOUNT'}
+  "34": {label: "Refund", pattern: 'Amount to be Refunded[\s.]*34\.?\s+AMOUNT'}

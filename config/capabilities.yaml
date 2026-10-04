@@ -14,7 +14,7 @@ se_health_insurance_deduction: partial
 # Intake (not engine rules): what the templates read today.
 pdf_text_1099_int_div_b_r_1095a: verified  # tests/test_ingest.py
 pdf_filed_1040_and_schedules_1_2_3_c_d_se: verified  # tests/test_forms.py, synthetic dot-leader text
-pdf_nc_d400: partial  # lines 6, 12b, 15, 20a verified; payment lines optional, from memory of the form
+pdf_nc_d400: partial  # lines 6, 12b, 15, 20a verified; payment lines checked against the 2025 D-401 (28 overpayment, 34 refund), not a real filed PDF
 pdf_ssa_statement: verified  # tests/test_forms.py
 pdf_1099_nec_k_1098_5498_5498sa_1099sa: verified  # tests/test_forms.py
 ytd_facts_from_rows: verified  # tests/test_derive.py; planner derive / ingest
@@ -43,3 +43,4 @@ schedule_c: verified  # tests/test_schedule_c.py; planner categorize; rules and 
 draft_return: verified  # tests/test_draft.py; planner draft; 1040 + Sch 1/2/3/SE + 8962, each line sourced, engine totals cross-checked
 schedule_d: verified  # tests/test_capgains.py; planner gains; 8949 lots, cross-account wash sales (W), 1099-DIV 2a, carryover in and out
 form_8889: verified  # tests/test_hsa.py; planner hsa; limit by coverage and months, 55+ catch-up, W-2 code W, excess named, taxable distributions + 20%
+nc_d400_draft: verified  # tests/test_d400.py; planner draft; Schedule S 16/18/19/20-40/41, D-400 6-34 for a full-year resident; Schedule PN, D-400TC, D-422 named, not drafted
