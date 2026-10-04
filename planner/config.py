@@ -61,8 +61,10 @@ def missing_assumptions(assumptions: dict[str, Any]) -> list[str]:
     return [k for k in ASSUMPTION_FIELDS if assumptions.get(k) is None]
 
 
-def load_thresholds(path: Path) -> dict[int, dict[str, Any]]:
-    """``{year: {name: {value, source}}}``. Every threshold carries its source."""
+ENGINE_THRESHOLDS = "thresholds.engine.yaml"
+
+
+def _threshold_rows(path: Path) -> dict[int, dict[str, Any]]:
     data = load_yaml(path)
     out: dict[int, dict[str, Any]] = {}
     for year, rows in data.items():
@@ -72,6 +74,20 @@ def load_thresholds(path: Path) -> dict[int, dict[str, Any]]:
             if not isinstance(row, dict) or "value" not in row or "source" not in row:
                 raise ConfigError(f"{path}: {year}.{name} needs value and source")
         out[int(year)] = rows
+    return out
+
+
+def load_thresholds(path: Path, merged: bool = True) -> dict[int, dict[str, Any]]:
+    """``{year: {name: {value, source}}}``. Every threshold carries its source.
+
+    The hand-sourced file wins; ``thresholds.engine.yaml`` beside it (written
+    from the engine's parameters on each launch) fills the years and rows the
+    hand file lacks. ``merged=False`` reads the hand file alone."""
+    out = _threshold_rows(path)
+    engine = path.with_name(ENGINE_THRESHOLDS)
+    if merged and engine.exists():
+        for year, rows in _threshold_rows(engine).items():
+            out[year] = {**rows, **out.get(year, {})}
     return out
 
 

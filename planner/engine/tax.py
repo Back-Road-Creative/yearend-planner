@@ -68,7 +68,28 @@ CONFIG_PARAMS = {
     "ira_catchup_50plus": (
         "gov.irs.gross_income.retirement_contributions.catch_up.limit.ira"
     ),
+    "nc_income_tax_rate": "gov.states.nc.tax.income.rate",
+    "nc_std_deduction_single": (
+        "gov.states.nc.tax.income.deductions.standard.amount.SINGLE"
+    ),
 }
+
+
+def engine_value(name: str, year: int) -> tuple[float, bool]:
+    """(value, published) for a CONFIG_PARAMS row. An inflation-indexed
+    parameter's value counts as published only when the engine's own file
+    lists that year; for a later year the engine projects it by its uprating
+    index, and those projected values come back as computed floats, never the
+    file's literal numbers. Unindexed parameters (a statutory rate) are law
+    until changed."""
+    node = _system().parameters
+    for part in CONFIG_PARAMS[name].split("."):
+        node = getattr(node, part)
+    value = float(node(f"{year}-01-01"))
+    if not (node.metadata or {}).get("uprating"):
+        return value, True
+    at = [v for v in node.values_list if v.instant_str.startswith(f"{year}-")]
+    return value, any(isinstance(v.value, int) for v in at)
 
 
 def drift(year: int, rows: dict[str, Any]) -> list[tuple[str, float, float]]:

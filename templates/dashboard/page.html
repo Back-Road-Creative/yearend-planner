@@ -43,6 +43,7 @@ td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap
 <header>
   <h1>Year-end tax &amp; retirement plan {{ p.year }}</h1>
   <p>as of {{ p.as_of }} · policyengine-us {{ p.engine }} ·
+  {% if p.limits %}limits {% for y, how in p.limits.coverage.items() %}{{ y }} ({{ how }}){% if not loop.last %}, {% endif %}{% endfor %} ·{% endif %}
   {% if p.needed_count %}<a href="#needed">{{ p.needed_count }} needed</a>{% else %}<span class="done">nothing needed</span>{% endif %}
   · <a href="#alerts">{{ p.alerts|length }} alert(s)</a>
   {% if not live %} · static copy: run <code>planner run</code> to answer questions here{% endif %}</p>

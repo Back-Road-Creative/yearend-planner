@@ -543,8 +543,9 @@ whole year. It is a static copy for printing and backup. `planner run` (Phase
   - wash sales
   - OCR values to confirm
   - no document imported yet, or none in the last 90 days
-  - `config/thresholds.yaml` missing the year, or, from October, missing
-    next year
+  - limits for the year (or, from October, next year) that are projected or
+    carried rather than published, and any hand limit the engine disagrees
+    with (Phase 6a)
   - any planner that could not run
 - **Self-contained.** Everything the page shows is escaped, including issuer
   names, file names and OCR text. It loads nothing from the internet. It
@@ -584,3 +585,27 @@ Repeat until the Needed list is empty. Press Ctrl+C in the window to stop.
   - `--port` fixes the port.
   - `--quiet` stops after writing `out/index.html` (no server, no browser),
     for Windows Task Scheduler.
+
+## Limits kept current on each launch (Phase 6a)
+
+Each `planner run` and `planner dashboard` first refreshes the year's limits
+(standard deduction, bracket tops, IRA limits, NC rate and deduction) for this
+year and next from the installed policyengine-us. It needs no network.
+
+- **Your sourced rows win.** `config/thresholds.yaml` holds the limits entered
+  by hand, each with its IRS or NC source. The refresh writes
+  `config/thresholds.engine.yaml` beside it only for what that file lacks.
+  Never edit the engine file; it is rewritten on every launch and is not
+  shipped.
+- **Published, projected or carried.** An engine row is *published* when the
+  engine's own parameter file lists that year. An inflation-indexed limit the
+  IRS has not announced yet is *projected* by the engine's index and labelled
+  so. For a year with no hand rows, the other limits (HSA, phase-outs, poverty
+  line) are *carried* from the latest hand year and marked "confirm".
+- **Disagreements are shown.** Where a hand row and the engine differ (the
+  engine projects the 2026 IRA limit at 7,000; IRS Notice 2025-67 says 7,500),
+  the hand row stays in the plan and the dashboard says the engine prices the
+  tax with its own figure until policyengine-us is updated.
+- **The page header** shows the engine version and where each year's limits
+  came from, for example `limits 2026 (config), 2027 (engine projection +
+  carried)`.

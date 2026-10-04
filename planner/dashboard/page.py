@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from planner.config import load_thresholds
+from planner.engine import limits as limits_
 from planner.engine.household import MissingInputError
 from planner.engine.tax import engine_version
 from planner.ingest import confirm
@@ -92,6 +92,7 @@ class Page:
     draft_blocked: str = ""
     pending: list[Pending] = field(default_factory=list)
     alerts: list[Alert] = field(default_factory=list)
+    limits: limits_.Limits | None = None
 
     @property
     def needed_count(self) -> int:
@@ -170,18 +171,26 @@ def _alerts(lay: Layout, page: Page, today: date) -> list[Alert]:
                     "figures may be stale",
                 )
             )
-    years = load_thresholds(lay.config / "thresholds.yaml")
-    if page.year not in years:
-        text = f"config/thresholds.yaml has no {page.year} rows"
-        out.append(Alert("thresholds", text))
-    elif today.month >= 10 and page.year + 1 not in years:
-        out.append(
-            Alert(
-                "thresholds",
-                f"next year's ({page.year + 1}) parameters are not in "
-                "config/thresholds.yaml yet",
-            )
-        )
+    lim = page.limits
+    if lim is not None:
+        if lim.coverage.get(page.year) == "none":
+            text = f"config/thresholds.yaml has no {page.year} rows"
+            out.append(Alert("thresholds", text))
+        years = [page.year] + ([page.year + 1] if today.month >= 10 else [])
+        for y in years:
+            soft = lim.projected.get(y, []) + lim.carried.get(y, [])
+            if soft:
+                out.append(
+                    Alert(
+                        "thresholds",
+                        f"{y} limits not yet confirmed: {', '.join(soft)} "
+                        "(projected by the engine or carried from the year "
+                        "before); enter the published figures in "
+                        "config/thresholds.yaml",
+                    )
+                )
+        for line in lim.drift.get(page.year, []):
+            out.append(Alert("thresholds", line))
     for p in page.panels:
         if p.tag == UNAVAILABLE:
             out.append(Alert("blocked", f"{p.title}: {'; '.join(p.lines)}"))
@@ -219,5 +228,6 @@ def gather(
     except MissingInputError as exc:
         page.draft_blocked = str(exc)
     page.pending = _pending(lay)
+    page.limits = limits_.refresh(lay, year, write=False)
     page.alerts = _alerts(lay, page, today)
     return page

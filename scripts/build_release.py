@@ -106,7 +106,9 @@ def stage_tree() -> Path:
         src = ROOT / name
         if src.exists():
             shutil.copytree(
-                src, STAGE / name, ignore=shutil.ignore_patterns("__pycache__")
+                src,
+                STAGE / name,
+                ignore=shutil.ignore_patterns("__pycache__", "thresholds.engine.yaml"),
             )
     (STAGE / "VERSION").write_text(version() + "\n", encoding="utf-8")
     build_python(STAGE)
