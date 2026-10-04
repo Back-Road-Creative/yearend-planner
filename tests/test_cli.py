@@ -118,3 +118,59 @@ def test_first_run_records_the_engine_baseline_and_prints_the_delta(
     assert set(saved["engines"][version]["values"]) == set(verify.regression_values())
     again = CliRunner().invoke(app, args)
     assert again.exit_code == 0 and "baseline recorded" not in again.output
+
+
+def test_schedule_builds_schtasks_argv(
+    planner_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`planner schedule --monthly` registers `planner.cmd run --quiet` with
+    Task Scheduler as an argument list (no shell); --remove deletes it."""
+    import subprocess
+
+    from planner import cli
+
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+        assert "shell" not in kw
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "SUCCESS", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(cli, "on_windows", lambda: True)
+    r = runner.invoke(app, ["schedule", "--monthly"])
+    assert r.exit_code == 0, r.output
+    (argv,) = calls
+    launcher = str(planner_home / "planner.cmd")
+    assert argv[0].lower().endswith("schtasks.exe") or argv[0] == "schtasks"
+    assert argv[1:] == [
+        "/Create",
+        "/SC",
+        "MONTHLY",
+        "/D",
+        "1",
+        "/ST",
+        "09:00",
+        "/TN",
+        "Year-End Planner",
+        "/TR",
+        f'"{launcher}" run --quiet',
+        "/F",
+    ]
+    assert "monthly" in r.output and "Year-End Planner" in r.output
+    r = runner.invoke(app, ["schedule", "--remove"])
+    assert r.exit_code == 0, r.output
+    assert calls[-1][1:] == ["/Delete", "/TN", "Year-End Planner", "/F"]
+    # off Windows it prints the command and changes nothing
+    monkeypatch.setattr(cli, "on_windows", lambda: False)
+    r = runner.invoke(app, ["schedule", "--monthly"])
+    assert r.exit_code == 2 and len(calls) == 2
+    assert "/Create" in r.output
+
+
+def test_readme_names_the_held_update_recovery(repo_root: Path) -> None:
+    readme = (repo_root / "README.md").read_text(encoding="utf-8")
+    section = readme[readme.index("## If an update is held") :]
+    for step in ("engine update held", "update --rollback", "update --check"):
+        assert step in section, step
+    assert "| `schedule` |" in readme

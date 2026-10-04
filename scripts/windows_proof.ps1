@@ -1,7 +1,8 @@
 # Phase 0 proof on a clean Windows machine. Runs the RELEASE ZIP, never the repo.
 # Steps the plan requires: real calculation; path with a space and non-ASCII;
 # moved folder; network blocked; standard (non-admin) user; cloud-sync refusal.
-param([Parameter(Mandatory = $true)][string]$Zip)
+# -Inbox: a folder of synthetic PDFs (scripts/synthetic_inbox.py) run end to end.
+param([Parameter(Mandatory = $true)][string]$Zip, [string]$Inbox = '')
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false   # PS 7.4+: a nonzero exit is ours to check
 $expected = '$3,820.00'   # 2026 single, $50,000 wages: 10% x 12,400 + 12% x 21,500
@@ -72,6 +73,21 @@ New-NetFirewallRule -DisplayName 'planner-proof-block' -Direction Outbound -Prog
 try {
     $o = Invoke-Planner $moved 'selfcheck'
     if ($o -notlike "*$expected*") { throw 'selfcheck offline did not print the figure' }
+    if ($Inbox) {
+        # end to end on the unzipped release: synthetic documents in, page out
+        $in = Join-Path $moved 'data\inbox'
+        New-Item -ItemType Directory -Force -Path $in | Out-Null
+        Copy-Item -Path (Join-Path $Inbox '*.pdf') -Destination $in
+        foreach ($a in @(@('birth_date', '1971-06-15'), @('filing_status', 'single'),
+                         @('state', 'NC'), @('wages', '52,000'))) {
+            Invoke-Planner $moved @('enter', '--year', '2025', $a[0], $a[1]) | Out-Null
+        }
+        Invoke-Planner $moved 'run --quiet --no-update-check --year 2025 --as-of 2026-02-10' | Out-Null
+        $page = Get-Content -LiteralPath (Join-Path $moved 'out\index.html') -Raw
+        foreach ($shown in 'Example Bank (synthetic)', '1,235.00', '9,800.00') {
+            if ($page -notlike "*$shown*") { throw "index.html after the offline run lacks $shown" }
+        }
+    }
 } finally { Remove-NetFirewallRule -DisplayName 'planner-proof-block' }
 
 Write-Host '== 5. standard user'

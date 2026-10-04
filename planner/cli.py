@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -1594,6 +1596,69 @@ def dashboard(
         if pg.needed_count or pg.alerts
         else "nothing needed, no alerts"
     )
+
+
+TASK_NAME = "Year-End Planner"
+
+
+def on_windows() -> bool:
+    return sys.platform == "win32"
+
+
+def schtasks_argv(root: Path, remove: bool = False) -> list[str]:
+    """Task Scheduler's command for the monthly quiet run (the 1st, 09:00), as
+    an argument list; the launcher path is quoted inside /TR for spaces."""
+    exe = shutil.which("schtasks") or "schtasks"
+    if remove:
+        return [exe, "/Delete", "/TN", TASK_NAME, "/F"]
+    launcher = root / "planner.cmd"
+    return [
+        exe,
+        "/Create",
+        "/SC",
+        "MONTHLY",
+        "/D",
+        "1",
+        "/ST",
+        "09:00",
+        "/TN",
+        TASK_NAME,
+        "/TR",
+        f'"{launcher}" run --quiet',
+        "/F",
+    ]
+
+
+@app.command()
+def schedule(
+    monthly: bool = typer.Option(
+        False, "--monthly", help="run `planner.cmd run --quiet` on the 1st at 09:00"
+    ),
+    remove: bool = typer.Option(False, "--remove", help="delete the scheduled run"),
+) -> None:
+    """Register a monthly quiet run with Windows Task Scheduler (the 1st of each
+    month, 09:00, as you); --remove deletes it."""
+    if monthly == remove:
+        typer.echo("schedule needs --monthly or --remove", err=True)
+        raise typer.Exit(code=2)
+    argv = schtasks_argv(layout().root, remove=remove)
+    if not on_windows():
+        typer.echo("Task Scheduler is Windows only; the command would be:", err=True)
+        typer.echo(subprocess.list2cmdline(argv))
+        raise typer.Exit(code=2)
+    done = subprocess.run(argv, capture_output=True, text=True, check=False)  # noqa: S603
+    if done.returncode != 0:
+        typer.echo(
+            f"schtasks refused: {(done.stderr or done.stdout).strip()}", err=True
+        )
+        raise typer.Exit(code=1)
+    if remove:
+        typer.echo(f"removed the scheduled task {TASK_NAME!r}")
+    else:
+        typer.echo(
+            f"scheduled {TASK_NAME!r}: planner.cmd run --quiet, monthly on the "
+            "1st at 09:00"
+        )
 
 
 @app.command()

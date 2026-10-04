@@ -69,6 +69,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `rollover` | Roll the year that ended into the next: carry AGI, total tax, NC tax and the capital loss carryforward (filed figures once closed, else the draft's), keep a snapshot of the ledger and the year's dashboard, make next year the active one, refresh its limits, report next year's spending band and glide path, print the checklist and ask for next year's figures (last year's actual spending included). |
 | `rows` | List imported CSV rows (holdings, lots, transactions, income, bank lines). |
 | `run` | The one command: read the inbox, run every planner and the draft return, write out/index.html, then serve the page on this computer and open it. |
+| `schedule` | Register a monthly quiet run (`planner.cmd run --quiet`, the 1st at 09:00) with Windows Task Scheduler; `--remove` deletes it. |
 | `selfcheck` | Run one real federal calculation through the tax engine and print it; --regression runs the shipped reference cases instead and prints the engine's figure for each. |
 | `spend` | The spending band: rate x balance clamped to the floor and ceiling, the drawdown rule against the inflation-adjusted peak, and the return-band table under the floor and planning returns (real dollars). |
 | `status` | The portfolio today: every account, total, accessible and locked money, the all-time peak, YTD income by type, unrealized gains and the carryforward. |
@@ -82,6 +83,22 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `washsales` | Every loss sale with a buy of the same symbol within 30 days either side, across all accounts, and the symbols whose window is still open. |
 | `whatif` | Recompute the full year with the chosen levers and show it before and after, side by side. |
 | `withdraw` | Raise the cash target: cash accounts first, then the taxable lots with the least gain per dollar (specific-ID lots first); the MAGI and tax effect is priced through the engine. |
+
+## If an update is held
+
+The dashboard says **engine update held** when a downloaded release failed its own
+selfcheck, or moved a tax figure more than $5 from the engine you run now, or jumps a
+major version. Nothing changed: you are still on the release you had.
+
+1. Keep working; the held release is never retried on its own.
+2. To look again later (after a fixed release is published), run
+   `planner.cmd update --check`.
+3. A major version waits for you: `planner.cmd update --allow-major` takes it when you
+   are ready.
+4. If a release that did go in looks wrong, `planner.cmd update --rollback` puts the
+   previous one back.
+
+`GUIDE.md` (Updates) explains the selfcheck and the $5 regression in full.
 
 ## Develop
 
