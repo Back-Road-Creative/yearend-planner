@@ -1130,6 +1130,56 @@ def dashboard(
     )
 
 
+@app.command()
+def run(
+    year: int | None = typer.Option(None, help="plan year; default this year"),
+    as_of: str | None = AS_OF,
+    quiet: bool = typer.Option(
+        False, "--quiet", help="no browser, no server: refresh out/index.html"
+    ),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="open the page"),
+    port: int = typer.Option(0, help="local port; 0 lets the system pick"),
+) -> None:
+    """The one command: read the inbox, run every planner and the draft return,
+    write out/index.html, then serve the page on this computer and open it.
+    Drop files on the page, answer the Needed panel, confirm OCR values and
+    build the tax package there. --quiet (Task Scheduler) stops after the
+    static page."""
+    from datetime import date
+
+    from planner.dashboard import page, render, serve
+    from planner.ingest import ingest as _ingest
+
+    lay = layout()
+    lay.ensure()
+    rep = _ingest(lay)
+    typer.echo(
+        f"inbox: {len(rep.imported)} imported, {len(rep.pending)} awaiting "
+        f"confirm, {len(rep.duplicates)} duplicate, {len(rep.unmatched)} not read"
+    )
+    today = date.fromisoformat(as_of) if as_of else None
+    active = year or page.default_year(today or date.today())
+    pg = page.gather(lay, active, today)
+    typer.echo(f"written {render.write_static(lay, pg)}")
+    typer.echo(f"{pg.needed_count} needed, {len(pg.alerts)} alert(s)")
+    if quiet:
+        return
+    app_ = serve.App(lay, active, today)
+    srv = serve.server(app_, port)
+    address = serve.url(app_, srv)
+    typer.echo(f"serving {address}  (Ctrl+C to stop)")
+    if open_browser:
+        import webbrowser
+
+        webbrowser.open(address)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        typer.echo("stopped")
+    finally:
+        srv.server_close()
+
+
 def _lever_amounts(pairs: list[str]) -> dict[str, float]:
     out: dict[str, float] = {}
     for pair in pairs:
