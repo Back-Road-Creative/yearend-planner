@@ -24,13 +24,15 @@ import shutil
 import sqlite3
 import stat
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
 import pyzipper
 
-from planner.paths import Layout
+from planner.paths import Layout, WriterBusyError
 
 MANIFEST = "backup.json"
 STAGING = "restore-staging"
@@ -189,6 +191,29 @@ def _unpack(src: Path, password: str, staging: Path) -> dict[str, str]:
     return listed
 
 
+@contextmanager
+def _lock_released(lay: Layout) -> Iterator[None]:
+    """Let go of data/planner.lock while data/ is renamed: Windows will not
+    rename a folder that holds an open file. The lock is taken again on the way
+    out, in whichever data/ is there then; if another planner took it in the
+    gap, it keeps it and this command finishes without."""
+    held = lay.release_lock()
+    if held is not None:
+        # a data/ that holds only our lock file is not data worth keeping
+        if lay.data.is_dir() and [p.name for p in lay.data.iterdir()] == [
+            lay.lock_file.name
+        ]:
+            lay.lock_file.unlink()
+            lay.data.rmdir()
+    try:
+        yield
+    finally:
+        if held is not None:
+            with suppress(WriterBusyError):
+                lay.data.mkdir(parents=True, exist_ok=True)
+                held.acquire()
+
+
 def restore(lay: Layout, src: Path, password: str = "") -> Restored:
     """Check and unpack ``src``, then swap its ``data/`` in. The live data
     stays as ``data-previous/``."""
@@ -204,20 +229,21 @@ def restore(lay: Layout, src: Path, password: str = "") -> Restored:
         listed = _unpack(src, password, staging)
         if not (staging / "data").is_dir():
             raise BackupError(f"{src.name}: holds no data/ folder")
-        if lay.data.exists():
+        with _lock_released(lay):
+            if lay.data.exists():
+                try:
+                    lay.data.rename(previous)
+                except OSError as exc:
+                    raise BackupError(
+                        "data/ is in use: close the dashboard and other planner "
+                        f"windows, then restore again ({exc})"
+                    ) from exc
             try:
-                lay.data.rename(previous)
-            except OSError as exc:
-                raise BackupError(
-                    "data/ is in use: close the dashboard and other planner "
-                    f"windows, then restore again ({exc})"
-                ) from exc
-        try:
-            (staging / "data").rename(lay.data)
-        except OSError:
-            if previous.exists():
-                previous.rename(lay.data)
-            raise
+                (staging / "data").rename(lay.data)
+            except OSError:
+                if previous.exists():
+                    previous.rename(lay.data)
+                raise
         carried = carry_thresholds(staging, lay.root)
     finally:
         if staging.exists():
@@ -237,9 +263,10 @@ def undo(lay: Layout) -> bool:
     parked = lay.root / "data-restored"
     if parked.exists():
         shutil.rmtree(parked)
-    if lay.data.exists():
-        lay.data.rename(parked)
-    previous.rename(lay.data)
+    with _lock_released(lay):
+        if lay.data.exists():
+            lay.data.rename(parked)
+        previous.rename(lay.data)
     shutil.rmtree(parked, ignore_errors=True)
     return True
 

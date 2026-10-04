@@ -715,3 +715,35 @@ sentinel. It also checks that git tracks nothing under `data/`, `out/` or
 1. synthetic 1099 PDFs dropped in the inbox reach the dashboard
 2. a fresh copy of the release's `config/` plus only the `data/` folder (a new
    computer, or a restored backup) renders a byte-identical page
+
+## One planner at a time (Phase 9a)
+
+Two planner processes writing the ledger together could corrupt it, so every
+command that writes takes a lock on `data/planner.lock` when it starts and
+lets go when it ends. A second one stops at once with exit code 2 and says
+"another planner is running". The usual cause is the dashboard open in one
+window while a scheduled `planner run --quiet` or a second `planner` window
+starts; close the first or wait for it.
+
+- The lock is held by the operating system (`fcntl.flock` on Linux and macOS,
+  `msvcrt.locking` on Windows), not by the file existing. If planner crashes
+  or the computer loses power, the file stays but the lock is gone, so the
+  next run starts normally. There is nothing to delete.
+- Commands that only read `data/` or never open it do not lock, so they run
+  beside the dashboard (`facts` and `rows` open the ledger read-only: they
+  never create or change it, and with no ledger yet they list nothing): `backup`, `facts`, `rows`, `paths`, `init`, `version`,
+  `selfcheck`, `check-config`, `thresholds`, `compute`, `sweep` and `verify`.
+  `--help` never locks.
+- `planner restore` and `restore --undo` rename `data/`, which Windows will
+  not do while a file inside is open. They let go of the lock for the rename
+  and take it again afterward. An update that ends the process with exit
+  code 75 for the launcher to swap folders releases the lock when the process
+  exits, so the rerun starts clean.
+
+`planner init` creates `data/` and `out/` with every subfolder and prints the
+inbox path. It is safe to repeat. If the folder is inside OneDrive, Dropbox,
+iCloud Drive or Google Drive it creates nothing and exits 2 with the reason,
+because the sync client would copy your ledger to the cloud. `planner.cmd`
+checks its own folder first with `findstr` and prints the same warning before
+it downloads or runs anything, so a double-click in a synced folder explains
+itself in the window it keeps open.

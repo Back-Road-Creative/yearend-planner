@@ -26,7 +26,9 @@ the draft 1040 and NC D-400, and (once the year ends) **Build tax package** and 
 over to <next year>**.
 
 Everything personal stays in `data/` and `out/` inside that folder. Nothing is sent
-anywhere. To move to a new computer, copy the folder or run `planner backup`.
+anywhere. One planner writes at a time: a second window, or a scheduled run while the
+dashboard is open, stops with "another planner is running". To move to a new computer,
+copy the folder or run `planner backup`.
 
 ## Commands
 
@@ -56,6 +58,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `glide` | The age/year table to 95 under the planning return, the accessible-bucket floor through the IRA access age, three stress rows, and the month-by-month cash line for this year and next. |
 | `hsa` | Form 8889: the HSA limit for your coverage and months, employer money against it, the deduction, any excess, and distributions not spent on medical care. |
 | `ingest` | Read every file in data/inbox/ into the ledger; archive or mark UNMATCHED. |
+| `init` | Set up this folder: create data/ and out/ with every subfolder. Refuses a folder inside OneDrive, Dropbox, iCloud Drive or Google Drive (exit 2). Safe to repeat. |
 | `levers` | Every move left this year that changes the tax bill or the ACA credit, sized from the ledger, priced through the engine and ranked: moves that get you under a line, and moves that use the room below the next one. |
 | `magi` | Project the full year from the Needed panel plus overrides: every tax figure and the distance to each watched line. |
 | `needed` | What the plan still lacks for a year: each missing item, why, and the document that supplies it, then every form past its due date that the return needs. |

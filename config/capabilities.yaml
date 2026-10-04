@@ -58,3 +58,6 @@ release: verified  # tests/test_privacy.py + .github/workflows/release.yml; tag 
 privacy_audit: verified  # tests/test_privacy.py; release stages git-tracked files only, audit() refuses private folders/databases, sentinel absent
 end_to_end: verified  # tests/test_end_to_end.py; inbox -> dashboard, fresh config + data/ renders the identical page
 double_click_run: verified  # tests/test_launch.py; no arguments = planner run, a failed double-click pauses before the window closes
+single_writer_lock: verified  # tests/test_paths.py; OS lock on data/planner.lock (flock / msvcrt), a second writer exits 2 "another planner is running", a stale file never blocks, restore lets go before data/ moves
+planner_init: verified  # tests/test_cli.py; planner init makes data/ and out/, refuses a cloud-synced folder (exit 2) and creates nothing there
+launcher_cloud_sync_warning: verified  # tests/test_launch.py; planner.cmd findstr for OneDrive, Dropbox, iCloud Drive, Google Drive, My Drive before anything runs; windows_proof.ps1 step 6
