@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
+from decimal import ROUND_HALF_UP, Decimal
 from functools import lru_cache
 from typing import Any
 
@@ -163,6 +164,64 @@ def thresholds(year: int, filing_status: str) -> dict[str, float]:
             f"gov.irs.investment.net_investment_income_tax.threshold.{fs}", year
         ),
     }
+
+
+# Form 1040 line 16: under this taxable income the Tax Table, not the rate
+# schedule, sets the tax (2025 Form 1040 instructions, Tax Table).
+TAX_TABLE_TOP = 100_000.0
+
+
+def bracket_tax(amount: float, year: int, filing_status: str) -> float:
+    """Tax on ordinary income by the year's rate schedule, from the engine's
+    own bracket rates and edges."""
+    tax, low = 0.0, 0.0
+    for n in range(1, 8):
+        if amount <= low:
+            break
+        top = _param(f"gov.irs.income.bracket.thresholds.{n}.{filing_status}", year)
+        tax += (min(amount, top) - low) * _param(
+            f"gov.irs.income.bracket.rates.{n}", year
+        )
+        low = top
+    return tax
+
+
+def table_tax(amount: float, year: int, filing_status: str) -> float:
+    """Tax as the Tax Table prints it: rows of $5 under $5, $10 to $25, $25 to
+    $3,000 and $50 to $100,000, each the rate-schedule tax on the row's
+    midpoint rounded to whole dollars (an amount under $5 owes nothing). From
+    $100,000 up the rate schedule applies to the cent."""
+    if amount >= TAX_TABLE_TOP:
+        return bracket_tax(amount, year, filing_status)
+    if amount < 5:
+        return 0.0
+    if amount < 25:
+        low, width = (5.0, 10.0) if amount < 15 else (15.0, 10.0)
+    else:
+        width = 25.0 if amount < 3000 else 50.0
+        low = math.floor(amount / width) * width
+    exact = bracket_tax(low + width / 2, year, filing_status)
+    return float(Decimal(f"{exact:.2f}").quantize(Decimal("1"), ROUND_HALF_UP))
+
+
+def line_16(
+    regular: float, taxable: float, gains: float, year: int, filing_status: str
+) -> tuple[float, float]:
+    """Form 1040 line 16 from the engine's rate-schedule tax (its
+    income_tax_before_credits less AMT): the ordinary part
+    of taxable income under $100,000 is taxed by the Tax Table (the Qualified
+    Dividends and Capital Gain Tax Worksheet, line 22), and that worksheet's
+    total is capped at the tax on all taxable income (line 24). Returns the
+    line and its gap from the engine's figure."""
+    ordinary = taxable - min(max(gains, 0.0), taxable)
+    line = regular
+    if ordinary < TAX_TABLE_TOP:
+        line += table_tax(ordinary, year, filing_status) - bracket_tax(
+            ordinary, year, filing_status
+        )
+    if ordinary < taxable:
+        line = min(line, table_tax(taxable, year, filing_status))
+    return line, round(line - regular, 2)
 
 
 def self_employment_parameters(year: int) -> dict[str, float]:
@@ -379,6 +438,8 @@ def _compute(year: int, household: Household) -> TaxResult:
             "additional_medicare_tax",
             "self_employment_tax",
             "income_tax_before_credits",
+            "alternative_minimum_tax",
+            "adjusted_net_capital_gain",
             "state_income_tax",
             "adjusted_gross_income",
             "aca_magi",
@@ -428,9 +489,20 @@ def _compute(year: int, household: Household) -> TaxResult:
     # before both. Line 22 takes in the excess advance credit (8962 line 29, on
     # Schedule 2 line 1a); line 24 is line 22 plus Schedule 2 line 21: SE tax
     # (4), additional Medicare tax (11) and NIIT (12). The net credit is a
-    # payment (Schedule 3 line 9), not a cut in line 24.
+    # payment (Schedule 3 line 9), not a cut in line 24. The engine prices
+    # ordinary income by the rate schedule; under $100,000 the form uses the
+    # Tax Table, and that gap carries into lines 22 and 24.
+    regular = v["income_tax_before_credits"] - v["alternative_minimum_tax"]
+    _, table_gap = line_16(
+        regular,
+        v["taxable_income"],
+        v["adjusted_net_capital_gain"],
+        year,
+        household.filing_status,
+    )
     line_22 = (
-        v["income_tax"]
+        table_gap
+        + v["income_tax"]
         + v["income_tax_refundable_credits"]
         - v["net_investment_income_tax"]
         + repayment

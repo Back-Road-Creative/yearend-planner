@@ -538,6 +538,15 @@ box 1 as a stand-in, said on the line) use up the wage base, and net earnings un
 $400 owe nothing. Lines 12 and 13 feed Schedule 2 line 4 and Schedule 1 line 15,
 and are checked against the engine's totals.
 
+Line 16 follows the Tax Table, as the filed return does: under $100,000 of
+taxable income the tax is the table row's (the tax on the row's midpoint,
+rounded to the dollar), not the rate schedule's exact figure, so the draft can
+be a few dollars off the engine and a note gives the gap. With qualified
+dividends or capital gains only the ordinary part is priced by the table (the
+Qualified Dividends and Capital Gain Tax Worksheet). Every line drawn from a
+document names it to the page: form, box, issuer, file name and page, for
+example `W-2 box 2 (Employer; w2-2025.pdf p.1)`.
+
 Schedule 1-A (tax years 2025 to 2028) is its own sheet, and its line 38 is
 1040 line 13b. Part I takes AGI from line 11b. Part V, the $6,000 senior
 deduction, is drawn for a filer 65 by year end (6% of the AGI over $75,000,

@@ -197,7 +197,7 @@ def test_filed_1040_answers_filing_status_and_state(lay: Layout) -> None:
         "actual",
         "married_joint",
     )
-    assert by["filing_status"].origin == "1040 2025 self"
+    assert by["filing_status"].origin == "1040 2025 self (return.pdf p.1)"
     assert (by["state"].state, by["state"].value) == ("actual", "NC")
     assert by["county"].state == "missing"  # ZIP 27000 is in no county
     assert not [k for k in ("filing_status", "state") if by[k].state == "missing"]
@@ -243,12 +243,12 @@ def test_latest_return_wins_and_later_years_do_not_answer_earlier_plans(
     conn.close()
     by = {s.need.key: s for s in needed(lay, 2026).items}
     assert by["filing_status"].value == "married_joint"
-    assert by["filing_status"].origin == "1040 2025 self"
+    assert by["filing_status"].origin == "1040 2025 self (new.pdf p.1)"
     by = {s.need.key: s for s in needed(lay, 2025).items}
-    assert by["filing_status"].origin == "1040 2025 self"
+    assert by["filing_status"].origin == "1040 2025 self (new.pdf p.1)"
     by = {s.need.key: s for s in needed(lay, 2024).items}
     assert by["filing_status"].value == "single"
-    assert by["filing_status"].origin == "1040 2024 self"
+    assert by["filing_status"].origin == "1040 2024 self (old.pdf p.1)"
 
 
 def _1098(year: int, interest: str, principal: str, lender: str) -> list[str]:

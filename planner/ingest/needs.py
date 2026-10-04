@@ -1006,6 +1006,13 @@ def _number(need: Need, s: str, what: str) -> float:
     return -v if neg else v
 
 
+def _origin(f: db.FactRow) -> str:
+    """Form, year and issuer, and the file and page a document fact came
+    from; a fact the planner made itself (page 0) has no page to cite."""
+    where = f"{f.form} {f.tax_year} {f.issuer}"
+    return f"{where} ({f.file_name} p.{f.page})" if f.page else where
+
+
 def parse_value(need: Need, text: str) -> Any:
     """Typed, validated; a bad answer is an error naming what is expected,
     never a guess."""
@@ -1128,7 +1135,8 @@ def _text_box(
             if choices and f.text not in choices:
                 continue
             if best is None or f.tax_year >= best[0]:
-                best = (f.tax_year, f.text, f"{f.form} {f.tax_year} {f.issuer}")
+                where = _origin(f)
+                best = (f.tax_year, f.text, where)
     return None if best is None else (best[1], best[2])
 
 
@@ -1188,7 +1196,7 @@ def _sum_boxes(
         for f in db.facts_for(conn, year, form):
             if f.box == box:
                 total += f.value
-                origins.append(f"{f.form} {f.tax_year} {f.issuer}")
+                origins.append(_origin(f))
     if not origins:
         return None
     return total, "; ".join(dict.fromkeys(origins))

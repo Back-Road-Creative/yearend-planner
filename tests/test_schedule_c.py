@@ -71,7 +71,11 @@ def test_nothing_is_guessed_and_the_forms_stand_in(lay: Layout) -> None:
     sc = _build(lay)
     assert sc.lines == {} and len(sc.uncategorised) == 4
     assert sc.receipts_forms == 10_000.0
-    assert _se(lay) == ("estimate", 10_000.0, "1099-NEC 2026 Acme Widgets (synthetic)")
+    assert _se(lay) == (
+        "estimate",
+        10_000.0,
+        "1099-NEC 2026 Acme Widgets (synthetic) (nec.pdf p.1)",
+    )
 
 
 def test_rules_and_rows_build_the_lines(lay: Layout) -> None:
