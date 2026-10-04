@@ -17,6 +17,7 @@ from planner.engine.household import MissingInputError
 from planner.engine.selfcheck import format_years
 from planner.engine.tax import engine_version, published_years
 from planner.ingest import confirm, ocr
+from planner.ingest.derive import gaps as ytd_gaps
 from planner.ingest.needs import Group, Status, group_by_document, needed
 from planner.ledger import db
 from planner.paths import Layout
@@ -60,7 +61,7 @@ ORDER = (
 
 @dataclass(frozen=True)
 class Alert:
-    kind: str  # unmatched | wash | pending | stale | thresholds | blocked
+    kind: str  # unmatched | wash | pending | stale | gap | thresholds | blocked
     text: str
 
 
@@ -245,6 +246,21 @@ def _alerts(lay: Layout, page: Page, today: date) -> list[Alert]:
                 "figures may be stale",
             )
         )
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    try:
+        for y in (page.year - 1, page.year):
+            for g in ytd_gaps(conn, y):
+                if g.gap:
+                    out.append(
+                        Alert(
+                            "gap",
+                            f"{y} {g.form} reports {g.reported:,.2f}; the YTD "
+                            f"{g.box} was {g.ytd:,.2f} ({g.gap:+,.2f}): the form "
+                            "is the figure filed",
+                        )
+                    )
+    finally:
+        conn.close()
     lim = page.limits
     if lim is not None:
         if lim.coverage.get(page.year) == "none":

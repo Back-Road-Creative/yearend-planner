@@ -185,3 +185,69 @@ def test_cli_account_convert_and_status(lay: Layout) -> None:
     assert "unrealized   2 lots: short 2,264.82, long 20,250.00" in r.output
     assert "capital loss carryforward: unknown" in r.output
     assert "date of death not entered" in r.output
+
+
+def test_roth_layers_contrib_then_oldest_conversion_then_earnings() -> None:
+    """A Roth withdrawal comes out contributions first, then conversions oldest
+    first, then earnings (Pub. 590-B); a layer the balance does not reach is
+    not there."""
+    convs = [
+        db.Conversion(2, "2024-06-01", 5_000.0, 5_000.0, "33333333", "2029-01-01"),
+        db.Conversion(1, "2020-03-01", 8_000.0, 8_000.0, "33333333", "2025-01-01"),
+    ]
+    st = portfolio.Status(
+        "2026-10-02",
+        2026,
+        roth_balance=30_000.0,
+        roth_contributions=10_000.0,
+        conversions=convs,
+    )
+    layers = portfolio.roth_layers(st)
+    assert [(lr.kind, lr.amount, lr.free_from) for lr in layers] == [
+        ("contributions", 10_000.0, ""),
+        ("conversion", 8_000.0, "2025-01-01"),
+        ("conversion", 5_000.0, "2029-01-01"),
+        ("earnings", 7_000.0, ""),
+    ]
+    assert [lr.taxed for lr in layers] == [False, False, False, True]
+    parts = portfolio.roth_withdrawal(st, 20_000)
+    assert [(lr.kind, lr.free_from, amt) for lr, amt in parts] == [
+        ("contributions", "", 10_000.0),
+        ("conversion", "2025-01-01", 8_000.0),
+        ("conversion", "2029-01-01", 2_000.0),
+    ]
+    assert [lr.penalty_free(st.as_of) for lr, _ in parts] == [True, True, False]
+    assert not layers[-1].penalty_free(st.as_of)
+    # a smaller balance reaches only the first layers
+    small = portfolio.Status(
+        "2026-10-02", 2026, roth_balance=12_000.0, conversions=convs
+    )
+    assert [(lr.kind, lr.amount) for lr in portfolio.roth_layers(small)] == [
+        ("conversion", 8_000.0),
+        ("conversion", 4_000.0),
+    ]
+
+
+def test_inherited_ira_annual_rmd_flag_is_stored_and_shown(lay: Layout) -> None:
+    loaded(lay)
+    portfolio.save_account(lay, "44444444", type="inherited_ira")
+    portfolio.save_account(lay, "44444444", date_of_death="2024-03-01")
+    st = portfolio.status(lay, 2026, date(2026, 10, 2))
+    assert st.annual_rmd == {}
+    assert any("yearly RMDs" in n and "44444444" in n for n in st.notes)
+    with pytest.raises(ValueError):
+        portfolio.save_account(lay, "44444444", annual_rmd="maybe")
+    env = {"PLANNER_HOME": str(lay.root)}
+    r = runner.invoke(app, ["account", "44444444", "--annual-rmd"], env=env)
+    assert r.exit_code == 0 and "annual_rmd=True" in r.output
+    assert portfolio.load_accounts(lay)["44444444"]["annual_rmd"] is True
+    st = portfolio.status(lay, 2026, date(2026, 10, 2))
+    assert st.annual_rmd == {"44444444": True}
+    assert not any("yearly RMDs" in n for n in st.notes)
+    r = runner.invoke(app, ["status", "--year", "2026"], env=env)
+    assert "yearly RMDs apply" in r.output
+    r = runner.invoke(app, ["account", "44444444", "--no-annual-rmd"], env=env)
+    st = portfolio.status(lay, 2026, date(2026, 10, 2))
+    assert st.annual_rmd == {"44444444": False}
+    r = runner.invoke(app, ["status", "--year", "2026"], env=env)
+    assert "no yearly RMDs" in r.output

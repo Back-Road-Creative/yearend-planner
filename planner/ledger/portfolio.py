@@ -26,6 +26,7 @@ from typing import Any
 import yaml
 
 from planner.ingest.derive import FORM as YTD_FORM
+from planner.ingest.derive import Gap, gaps
 from planner.ledger import db
 from planner.paths import Layout
 
@@ -33,7 +34,15 @@ TYPES = ("taxable", "trad_ira", "inherited_ira", "roth", "hsa", "cash")
 SPENDABLE = ("taxable", "cash")
 UNKNOWN = "unknown"
 INHERITED_YEARS = 10  # the SECURE Act window for a non-spouse inherited IRA
-ACCOUNT_FIELDS = ("name", "type", "date_of_death", "balance", "balance_date")
+ACCOUNT_FIELDS = (
+    "name",
+    "type",
+    "date_of_death",
+    "annual_rmd",  # inherited IRA: the owner had begun RMDs, so yearly RMDs apply
+    "balance",
+    "balance_date",
+)
+YES = {"yes": True, "y": True, "true": True, "no": False, "n": False, "false": False}
 YTD_INCOME = (
     "dividends",
     "interest",
@@ -65,8 +74,13 @@ def save_account(lay: Layout, number: str, **fields: Any) -> dict[str, Any]:
     unknown = sorted(set(fields) - set(ACCOUNT_FIELDS))
     if unknown:
         raise ValueError(f"account {number}: unknown field(s) {', '.join(unknown)}")
-    if "type" in fields and fields["type"] not in TYPES:
+    if fields.get("type") is not None and fields["type"] not in TYPES:
         raise ValueError(f"account {number}: type must be one of {', '.join(TYPES)}")
+    rmd = fields.get("annual_rmd")
+    if rmd is not None and not isinstance(rmd, bool):
+        if str(rmd).strip().lower() not in YES:
+            raise ValueError(f"account {number}: annual_rmd must be yes or no")
+        fields["annual_rmd"] = YES[str(rmd).strip().lower()]
     if fields.get("date_of_death") is not None:
         fields["date_of_death"] = date.fromisoformat(
             str(fields["date_of_death"])
@@ -172,6 +186,8 @@ class Status:
     inherited: list[tuple[str, str, str]] = field(
         default_factory=list
     )  # acct, death, by
+    annual_rmd: dict[str, bool] = field(default_factory=dict)  # inherited acct
+    gaps: list[Gap] = field(default_factory=list)  # YTD vs the filed 1099s
     notes: list[str] = field(default_factory=list)
 
     @property
@@ -179,6 +195,86 @@ class Status:
         short = sum(lot.gain for lot in self.lots if lot.term == "short")
         long = sum(lot.gain for lot in self.lots if lot.term != "short")
         return round(short, 2), round(long, 2)
+
+
+def rmd_text(st: Status, account: str) -> str:
+    """An inherited IRA's yearly-RMD answer in words ("" when not entered)."""
+    if account not in st.annual_rmd:
+        return ""
+    return "yearly RMDs apply" if st.annual_rmd[account] else "no yearly RMDs"
+
+
+@dataclass(frozen=True)
+class Layer:
+    """One slice of the Roth in the order a withdrawal takes it."""
+
+    kind: str  # contributions | conversion | earnings
+    amount: float
+    free_from: str  # a conversion's penalty-free date; "" for the others
+    label: str
+
+    @property
+    def taxed(self) -> bool:
+        """Only earnings are income, and only in a nonqualified withdrawal."""
+        return self.kind == "earnings"
+
+    def penalty_free(self, as_of: str) -> bool:
+        """Contributions always; a conversion once its date passes; earnings
+        never before a qualified withdrawal (59 1/2 and 5 years)."""
+        if self.kind == "contributions":
+            return True
+        return self.kind == "conversion" and self.free_from <= as_of
+
+
+def roth_layers(st: Status) -> list[Layer]:
+    """The Roth in withdrawal order (Pub. 590-B ordering rules): contributions,
+    then each conversion oldest first, then earnings. The balance caps it: a
+    layer the balance does not reach is not there. Unknown contributions count
+    as none, so the order errs toward the taxed end."""
+    left = st.roth_balance
+    out: list[Layer] = []
+
+    def take(kind: str, amount: float, free_from: str, label: str) -> None:
+        nonlocal left
+        use = round(min(amount, left), 2)
+        if use > 0:
+            out.append(Layer(kind, use, free_from, label))
+            left = round(left - use, 2)
+
+    take(
+        "contributions",
+        st.roth_contributions or 0.0,
+        "",
+        "contributions: no tax, no penalty",
+    )
+    for c in sorted(st.conversions, key=lambda c: (c.date, c.id)):
+        take(
+            "conversion",
+            c.amount,
+            c.accessible_date,
+            f"conversion {c.date} from {c.source_account}: no tax; "
+            f"penalty-free {c.accessible_date}",
+        )
+    take(
+        "earnings",
+        left,
+        "",
+        "earnings: income and a 10% penalty unless qualified (59 1/2 and 5 years)",
+    )
+    return out
+
+
+def roth_withdrawal(st: Status, amount: float) -> list[tuple[Layer, float]]:
+    """The layers a withdrawal of ``amount`` comes from, and how much of each."""
+    parts: list[tuple[Layer, float]] = []
+    left = round(amount, 2)
+    for layer in roth_layers(st):
+        if left <= 0:
+            break
+        use = round(min(layer.amount, left), 2)
+        parts.append((layer, use))
+        left = round(left - use, 2)
+    return parts
 
 
 def positions(conn: sqlite3.Connection, lay: Layout) -> list[Position]:
@@ -270,6 +366,7 @@ def status(lay: Layout, year: int, as_of: date | None = None) -> Status:
             for f in db.facts_for(conn, year, YTD_FORM)
             if f.box in YTD_INCOME
         }
+        st.gaps = gaps(conn, year)
         st.carryforward = need_value(conn, lay, year, "prior_capital_loss_carryforward")
         peak_cents, st.peak_date = db.record_peak(conn, db.to_cents(st.total), today)
         st.peak = db.from_cents(peak_cents)
@@ -282,6 +379,14 @@ def status(lay: Layout, year: int, as_of: date | None = None) -> Status:
                 continue
             by = date(date.fromisoformat(str(death)).year + INHERITED_YEARS, 12, 31)
             st.inherited.append((number, str(death), by.isoformat()))
+            if "annual_rmd" in entry:
+                st.annual_rmd[number] = bool(entry["annual_rmd"])
+            else:
+                st.notes.append(
+                    f"inherited IRA {number}: whether yearly RMDs apply (the owner "
+                    f"had begun RMDs) not entered (planner account {number} "
+                    "--annual-rmd or --no-annual-rmd)"
+                )
         untyped = [p.account for p in st.positions if p.type == UNKNOWN]
         if untyped:
             st.notes.append(
