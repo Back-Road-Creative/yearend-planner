@@ -50,6 +50,9 @@ MONEY = {
     "qualified_tips": "qualified_tips",
     "qualified_overtime": "qualified_overtime",
     "car_loan_interest": "car_loan_interest",
+    "planned_giving": "charitable_cash",
+    "real_estate_taxes": "real_estate_taxes",
+    "mortgage_interest": "mortgage_interest",
 }
 # The income lines a typed total_income is measured against: Form 1040 line 9
 # less wages (the line the total sets) and Social Security (the engine decides

@@ -646,6 +646,31 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("Draft 1040",),
     ),
     Need(
+        "planned_giving",
+        "Gifts to charity this year (cash, planned or made)",
+        "Schedule A gifts, and the donate-shares and donor-advised-fund levers",
+        "your giving records or receipts for the year; type 0 if none",
+        "money",
+        unlocks=("Levers", "Draft 1040"),
+    ),
+    Need(
+        "real_estate_taxes",
+        "Real estate taxes paid this year",
+        "Schedule A line 5b: whether itemizing beats the standard deduction",
+        "the county tax bill, or Form 1098 box 10 when the lender pays it from "
+        "escrow; type 0 if none",
+        "money",
+        unlocks=("Levers", "Draft 1040"),
+    ),
+    Need(
+        "mortgage_interest",
+        "Home mortgage interest paid this year",
+        "Schedule A line 8a: whether itemizing beats the standard deduction",
+        "the lender's Form 1098 box 1; type 0 if none",
+        "money",
+        unlocks=("Levers", "Draft 1040"),
+    ),
+    Need(
         "se_income",
         "Self-employment net income",
         "SE tax, QBI, Schedule C",

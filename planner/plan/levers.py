@@ -50,11 +50,11 @@ ADVICE = (
     "every figure above)",
     "specific-lot selection: the cash planner already sells loss lots and the "
     "highest-basis lots first (planner withdraw)",
-    "donating appreciated shares instead of cash: worth it only when itemized "
-    "deductions beat the standard deduction",
-    "tax-efficient funds and asset location (bonds in the IRA, broad index funds "
-    "in taxable): lower next year's dividends, not this year's",
 )
+# Funds whose payouts are mostly ordinary income (interest, REIT dividends):
+# better held in the IRA, with broad index funds in taxable (Pub. 550).
+INEFFICIENT = ("BOND", "TREASURY", "INCOME", "REIT", "REAL ESTATE", "HIGH YIELD")
+SWAP_TOLERANCE = 0.01  # a gain within 1% of the lot's value is "about 0"
 
 
 @dataclass(frozen=True)
@@ -126,6 +126,48 @@ class Target:
 TARGETS = ("medicaid_under", "medicaid_over", "aca_400")
 
 
+@dataclass(frozen=True)
+class Swap:
+    """A tax-inefficient fund in a taxable account that can be sold for about
+    no tax now: its ordinary payouts leave next year's MAGI."""
+
+    account: str
+    symbol: str
+    name: str
+    value: float
+    gain: float
+
+
+def swaps(st: portfolio.Status) -> tuple[list[Swap], list[str]]:
+    typed = {p.account: p.type for p in st.positions}
+    found: list[Swap] = []
+    notes: list[str] = []
+    for lot in st.lots:
+        name = lot.name.upper()
+        if typed.get(lot.account) != "taxable" or not any(
+            k in name for k in INEFFICIENT
+        ):
+            continue
+        if abs(lot.gain) <= SWAP_TOLERANCE * lot.value:
+            found.append(Swap(lot.account, lot.symbol, lot.name, lot.value, lot.gain))
+        else:
+            notes.append(
+                f"{lot.symbol} ({lot.name}) in {lot.account}: selling realizes "
+                f"{lot.gain:,.0f} of gain; hold it, or move new money into a broad "
+                "index fund instead"
+            )
+    return found, notes
+
+
+def swap_lines(found: list[Swap]) -> list[str]:
+    return [
+        f"  swap {s.symbol} in {s.account} ({s.value:,.0f}, gain {s.gain:+,.0f}): "
+        "sell for about no tax and buy a broad index fund; hold the "
+        f"{s.name.title()} in the IRA instead, so its payouts leave next year's MAGI"
+        for s in found
+    ]
+
+
 def targeting(lay: Layout, year: int, ov: Overrides) -> tuple[list[Target], list[str]]:
     """The Medicaid line beside the just-under-400% cliff. Never selected by
     the optimizer: Medicaid tests income month by month when you apply."""
@@ -173,6 +215,7 @@ class Menu:
     rooms: list[Row] = field(default_factory=list)
     together: Row | None = None
     targeting: list[Target] = field(default_factory=list)
+    swaps: list[Swap] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
 
@@ -271,6 +314,7 @@ class _Ctx:
     profile: dict[str, Any]
     recent: dict[str, str]  # symbol -> last buy date inside the wash window
     carryforward: float | None
+    giving: float | None  # planned_giving: the year's cash gifts to charity
     roth_ytd: float
     room: float | None
     room_line: Line | None
@@ -408,6 +452,103 @@ def _harvest(c: _Ctx) -> Lever:
         rest,
         why,
         "loss past this year's gains and 3,000 of income carries forward",
+    )
+
+
+def _gift_lots(c: _Ctx, amount: float) -> tuple[float, float, list[str]]:
+    """Long-term taxable lots with a gain, the most gain per dollar first, to
+    cover ``amount``: (value given, gain in it, symbols)."""
+    held = sorted(
+        (lot for lot in c.lots(gain=True) if lot.term != "short"),
+        key=lambda lot: -lot.gain / lot.value,
+    )
+    value = gain = 0.0
+    symbols: list[str] = []
+    for lot in held:
+        if value >= amount:
+            break
+        use = min(lot.value, amount - value)
+        value += use
+        gain += lot.gain * use / lot.value
+        symbols.append(lot.symbol)
+    return r(value), r(gain), sorted(set(symbols))
+
+
+def _giving(c: _Ctx, key: str, label: str) -> Lever | float:
+    due = _year_end(c.year)
+    if c.giving is None:
+        return _none(key, LOWER, label, due, "needs planned_giving (planner needed)")
+    if c.giving <= 0:
+        return _none(key, LOWER, label, due, "no gift to charity planned this year")
+    return float(c.giving)
+
+
+def _itemized(res: TaxResult) -> str:
+    if res.itemizes:
+        return (
+            f"itemized {res.itemized_deductions:,.0f} beats the standard "
+            f"{res.standard_deduction:,.0f}"
+        )
+    return (
+        f"the standard deduction is larger ({res.standard_deduction:,.0f} vs "
+        f"{res.itemized_deductions:,.0f} itemized): a gift is worth only what the "
+        "engine shows"
+    )
+
+
+def _donate(c: _Ctx) -> Lever:
+    key, label = "donate_shares", "give shares instead of cash"
+    gift = _giving(c, key, label)
+    if isinstance(gift, Lever):
+        return gift
+    value, gain, symbols = _gift_lots(c, gift)
+    if not value:
+        return _none(
+            key,
+            LOWER,
+            label,
+            _year_end(c.year),
+            "no long-term taxable lot with a gain to give",
+        )
+    amount = int(round(value))
+    return Lever(
+        key,
+        LOWER,
+        label,
+        float(amount),
+        _year_end(c.year),
+        TRADE,
+        f"give {amount:,} of {', '.join(symbols)} (held over a year) in place of "
+        f"the cash gift: deducted at market value, {gain:,.0f} of gain is never "
+        f"taxed; {_itemized(c.base)}",
+        "shares count up to 30% of AGI (cash up to 60%), the rest carries forward "
+        "5 years; the charity or fund must take a share transfer",
+        (("charitable_cash", -amount), ("charitable_shares", amount)),
+    )
+
+
+def _daf(c: _Ctx) -> Lever:
+    key, label = "daf_bunch", "bunch next year's gift into a donor-advised fund"
+    gift = _giving(c, key, label)
+    if isinstance(gift, Lever):
+        return gift
+    amount = int(round(gift))
+    value, _, _ = _gift_lots(c, gift)
+    field_ = "charitable_shares" if value >= gift else "charitable_cash"
+    after = compute(c.year, replace(c.hh, **{field_: getattr(c.hh, field_) + amount}))
+    return Lever(
+        key,
+        LOWER,
+        label,
+        float(amount),
+        _year_end(c.year),
+        IRREVERSIBLE,
+        f"give next year's {amount:,} (this year's gift again) now through a "
+        f"donor-advised fund ({'shares' if field_ == 'charitable_shares' else 'cash'})"
+        f": two years' gifts in one; {_itemized(after)}",
+        "the fund grants it to charities later, on your schedule; next year you "
+        "take the standard deduction",
+        ((field_, amount),),
     )
 
 
@@ -753,6 +894,8 @@ BUILDERS = (
     _harvest,
     _spend_basis,
     _defer,
+    _donate,
+    _daf,
     _hsa,
     _se_health,
     _traditional_ira,
@@ -789,7 +932,11 @@ def _context(
             conn,
             lay,
             year,
-            ("prior_capital_loss_carryforward", "hsa_employer_contributions"),
+            (
+                "prior_capital_loss_carryforward",
+                "hsa_employer_contributions",
+                "planned_giving",
+            ),
         )
         carry = got["prior_capital_loss_carryforward"]
         roth_ytd = r(
@@ -810,6 +957,7 @@ def _context(
         load_profile(lay),
         recent,
         None if carry is None else float(carry),
+        None if got["planned_giving"] is None else float(got["planned_giving"]),
         roth_ytd,
         room,
         room_line,
@@ -912,7 +1060,8 @@ def menu(
             "month by month when you apply, not at filing"
         )
     m.targeting, waiting = targeting(lay, year, ctx.ov)
-    m.notes += waiting + list(ADVICE)
+    m.swaps, held = swaps(ctx.st)
+    m.notes += waiting + held + list(ADVICE)
     return m
 
 
@@ -987,6 +1136,9 @@ def summary(m: Menu, top: int | None = None) -> list[str]:
             f"Medicaid {t.medicaid_months} of 12 months ({t.note})"
             for t in m.targeting
         ]
+    if m.swaps:
+        out.append("tax-efficient swaps (next year's dividends, not this year's tax):")
+        out += swap_lines(m.swaps)
     return out
 
 

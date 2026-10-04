@@ -60,6 +60,9 @@ class TaxResult:
     # The guideline of the year BEFORE the tax year: the one the premium tax credit
     # and cost-sharing tests use (Form 8962 line 4). Medicaid uses ``fpg``.
     aca_fpg: float
+    itemizes: bool = False  # Schedule A beats the standard deduction
+    itemized_deductions: float = 0.0  # Schedule A line 17
+    standard_deduction: float = 0.0
 
 
 @lru_cache(maxsize=1)
@@ -478,6 +481,9 @@ def _compute(year: int, household: Household) -> TaxResult:
             "medicaid_magi",
             "tax_unit_fpg",
             "is_medicaid_eligible",
+            "tax_unit_itemizes",
+            "itemized_taxable_income_deductions",
+            "standard_deduction",
         )
     }
     aca_fpg = float(_calc(sim, "tax_unit_fpg", year - 1)[0])
@@ -569,6 +575,9 @@ def _compute(year: int, household: Household) -> TaxResult:
         aptc_repayment=r(repayment),
         net_ptc=r(max(ptc - advance, 0.0)),
         aca_fpg=r(aca_fpg),
+        itemizes=bool(v["tax_unit_itemizes"]),
+        itemized_deductions=r(v["itemized_taxable_income_deductions"]),
+        standard_deduction=r(v["standard_deduction"]),
     )
 
 
