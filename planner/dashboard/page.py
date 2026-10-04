@@ -25,6 +25,7 @@ from planner.plan.inputs import Overrides
 from planner.taxprep import draft, expected, schedule_c
 
 ACTUAL, ESTIMATE, UNAVAILABLE = "actual", "estimate", "unavailable"
+LOOSE_SHOWN = 40  # bank rows listed with their own form; a rule catches the rest
 STALE_DAYS = 90  # no document imported for this long: every page says so
 # Panels whose figures project the year forward from what has happened so far.
 PROJECTIONS = ("magi", "conversion", "levers", "spending", "glide", "cash", "esttax")
@@ -93,8 +94,10 @@ class Page:
     engine: str
     needed: list[Status] = field(default_factory=list)
     estimates: list[Status] = field(default_factory=list)
+    dont_have: list[Status] = field(default_factory=list)
     late_forms: list[expected.Expected] = field(default_factory=list)
-    loose_rows: int = 0
+    waived_forms: list[expected.Expected] = field(default_factory=list)
+    loose: list[db.LedgerRow] = field(default_factory=list)
     panels: list[Panel] = field(default_factory=list)
     inventory: expected.Inventory | None = None
     draft: draft.Draft | None = None
@@ -120,6 +123,27 @@ class Page:
     def needed_groups(self) -> list[Group]:
         """The missing items folded by the document that supplies them."""
         return group_by_document(self.needed)
+
+    @property
+    def loose_rows(self) -> int:
+        """Bank rows with no Schedule C category, once the year has any
+        business income to build the schedule from."""
+        return len(self.loose)
+
+    @property
+    def shown_loose(self) -> list[db.LedgerRow]:
+        return self.loose[:LOOSE_SHOWN]
+
+    @property
+    def categories(self) -> list[tuple[str, str]]:
+        """(key, label) of every category a bank row can be given."""
+        return [
+            *(
+                (k, f"{label} (line {line})")
+                for k, (line, label) in schedule_c.CATEGORIES.items()
+            ),
+            *((k, f"{k} ({why})") for k, why in schedule_c.EXCLUDED.items()),
+        ]
 
     @property
     def needed_count(self) -> int:
@@ -264,6 +288,7 @@ def gather(
     rep = needed(lay, year)
     page = Page(year, today.isoformat(), engine_version())
     page.needed = rep.by_state("missing")
+    page.dont_have = rep.by_state("dont_have")
     page.estimates = rep.by_state("estimate")
     projected = today <= date(year, 12, 31) or bool(page.estimates)
     by_name = {s.name: s for s in plan.sections}
@@ -273,12 +298,13 @@ def gather(
     ]
     page.inventory = expected.inventory(lay, year, today)
     page.late_forms = page.inventory.late
+    page.waived_forms = page.inventory.waived
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
         sc = schedule_c.build(conn, lay, year)
     finally:
         conn.close()
-    page.loose_rows = len(sc.uncategorised) if sc.business or sc.receipts_forms else 0
+    page.loose = sc.uncategorised if sc.business or sc.receipts_forms else []
     try:
         page.draft = draft.build(lay, year)
     except MissingInputError as exc:

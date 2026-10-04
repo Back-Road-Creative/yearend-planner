@@ -21,6 +21,7 @@ from planner.ingest.needs import (
     need_for,
     needed,
     parse_value,
+    undo_dont_have,
 )
 from planner.ledger import db
 from planner.paths import Layout
@@ -378,3 +379,38 @@ def test_cli_needed_groups_by_document(lay: Layout) -> None:
         )
     assert "document  Typed answers" in r.output
     assert r.output.strip().endswith(f"{len(NEEDS)} needed")
+
+
+def test_undo_dont_have_puts_the_item_back(lay: Layout) -> None:
+    dont_have(lay, 2026, "county")  # profile scope
+    dont_have(lay, 2026, "hsa_contribution")  # year scope
+    assert undo_dont_have(lay, 2026, "county")
+    assert undo_dont_have(lay, 2026, "hsa_contribution")
+    st = states(lay)
+    assert st["county"] == st["hsa_contribution"] == "missing"
+    assert not undo_dont_have(lay, 2026, "county")
+    with pytest.raises(KeyError):
+        undo_dont_have(lay, 2026, "net_worth")
+    dont_have(lay, 2026, "hsa_contribution")
+    assert states(lay, 2027)["hsa_contribution"] == "missing"
+    assert not undo_dont_have(lay, 2027, "hsa_contribution")  # marked for 2026 only
+    assert states(lay)["hsa_contribution"] == "dont_have"
+    r = runner.invoke(
+        app, ["dont-have", "--undo", "hsa_contribution", "--year", "2026"]
+    )
+    assert r.exit_code == 0 and "back on the Needed list" in r.output
+    r = runner.invoke(
+        app, ["dont-have", "--undo", "hsa_contribution", "--year", "2026"]
+    )
+    assert r.exit_code == 2 and "was not marked" in r.output
+
+
+def test_dont_have_closes_an_account_item_too(lay: Layout) -> None:
+    drop(lay, "bank.csv", BANK)
+    ingest(lay)
+    keys = [s.need.key for s in needed(lay, 2026).by_state("missing")]
+    acct = next(k for k in keys if k.startswith("account:"))
+    dont_have(lay, 2026, acct)
+    assert acct not in [s.need.key for s in needed(lay, 2026).by_state("missing")]
+    assert undo_dont_have(lay, 2026, acct)
+    assert acct in [s.need.key for s in needed(lay, 2026).by_state("missing")]

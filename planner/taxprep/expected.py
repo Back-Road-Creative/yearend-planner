@@ -11,7 +11,9 @@ marketplace premium a 1095-A, a mortgage a 1098, a Social Security claim age
 reached an SSA-1099) and anything that arrived unpredicted. Each item is
 received, superseded (a corrected copy is due) or still expected, with the date
 the issuer owes it to you and where to download it. A form that is late and
-needed to file is a Needed-panel item.
+needed to file is a Needed-panel item, until it arrives or you waive it (the
+issuer never sends one, or you do not have it): a waiver names the form and the
+issuer for one year, lives in ``profile/forms_waived.yaml`` and can be undone.
 """
 
 from __future__ import annotations
@@ -21,6 +23,10 @@ import sqlite3
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 from planner.ingest.needs import DOCS, load_profile, need_value
 from planner.ledger import db, portfolio
@@ -99,6 +105,7 @@ class Expected:
     state: str = EXPECTED
     documents: list[str] = field(default_factory=list)
     late: bool = False
+    waived: bool = False  # the user says this form will not come
 
     @property
     def where(self) -> str:
@@ -113,11 +120,65 @@ class Inventory:
 
     @property
     def outstanding(self) -> list[Expected]:
-        return [e for e in self.items if e.state != RECEIVED and e.to_file]
+        return [
+            e for e in self.items if e.state != RECEIVED and e.to_file and not e.waived
+        ]
 
     @property
     def late(self) -> list[Expected]:
         return [e for e in self.outstanding if e.late]
+
+    @property
+    def waived(self) -> list[Expected]:
+        return [e for e in self.items if e.waived]
+
+
+def waived_path(lay: Layout) -> Path:
+    return lay.data / "profile" / "forms_waived.yaml"
+
+
+def load_waived(lay: Layout, year: int) -> set[tuple[str, str]]:
+    """The (form, issuer) pairs waived for one year."""
+    path = waived_path(lay)
+    data: Any = {}
+    if path.exists():
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    rows = data.get(year, []) if isinstance(data, dict) else []
+    return {(str(r["form"]), str(r["issuer"])) for r in rows}
+
+
+def _save_waived(lay: Layout, year: int, pairs: set[tuple[str, str]]) -> None:
+    path = waived_path(lay)
+    data: Any = {}
+    if path.exists():
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = dict(data) if isinstance(data, dict) else {}
+    data[year] = [{"form": f, "issuer": i} for f, i in sorted(pairs)]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(data, sort_keys=True), encoding="utf-8")
+
+
+def waive(
+    lay: Layout, year: int, form: str, issuer: str, as_of: date | None = None
+) -> None:
+    """Take a form that has not arrived off the Needed list. It must be an item
+    of the year's inventory (named exactly as ``planner forms`` shows it) and
+    not yet received; the item stays listed, marked waived."""
+    inv = inventory(lay, year, as_of)
+    if not any(
+        e.form == form and e.issuer == issuer and e.state != RECEIVED for e in inv.items
+    ):
+        raise ValueError(f"no form still to come: {form} from {issuer} for {year}")
+    _save_waived(lay, year, load_waived(lay, year) | {(form, issuer)})
+
+
+def unwaive(lay: Layout, year: int, form: str, issuer: str) -> bool:
+    """Put a waived form back on the list; False when it was not waived."""
+    held = load_waived(lay, year)
+    if (form, issuer) not in held:
+        return False
+    _save_waived(lay, year, held - {(form, issuer)})
+    return True
 
 
 def _norm(name: str) -> str:
@@ -278,8 +339,10 @@ def inventory(lay: Layout, year: int, as_of: date | None = None) -> Inventory:
         if not any(e.form == f.form and same_issuer(e.issuer, f.issuer) for e in items):
             _add(items, year, f.form, f.issuer, "arrived")
             _match(items, [f], RECEIVED)
+    waived = load_waived(lay, year)
     for e in items:
         e.late = e.state != RECEIVED and today > date.fromisoformat(e.due)
+        e.waived = e.state != RECEIVED and (e.form, e.issuer) in waived
     items.sort(key=lambda e: (e.state == RECEIVED, e.due, e.form, e.issuer))
     return Inventory(year, today.isoformat(), items)
 
@@ -287,7 +350,7 @@ def inventory(lay: Layout, year: int, as_of: date | None = None) -> Inventory:
 def lines(inv: Inventory) -> list[str]:
     out = []
     for e in inv.items:
-        tag = "LATE" if e.late else e.state
+        tag = "waived" if e.waived else "LATE" if e.late else e.state
         when = "" if e.state == RECEIVED else f" due {e.due}"
         extra = "" if e.to_file else " (not needed to file)"
         docs = f": {', '.join(e.documents)}" if e.documents else ""

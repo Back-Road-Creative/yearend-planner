@@ -48,7 +48,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `convert` | Record a Roth conversion; the planner dates when its principal becomes penalty-free. |
 | `dashboard` | Write the dashboard as a static page, out/index.html, for printing and backup: the Needed panel, every planner, the draft return and the alerts, each panel tagged actual, estimate or unavailable. |
 | `derive` | Recompute the YTD facts (realized gains, dividends, interest, bank flows) for one year from the imported rows; supersedes the previous run. |
-| `dont-have` | Mark an item as not available; it leaves the Needed list and the plan shows it as unavailable instead of guessing. |
+| `dont-have` | Mark an item as not available; it leaves the Needed list and the plan shows it as unavailable instead of guessing. `--undo` puts it back. |
 | `draft` | The draft return: Form 1040 with its schedules and forms, and the NC D-400 with Schedule S, every line priced by the engine and naming its source. |
 | `enter` | Type one answer the documents did not supply; profile answers go to data/profile/assumptions.yaml, year answers to data/manual/<year>.yaml. |
 | `esttax` | The safe harbor and the four installments, federal and NC: what was paid (bank rows to the IRS or NCDOR, plus `planner paid`), each due date's shortfall, and the next payment. |
@@ -78,6 +78,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `update` | Swap in a newer release after its own selfcheck passes and its regression matches the engine baseline within $5; --rollback undoes it; --check looks for one on the update feed now (the automatic check runs at most weekly); --allow-major installs a release that jumps a major version of the planner or policyengine-us. |
 | `verify` | Recompute a filed year from its inputs; compare each line to what was filed. With no file it checks the shipped reference cases. |
 | `version` | Print the planner version (the release's VERSION file when there is one). |
+| `waive` | Take a late form that will not come (the issuer never sends one) off the Needed list; it stays in `forms`, marked waived. `--undo` puts it back. |
 | `washsales` | Every loss sale with a buy of the same symbol within 30 days either side, across all accounts, and the symbols whose window is still open. |
 | `whatif` | Recompute the full year with the chosen levers and show it before and after, side by side. |
 | `withdraw` | Raise the cash target: cash accounts first, then the taxable lots with the least gain per dollar (specific-ID lots first); the MAGI and tax effect is priced through the engine. |

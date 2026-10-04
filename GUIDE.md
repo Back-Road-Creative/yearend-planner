@@ -186,8 +186,24 @@ filing status, state, county, spending band, cash target, return and conversion
 assumptions, SS estimates) go to `data/profile/assumptions.yaml`, which is created from
 `config/assumptions.example.yaml` on first use; year items go to
 `data/manual/<year>.yaml`. `planner dont-have <item> --year 2026` takes an item off the
-list and the plan shows it as unavailable. The loop is done when `planner needed` prints
+list and the plan shows it as unavailable; `--undo` puts it back. The loop is done when `planner needed` prints
 `nothing needed`; `--all` shows the covered items with their source.
+
+Every kind of item in the Needed panel can be closed on the live page. Every
+don't-have and every waiver can be undone there; a row you categorised is changed
+with `planner categorize`. A typed item takes an answer or **I don't have
+this**. A form past its due date (see *Expected forms*) takes **It will not come: take
+it off the list**, which is `planner waive --year 2026 --form 1099-INT --issuer "First
+Example Bank"` on the command line: the form must be one `planner forms` lists and has
+not received, the waiver holds for that year only and is kept in
+`data/profile/forms_waived.yaml`, and the form stays in `planner forms` marked
+`waived`. The uncategorised bank rows take a piece of description text and a category
+for every row it matches, or a category for one row at a time (the first 40 rows are
+listed; the text box catches the rest), with `personal` and `transfer` for what is not
+business; this is `planner categorize` with the Schedule C rebuilt after each choice.
+Items marked don't-have and forms waived are listed under *Set aside* below the panel,
+each with a button that puts it back. An account's kind and an inherited IRA's date of
+death take **I don't have this** like any other item.
 
 ## Scanned pages and photos (Phase 2e)
 
@@ -655,8 +671,10 @@ whole year. It is a static copy for printing and backup. `planner run` (Phase
 - **Top to bottom:**
   1. Needed: missing items grouped by the document that supplies them, each
      group with its download path and the outputs it unlocks, then every item
-     with why it is needed; forms past their due date, and uncategorised bank rows. Inputs
-     standing in from year-to-date figures are listed under it.
+     with why it is needed; forms past their due date, and uncategorised bank rows, each
+     with the form that closes it (an answer, don't-have, waive or a category). Inputs
+     standing in from year-to-date figures are listed under it, then the items set
+     aside, each with its undo.
   2. OCR values awaiting confirm, if any.
   3. The planners: glide path, spending band, MAGI headroom, levers, the
      conversion, tax-prep forms with the draft return, estimated tax, cash

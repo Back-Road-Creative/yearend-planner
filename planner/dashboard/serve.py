@@ -4,7 +4,8 @@ The server listens on 127.0.0.1 on a port the system picks, and every request
 must carry the per-run token that ``planner run`` puts in the address it
 opens; a request without it, or addressed to another host name, is refused.
 One request at a time (the ledger is a single SQLite file). Each action
-(a dropped file, a typed answer, a don't-have, a confirm, the tax pack) runs,
+(a dropped file, a typed answer, a don't-have and its undo, a waived form,
+a categorised bank row, a confirm, the tax pack) runs,
 leaves a one-line result on the page, and redirects back to it, so the page
 always shows the ledger as it is now."""
 
@@ -29,7 +30,7 @@ from planner.ingest import confirm, ingest, needs, ocr
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import rollover
-from planner.taxprep import package
+from planner.taxprep import expected, package, schedule_c
 
 HOST = "127.0.0.1"
 MAX_BODY = 200 * 1024 * 1024  # one drop of documents
@@ -91,6 +92,62 @@ class App:
         except KeyError as exc:
             return f"not saved: {exc}"
         return f"marked {key}: don't have"
+
+    def undo_dont_have(self, key: str) -> str:
+        try:
+            marked = needs.undo_dont_have(self.lay, self.year, key)
+        except KeyError as exc:
+            return f"not saved: {exc}"
+        if not marked:
+            return f"{key} was not marked don't have"
+        return f"{key} is back on the Needed list"
+
+    def waive(self, form: str, issuer: str, undo: bool = False) -> str:
+        if undo:
+            if expected.unwaive(self.lay, self.year, form, issuer):
+                return f"{form} from {issuer} is back on the Needed list"
+            return f"{form} from {issuer} was not waived"
+        try:
+            expected.waive(self.lay, self.year, form, issuer, self.as_of)
+        except ValueError as exc:
+            return f"not saved: {exc}"
+        return f"waived {form} from {issuer}: it will not come"
+
+    def categorize(self, row: str, rule: str, category: str) -> str:
+        """Give one bank row (``row`` is its key) or every row whose
+        description holds ``rule`` a Schedule C category, then rebuild the
+        schedule so the Needed panel sees it. Never a guess: the category is
+        the one typed."""
+        if bool(row) == bool(rule.strip()):
+            return "not saved: name one bank row or one piece of description text"
+        conn = db.connect(self.lay.data / "ledger" / "planner.db")
+        try:
+            try:
+                if row:
+                    keys = {
+                        r.row_key for r in db.rows_for(conn, self.year, kind="bank")
+                    }
+                    if row not in keys:
+                        return f"not saved: no bank row {row} in {self.year}"
+                    schedule_c.assign(self.lay, row, category)
+                else:
+                    schedule_c.add_rule(self.lay, rule, category)
+            except ValueError as exc:
+                return f"not saved: {exc}"
+            sc = schedule_c.store(conn, self.lay, self.year)
+        finally:
+            conn.close()
+        if row:
+            return f"{row} -> {category}; {len(sc.uncategorised)} row(s) left"
+        caught = sum(
+            1
+            for r in sc.rows.get(category, [])
+            if rule.strip().lower() in f"{r.type} {r.description}".lower()
+        )
+        return (
+            f"rule {rule.strip()!r} -> {category}: {caught} row(s) this year; "
+            f"{len(sc.uncategorised)} left"
+        )
 
     def crop(self, fact: str) -> bytes | None:
         """The scan crop saved for one value still awaiting confirm, or None.
@@ -283,6 +340,18 @@ ROUTES: dict[str, Callable[[App, str, bytes], str]] = {
         _form(b).get("key", ""), _form(b).get("value", "")
     ),
     "/dont-have": lambda a, ct, b: a.dont_have(_form(b).get("key", "")),
+    "/undo-dont-have": lambda a, ct, b: a.undo_dont_have(_form(b).get("key", "")),
+    "/waive": lambda a, ct, b: a.waive(
+        _form(b).get("form", ""), _form(b).get("issuer", "")
+    ),
+    "/undo-waive": lambda a, ct, b: a.waive(
+        _form(b).get("form", ""), _form(b).get("issuer", ""), undo=True
+    ),
+    "/categorize": lambda a, ct, b: a.categorize(
+        _form(b).get("row", ""),
+        _form(b).get("rule", ""),
+        _form(b).get("category", ""),
+    ),
     "/confirm": lambda a, ct, b: a.confirm(
         _form(b).get("doc", ""), _form(b).get("action", ""), _edits(_form(b))
     ),
