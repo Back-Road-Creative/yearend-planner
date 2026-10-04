@@ -455,17 +455,9 @@ def _conversion(c: _Ctx) -> Lever:
         if amount <= 0:
             return _none(key, ROOM, label, due, why)
         return _conversion_lever(c, amount, why)
-    sz = conversion.size(
-        c.lay,
-        c.year,
-        Overrides(
-            c.ov.q4_dividend_estimate,
-            c.ov.planned_st_sales,
-            c.ov.planned_lt_sales,
-            0.0,
-            c.ov.planned_hsa,
-        ),
-    )
+    # sized from the resolved household: an adopted (auto) conversion is part of
+    # ``already``, so only what is left beyond it is proposed
+    sz = conversion.size(c.lay, c.year, replace(c.ov, conversion_target="manual"))
     rec = sz.recommendation
     if rec is None:
         return _none(key, ROOM, label, due, "; ".join(sz.notes) or "nothing to size")

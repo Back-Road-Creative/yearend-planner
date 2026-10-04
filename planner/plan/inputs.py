@@ -5,8 +5,9 @@ answer), so the household the planners price is the one the intake loop has
 confirmed. Unknown is never zero: a missing item is left out and named in
 ``Inputs.unknown``; unknown qualified dividends are taxed as ordinary (the
 worse case) and said so. Overrides are the few planning numbers no document
-can supply: the Q4 dividend estimate, planned sales, a planned conversion and
-a planned HSA contribution.
+can supply: the Q4 dividend estimate, planned sales, a planned conversion (typed,
+or ``conversion_target="auto"`` to adopt the recommended one), a planned HSA
+contribution and a typed total income for the year.
 """
 
 from __future__ import annotations
@@ -47,6 +48,23 @@ MONEY = {
     "aptc": "aptc",
     "hsa_contribution": "hsa_contribution",
 }
+# The income lines a typed total_income is measured against: Form 1040 line 9
+# less wages (the line the total sets) and Social Security (the engine decides
+# how much of it is taxable, so it is never part of a typed total).
+TOTAL_INCOME_LINES = (
+    "se_income",
+    "interest",
+    "non_qualified_dividends",
+    "qualified_dividends",
+    "ira_distributions",
+    "roth_conversion",
+)
+# Short- and long-term gains reach Form 1040 line 7 as one net figure, and a net
+# loss counts only up to this much a year (half for married filing separately):
+# IRC 1211(b); Schedule D instructions, line 21.
+CAPITAL_LOSS_LIMIT = 3000
+CAPITAL_LOSS_LIMIT_MFS = 1500
+CONVERSION_TARGETS = ("manual", "auto")
 OVERRIDES = (
     "q4_dividend_estimate",
     "planned_st_sales",
@@ -56,16 +74,36 @@ OVERRIDES = (
 )
 
 
+class OverrideError(ValueError):
+    """A typed planning number that cannot be applied, with what to change."""
+
+
 @dataclass(frozen=True)
 class Overrides:
     """Planning numbers added on top of the ledger (dollars). ``planned_hsa``
-    replaces the year's HSA figure; the others add to it."""
+    replaces the year's HSA figure; the others add to it.
+
+    ``total_income`` is the year's total income before the planned items above
+    (the owner's own full-year figure, for when the YTD ledger lags): wages
+    become the total less the other income lines the ledger counts.
+    ``conversion_target`` is ``manual`` (the typed ``planned_conversion``) or
+    ``auto`` (the plan adopts the recommended conversion; typing one as well
+    is refused)."""
 
     q4_dividend_estimate: float = 0.0
     planned_st_sales: float = 0.0
     planned_lt_sales: float = 0.0
     planned_conversion: float = 0.0
     planned_hsa: float | None = None
+    total_income: float | None = None
+    conversion_target: str = "manual"
+
+    def __post_init__(self) -> None:
+        if self.conversion_target not in CONVERSION_TARGETS:
+            raise OverrideError(
+                f"conversion_target must be {' or '.join(CONVERSION_TARGETS)}, "
+                f"got {self.conversion_target!r}"
+            )
 
     def describe(self) -> list[str]:
         out = [
@@ -73,6 +111,10 @@ class Overrides:
         ]
         if self.planned_hsa is not None:
             out.append(f"planned_hsa {self.planned_hsa:,.0f}")
+        if self.total_income is not None:
+            out.append(f"total_income {self.total_income:,.0f}")
+        if self.conversion_target == "auto":
+            out.append("conversion_target auto")
         return out
 
 
@@ -166,6 +208,35 @@ def build(
     if recorded > fields.get("roth_conversion", 0):
         fields["roth_conversion"] = int(round(recorded))
         out.origins["roth_conversion"] = "conversions recorded this year"
+    if ov.total_income is not None:
+        net = int(fields.get("short_term_gains", 0)) + int(
+            fields.get("long_term_gains", 0)
+        )
+        limit = (
+            CAPITAL_LOSS_LIMIT_MFS
+            if fields["filing_status"] == "SEPARATE"
+            else CAPITAL_LOSS_LIMIT
+        )
+        others = sum(int(fields.get(k, 0)) for k in TOTAL_INCOME_LINES) + max(
+            net, -limit
+        )
+        wages = int(round(ov.total_income)) - others
+        if wages < 0:
+            raise OverrideError(
+                f"total_income {ov.total_income:,.0f} is below the other income "
+                f"already counted ({others:,.0f}); type a total of at least that"
+            )
+        fields["wages"] = wages
+        out.origins["wages"] = "total_income override (total less the other income)"
+        if "wages" in out.unknown:
+            out.unknown.remove("wages")
+        if "wages" in out.estimates:
+            out.estimates.remove("wages")
+        out.notes.append(
+            f"total_income {ov.total_income:,.0f} typed: wages {wages:,} = the total "
+            f"less {others:,} of other income counted (Social Security excluded); "
+            "planned items are added on top"
+        )
     # overrides
     if ov.q4_dividend_estimate:
         target = (

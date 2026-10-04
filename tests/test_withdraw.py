@@ -13,6 +13,7 @@ from planner.ingest import ingest
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import washsale, withdraw
+from planner.plan.inputs import Overrides
 from tests.test_spending import AS_OF, FUND, lay  # noqa: F401
 
 runner = CliRunner()
@@ -100,3 +101,19 @@ def test_cli_withdraw_and_washsales(lots: Layout) -> None:
     r = runner.invoke(app, ["washsales", "--year", "2026", "--as-of", "2026-06-30"])
     assert r.exit_code == 0, r.output
     assert "WASH VTSAX" in r.output and "open window VTSAX" in r.output
+
+
+@pytest.mark.engine
+def test_cash_projection_keeps_the_typed_total_income(lots: Layout) -> None:  # noqa: F811
+    # cash covers the target, so nothing is sold: the before and after
+    # households are the same one, typed total income included
+    ov = Overrides(total_income=150_000.0)
+    w = withdraw.pick(lots, 2026, as_of=AS_OF, overrides=ov)
+    assert (
+        w.sales == []
+        and w.magi_before != withdraw.pick(lots, 2026, as_of=AS_OF).magi_before
+    )
+    assert w.magi_after == w.magi_before and w.tax_after == w.tax_before
+    # a sale still lands on top of the typed total
+    w = withdraw.pick(lots, 2026, target=500_000.0, as_of=AS_OF, overrides=ov)
+    assert w.sales and w.magi_after != w.magi_before

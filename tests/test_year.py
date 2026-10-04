@@ -10,9 +10,10 @@ import yaml
 from typer.testing import CliRunner
 
 from planner.cli import app
-from planner.ingest.needs import profile_path
+from planner.ingest.needs import enter, profile_path
 from planner.paths import Layout
-from planner.plan import calendar, esttax, spending, year
+from planner.plan import calendar, conversion, esttax, magi, spending, year
+from planner.plan.inputs import OverrideError, Overrides
 from tests.test_spending import AS_OF, lay  # noqa: F401
 from tests.test_withdraw import lots  # noqa: F401
 
@@ -108,3 +109,139 @@ def test_cli_plan(lots: Layout) -> None:  # noqa: F811
         app, ["plan", "--year", "2026", "--as-of", "2026-07-10", "--no-write"]
     )
     assert r.exit_code == 0 and "written" not in r.output
+
+
+def _objective(
+    home: Layout, objective: str = "bracket_12", margin: str = "1,000"
+) -> None:
+    enter(home, 2026, "conversion_objective", objective)
+    enter(home, 2026, "conversion_margin", margin)
+    enter(home, 2026, "conversion_cap", "150,000")
+
+
+@pytest.mark.engine
+def test_auto_conversion_feeds_magi_and_esttax(lots: Layout) -> None:  # noqa: F811
+    _objective(lots)
+    manual = year.assemble(lots, 2026, AS_OF)
+    sz = conversion.size(lots, 2026)
+    assert sz.recommendation is not None
+    extra = sz.recommendation.amount - sz.already
+    assert extra > 0
+    auto = year.assemble(lots, 2026, AS_OF, Overrides(conversion_target="auto"))
+    by_hand = year.assemble(lots, 2026, AS_OF, Overrides(planned_conversion=extra))
+    # MAGI and estimated tax price the adopted conversion, exactly as if it were typed
+    assert auto.section("magi").lines == by_hand.section("magi").lines
+    assert auto.section("magi").lines != manual.section("magi").lines
+    assert auto.section("esttax").lines == by_hand.section("esttax").lines
+    assert auto.section("esttax").lines != manual.section("esttax").lines
+    pj = magi.project(lots, 2026, Overrides(planned_conversion=extra))
+    assert f"AGI {pj.result.agi:,.2f}" in auto.section("magi").lines[0]
+    # the conversion section says what was adopted and keeps the candidates
+    lines = auto.section("conversion").lines
+    assert lines[0].startswith(
+        f"adopted {sz.recommendation.name} {sz.recommendation.amount:,.2f}"
+    )
+    assert f"+{extra:,.2f}" in lines[0]
+    assert any(ln.startswith("bracket_12") for ln in lines)
+    assert not any(
+        ln.startswith("adopted") for ln in manual.section("conversion").lines
+    )
+
+
+@pytest.mark.engine
+def test_auto_without_a_recommendation_adopts_nothing(lots: Layout) -> None:  # noqa: F811
+    manual = year.assemble(lots, 2026, AS_OF)
+    auto = year.assemble(lots, 2026, AS_OF, Overrides(conversion_target="auto"))
+    assert auto.section("magi").lines == manual.section("magi").lines
+    assert any(
+        "auto: no recommendation, nothing adopted" in n
+        for n in auto.section("conversion").notes
+    )
+    with pytest.raises(OverrideError, match="not both"):
+        year.assemble(
+            lots,
+            2026,
+            AS_OF,
+            Overrides(planned_conversion=5000, conversion_target="auto"),
+        )
+
+
+@pytest.mark.engine
+def test_total_income_override_reaches_the_page(lots: Layout) -> None:  # noqa: F811
+    base = year.assemble(lots, 2026, AS_OF)
+    yp = year.assemble(lots, 2026, AS_OF, Overrides(total_income=150_000))
+    assert yp.section("magi").lines != base.section("magi").lines
+    pj = magi.project(lots, 2026, Overrides(total_income=150_000))
+    assert f"AGI {pj.result.agi:,.2f}" in yp.section("magi").lines[0]
+    too_low = year.assemble(lots, 2026, AS_OF, Overrides(total_income=1))
+    assert "magi" in too_low.blocked
+    assert "below the other income" in too_low.section("magi").lines[0]
+
+
+@pytest.mark.engine
+def test_page_conversion_section_carries_the_spill_warning(lots: Layout) -> None:  # noqa: F811
+    # 3,000 of qualified dividends sit on top of the ordinary income; filling
+    # to the 12% bracket top (past the 0% gains ceiling) pushes them into 15%
+    enter(lots, 2026, "interest", "1,000")
+    enter(lots, 2026, "ordinary_dividends", "3,000")
+    enter(lots, 2026, "qualified_dividends", "3,000")
+    enter(lots, 2026, "long_term_gains", "0")  # no realized loss netting the gains
+    enter(lots, 2026, "se_income", "70,000")  # room under the 0% ceiling first
+    _objective(lots, "bracket_12", "0")
+    sz = conversion.size(lots, 2026)
+    rec = sz.recommendation
+    assert rec is not None and rec.qualified_spill
+    yp = year.assemble(lots, 2026, AS_OF)
+    sec = yp.section("conversion")
+    assert "WARNING" in sec.lines[0] and "15%" in sec.lines[0]
+    assert any(
+        ln.startswith("bracket_12") and "WARNING: qualified" in ln for ln in sec.lines
+    )
+    assert any(ln.startswith("ltcg_0pct") and "WARNING" not in ln for ln in sec.lines)
+    # no spill, no warning: the 0% objective stays under the ceiling
+    _objective(lots, "ltcg_0pct")
+    first = year.assemble(lots, 2026, AS_OF).section("conversion").lines[0]
+    assert "WARNING" not in first
+
+
+@pytest.mark.engine
+def test_cli_plan_flags_and_prompts(lots: Layout) -> None:  # noqa: F811
+    _objective(lots)
+    args = ["plan", "--year", "2026", "--as-of", "2026-07-10", "--no-write"]
+    r = runner.invoke(
+        app,
+        [*args, "--no-ask", "--conversion-target", "auto"],
+    )
+    assert r.exit_code == 0, r.output
+    assert "adopted bracket_12" in r.output
+    r = runner.invoke(app, [*args, "--no-ask", "--total-income", "150000"])
+    assert r.exit_code == 0, r.output
+    assert "total_income 150,000 typed" in r.output
+    r = runner.invoke(app, [*args, "--no-ask", "--conversion-target", "sometimes"])
+    assert r.exit_code == 2 and "manual or auto" in r.output
+    r = runner.invoke(
+        app, [*args, "--no-ask", "--conversion", "5000", "--conversion-target", "auto"]
+    )
+    assert r.exit_code == 2 and "not both" in r.output
+    # prompts: total income, Q4 dividends, short-term, long-term, target
+    r = runner.invoke(app, [*args, "--ask"], input="\n250\n\n(500)\nauto\n")
+    assert r.exit_code == 0, r.output
+    assert "total income" in r.output and "conversion target" in r.output
+    assert "adopted bracket_12" in r.output
+    # a bad answer is explained and asked again; flags given are not asked
+    r = runner.invoke(
+        app,
+        [
+            *args,
+            "--ask",
+            "--total-income",
+            "150000",
+            "--sales-st",
+            "0",
+            "--sales-lt",
+            "0",
+        ],
+        input="lots\n300\nmanual\n",
+    )
+    assert r.exit_code == 0, r.output
+    assert "not a number" in r.output and "total income" not in r.output

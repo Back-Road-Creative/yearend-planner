@@ -163,6 +163,56 @@ def test_conversion_room_shrinks_by_the_exempt_interest(lay: Layout) -> None:
     assert shrunk["aca_400"].aca_magi == pytest.approx(base["aca_400"].aca_magi)
 
 
+def test_total_income_override_sets_wages_from_the_other_lines(lay: Layout) -> None:
+    # the ledger counts 1,000 interest + 3,000 qualified dividends + 40,000
+    # recorded conversion = 44,000 besides wages
+    ov = inputs.Overrides(total_income=100_000, planned_lt_sales=2_000)
+    inp = inputs.build(lay, 2026, ov)
+    assert inp.household.wages == 56_000
+    assert inp.household.long_term_gains == 2_000  # planned items add on top
+    assert inp.origins["wages"].startswith("total_income override")
+    assert "wages" not in inp.unknown
+    assert any("total_income 100,000" in n for n in inp.notes)
+    assert ov.describe() == ["planned_lt_sales 2,000", "total_income 100,000"]
+    with pytest.raises(inputs.OverrideError, match="below the other income"):
+        inputs.build(lay, 2026, inputs.Overrides(total_income=30_000))
+    with pytest.raises(inputs.OverrideError, match="conversion_target"):
+        inputs.Overrides(conversion_target="sometimes")
+
+
+def test_total_income_counts_a_net_capital_loss_only_up_to_the_limit(
+    lay: Layout,
+) -> None:
+    # Form 1040 line 7 carries a net capital loss only up to 3,000 (1,500 MFS):
+    # IRC 1211(b), Schedule D line 21. A 10,000 loss must not push wages up by
+    # 10,000, or the page's total income would not be the typed figure.
+    enter(lay, 2026, "short_term_gains", "(10,000)")
+    inp = inputs.build(lay, 2026, inputs.Overrides(total_income=100_000))
+    hh = inp.household
+    assert hh.short_term_gains == -10_000
+    # 1,000 interest + 3,000 qualified dividends + 40,000 conversion, less the
+    # loss counted on line 7 (3,000 of the 10,000)
+    assert hh.wages == 100_000 - 44_000 + 3_000
+    line_9 = (
+        hh.wages
+        + hh.interest
+        + hh.qualified_dividends
+        + hh.non_qualified_dividends
+        + hh.roth_conversion
+        + max(hh.short_term_gains + hh.long_term_gains, -3_000)
+    )
+    assert line_9 == 100_000
+    # a long-term gain nets against the short-term loss before the limit applies
+    enter(lay, 2026, "long_term_gains", "8,000")
+    hh = inputs.build(lay, 2026, inputs.Overrides(total_income=100_000)).household
+    assert hh.wages == 100_000 - 44_000 + 2_000
+    # married filing separately: the limit is 1,500
+    enter(lay, 2026, "filing_status", "married_separate")
+    enter(lay, 2026, "long_term_gains", "0")
+    hh = inputs.build(lay, 2026, inputs.Overrides(total_income=100_000)).household
+    assert hh.wages == 100_000 - 44_000 + 1_500
+
+
 @pytest.mark.engine
 def test_conversion_candidates_are_priced_from_one_sweep(lay: Layout) -> None:
     enter(lay, 2026, "conversion_margin", "1,000")
@@ -193,6 +243,33 @@ def test_conversion_candidates_are_priced_from_one_sweep(lay: Layout) -> None:
     enter(lay, 2026, "conversion_objective", "ltcg_0pct")
     sz = conversion.size(lay, 2026, step=1000)
     assert sz.recommendation is not None and sz.recommendation.name == "ltcg_0pct"
+
+
+@pytest.mark.engine
+def test_spill_only_when_conversion_adds_15pct(lay: Layout) -> None:
+    # 70,000 converted and 60,000 of long-term gains: the ordinary income alone
+    # is past the 0% ceiling, so every gain dollar is already taxed at 15% and
+    # no larger conversion adds any gains tax. Comparing only the run with the
+    # conversion against zero would call each of these a spill.
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    db.add_conversion(
+        conn,
+        date="2026-04-01",
+        amount_cents=3_000_000,
+        taxable_cents=3_000_000,
+        source_account="33333333",
+        accessible_date="2031-04-01",
+    )
+    conn.commit()
+    conn.close()
+    enter(lay, 2026, "long_term_gains", "60,000")
+    enter(lay, 2026, "conversion_cap", "150,000")
+    sz = conversion.size(lay, 2026, step=5000)
+    assert sz.already == 70000 and sz.base.result.ltcg_tax > 0
+    by = {c.name: c for c in sz.candidates}
+    assert by["cap"].amount == 150000 > sz.already
+    assert by["cap"].fed_delta > 0  # the conversion still costs ordinary tax
+    assert [c.name for c in sz.candidates if c.qualified_spill] == []
 
 
 @pytest.mark.engine

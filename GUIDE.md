@@ -339,6 +339,34 @@ input is still unknown reports what it needs and the rest of the page still
 renders; nothing is estimated in its place. The page is also written to
 `out/plan-<year>.md` (personal, gitignored; `--no-write` skips it).
 
+From a terminal `planner plan` first asks the few typed fields, and each has an
+option so a script or Task Scheduler never waits (`--no-ask` skips the
+questions; Enter skips one):
+
+- **Total income** (`--total-income`): your own full-year figure when the YTD
+  ledger lags. Wages become the total less the other income the ledger counts
+  (business, interest, dividends, gains, IRA distributions and the conversions
+  recorded so far; Social Security is left to the engine). Gains and losses
+  count as one net figure, and a net loss only up to 3,000 (1,500 married
+  filing separately), as on Form 1040 line 7. The Q4 dividends,
+  planned sales and conversion below are added on top. A total below the other
+  income is refused and says by how much.
+- **Q4 dividends, planned short-term and long-term sales**
+  (`--q4-dividends`, `--sales-st`, `--sales-lt`): added to the year. A loss may
+  be typed in parentheses.
+- **Conversion target** (`--conversion-target manual|auto`). `manual` (the
+  default) uses `--conversion` as typed. `auto` adopts the recommended
+  conversion (the one your `conversion_objective` picks) as the year's
+  conversion, so MAGI, levers, cash and estimated tax all include it; the
+  conversion section starts with an `adopted` line. With no objective or no
+  candidate that meets it, nothing is adopted and a note says so. `auto` with a
+  typed `--conversion` is refused: pick one.
+
+Each conversion candidate, and the recommendation, carries `WARNING: qualified
+dividends / long-term gains pushed into 15%` only when the conversion adds gains
+tax the year would not owe without it. Gains already taxed at 15% before the
+conversion do not trip it.
+
 Every date on the calendar moves off a weekend or a federal holiday by the
 rule in `planner/plan/calendar.py` (a due date to the next business day, a
 year-end cut-off to the one before, an opening not at all); the holidays are

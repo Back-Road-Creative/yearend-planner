@@ -15,11 +15,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from planner.engine.household import MissingInputError
 from planner.engine.tax import compute, compute_sweep, r, thresholds
 from planner.ingest.needs import load_profile
 from planner.ledger import portfolio
 from planner.paths import Layout
-from planner.plan.inputs import Overrides
+from planner.plan.inputs import OverrideError, Overrides
 from planner.plan.magi import CLIFF_FPL, MEDICAID_FPL, Projection, project
 
 VARIABLE = "taxable_roth_conversions"
@@ -47,7 +48,7 @@ class Candidate:
     state_delta: float
     ptc_delta: float  # negative = credit lost
     medicaid_month_over: bool
-    qualified_spill: bool  # qualified dividends / LTCG pushed into 15%
+    qualified_spill: bool  # the conversion adds gains tax the year did not owe already
     note: str = ""
 
     @property
@@ -72,6 +73,32 @@ class Sizing:
             if c.name == self.objective:
                 return c
         return None
+
+
+def resolve(
+    lay: Layout, year: int, overrides: Overrides
+) -> tuple[Overrides, Sizing | None]:
+    """``conversion_target=auto``: the overrides with the recommended
+    conversion adopted as the year's planned conversion (the recommendation
+    less what is already recorded), and the sizing it came from. No
+    recommendation adopts nothing. Manual overrides come back unchanged.
+    A planner still missing an input cannot size; the overrides come back as
+    they are and the conversion section says what it needs."""
+    if overrides.conversion_target != "auto":
+        return overrides, None
+    if overrides.planned_conversion:
+        raise OverrideError(
+            "conversion_target auto adopts the recommended conversion: give a "
+            "planned conversion or auto, not both"
+        )
+    try:
+        sz = size(lay, year, overrides)
+    except (MissingInputError, OverrideError):
+        return overrides, None
+    rec = sz.recommendation
+    if rec is None:
+        return overrides, sz
+    return replace(overrides, planned_conversion=r(rec.amount - sz.already)), sz
 
 
 def _largest(rows: list[dict[str, float]], ok: Any) -> dict[str, float] | None:
@@ -177,7 +204,9 @@ def size(
                 ptc_delta=r(row["aca_ptc"] - base_row["aca_ptc"]),
                 medicaid_month_over=recurring_monthly + (amount - already)
                 > medicaid_month,
-                qualified_spill=full.ltcg_tax > 0,
+                # against the year as it stands: gains already taxed at 15% before
+                # this conversion are not pushed into 15% by it
+                qualified_spill=r(full.ltcg_tax - base.result.ltcg_tax) > 0,
                 note=LABEL[name],
             )
         )
