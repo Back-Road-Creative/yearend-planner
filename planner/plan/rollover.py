@@ -51,6 +51,7 @@ ASK = (
     "premium_monthly",
     "roth_basis_contributions",
     "hsa_contribution",
+    "spending_actual",
 )
 CHECKLIST = (
     "Update the engine: planner update --check (planner run also checks)",
@@ -85,6 +86,7 @@ class Rollover:
     snapshot: Path | None = None
     checklist: Path | None = None
     accessible: list[str] = field(default_factory=list)
+    plan: list[str] = field(default_factory=list)  # next year's band and glide path
     notes: list[str] = field(default_factory=list)
 
 
@@ -253,6 +255,38 @@ def _accessible(lay: Layout, year: int) -> list[str]:
     ]
 
 
+def _plan(lay: Layout, year: int, today: date) -> list[str]:
+    """Next year's spending band and glide path, recomputed from the balance
+    the ledger holds now, with last year's actual spending beside the band."""
+    from planner.engine.household import MissingInputError
+    from planner.plan import glidepath, spending
+
+    try:
+        g = glidepath.glide(lay, year, today)
+    except MissingInputError as exc:
+        return [f"glide path and spending band for {year} wait on: {exc}"]
+    out = [
+        f"spending band for {year}: {g.spending:,.2f} ({g.band}) on a balance "
+        f"of {g.balance:,.2f}"
+    ]
+    ends = glidepath.runs_out(g.rows)
+    path = (
+        f"glide path for {year}: {g.accessible:,.2f} reachable before age "
+        f"{g.access_age:g}, the floor to then needs {g.floor_needed:,.2f}"
+    )
+    if g.floor_shortfall:
+        path += f" (short {g.floor_shortfall:,.2f})"
+    if ends:
+        path += f"; runs out at age {ends}"
+    elif g.rows:
+        path += f"; lasts through age {g.rows[-1].age}"
+    out.append(path)
+    said = spending.against_actual(lay, year, g.spending)
+    if said:
+        out.append(said)
+    return out
+
+
 def _checklist(lay: Layout, ro: Rollover, limits_line: str, missing: list[str]) -> Path:
     nxt = ro.year + 1
     lines = [f"Rollover {ro.year} -> {nxt} (version {ro.version})", ""]
@@ -281,6 +315,7 @@ def roll(lay: Layout, year: int, today: date | None = None) -> Rollover:
     if past and {k: past[-1][k] for k in record} == record:
         ro = Rollover(year, int(past[-1]["version"]), False, c)
         ro.notes.append(f"{year} is already rolled as version {ro.version}")
+        ro.plan = _plan(lay, year + 1, today)
         return ro
     ro = Rollover(year, len(past) + 1, True, c)
     if past:
@@ -301,6 +336,7 @@ def roll(lay: Layout, year: int, today: date | None = None) -> Rollover:
     rep = needed(lay, year + 1)
     missing = [s.need.key for s in rep.by_state("missing") if s.need.key in ASK]
     ro.checklist = _checklist(lay, ro, limits.summary(lim), missing)
+    ro.plan = _plan(lay, year + 1, today)
     past.append(
         {
             "version": ro.version,
@@ -342,6 +378,7 @@ def render(ro: Rollover) -> str:
     if ro.snapshot:
         out.append(f"snapshot: {ro.snapshot}")
     out.extend(ro.accessible)
+    out.extend(ro.plan)
     if ro.checklist:
         out.append(f"checklist: {ro.checklist}")
         out.extend(

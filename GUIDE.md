@@ -906,8 +906,17 @@ year by default). Rolling over:
   - turn dividend reinvestment off
   - use specific-ID cost basis
   - answer anything still missing
+- **Reports next year's spending band and glide path**, recomputed from the
+  balance the ledger holds now: the year's spend and where it sits in the
+  band, what you can reach before the IRA opens against what the floor
+  needs, and the age the money runs out (or lasts through). Until the
+  spending profile is filled in, it says which answer is still missing.
 - **Asks for next year's figures** when run in a console (`--ask`), such as
-  the new Social Security estimates. Pressing Enter keeps the value shown.
+  the new Social Security estimates, ending with what the household really
+  spent in the year that ended (`spending_actual`). Pressing Enter keeps the
+  value shown. Once typed, the rollover report and `planner spend` show it
+  beside the band: "2025 spending was 58,000.00: 2,000.00 above the 2026
+  band's 56,000.00".
 
 Running it again changes nothing. If a corrected form arrives later, or the
 filed return is closed, the next `planner run` (or `planner rollover`)

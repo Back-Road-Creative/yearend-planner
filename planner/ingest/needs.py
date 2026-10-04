@@ -324,6 +324,16 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("Glide path", "Cash buffer", "Levers"),
     ),
     Need(
+        "spending_actual",
+        "What the household spent last year (annual $)",
+        "the spending band's check against what the year really cost",
+        "everything that left the household in the year that ended: bank and "
+        "card statements, less transfers between your own accounts",
+        "money",
+        PRIOR,
+        unlocks=("Spending band", "Year rollover"),
+    ),
+    Need(
         "withdrawal_rate",
         "Withdrawal rate",
         "the glide path, e.g. 0.035",
