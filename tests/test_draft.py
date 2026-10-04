@@ -12,7 +12,7 @@ import pytest
 from typer.testing import CliRunner
 
 from planner.cli import app
-from planner.ingest.needs import enter, need_for, parse_value
+from planner.ingest.needs import enter, need_for, needed, parse_value
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
@@ -724,3 +724,75 @@ def test_line_36b_note_reaches_a_joint_return_whose_filer_is_under_65(
     assert d.get("Sch 1-A", "36a") is None
     (note,) = [n for n in d.notes if "line 36b" in n]
     assert "born before January 2, 1962" in note
+
+
+def _sched_b_lay(planner_home: Path, banks: tuple[float, float], div: float) -> Layout:
+    """Two synthetic banks' interest (box 1, one with box 3 Treasury interest)
+    and one fund's ordinary dividends; nothing typed for either."""
+    lay = Layout(planner_home)
+    lay.ensure()
+    _answers(lay, birth_date="1971-06-15", filing_status="single", state="NC")
+    _answers(lay, wages="50,000", se_income="0")
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    db.add_document(
+        conn,
+        fingerprint="synthetic-sched-b",
+        file_name="synthetic-sched-b.pdf",
+        kind="pdf",
+        pages=1,
+        batch="b1",
+        facts=[
+            db.Fact("1099-INT", YEAR, "First Bank (synthetic)", "1", "x", banks[0], 1),
+            db.Fact("1099-INT", YEAR, "Second Bank (synthetic)", "1", "x", banks[1], 1),
+            db.Fact("1099-INT", YEAR, "Second Bank (synthetic)", "3", "x", 200.0, 1),
+            db.Fact("1099-DIV", YEAR, "Example Fund (synthetic)", "1a", "x", div, 1),
+            db.Fact(
+                "1099-DIV", YEAR, "Example Fund (synthetic)", "1b", "x", div / 2, 1
+            ),
+        ],
+    )
+    conn.close()
+    return lay
+
+
+def _rows_of(d: draft.Draft, form: str, line: str) -> list[draft.Line]:
+    return [ln for ln in d.lines if (ln.form, ln.line) == (form, line)]
+
+
+def test_schedule_b_required_over_1500(planner_home: Path) -> None:
+    lay = _sched_b_lay(planner_home, (900.0, 700.0), 2_000.0)
+    d = draft.build(lay, YEAR)
+    assert _checks(d) == [], d.notes
+    payers = _rows_of(d, "Sch B", "1")
+    assert [(ln.label, ln.value) for ln in payers] == [
+        ("First Bank (synthetic)", 900.0),
+        ("Second Bank (synthetic)", 900.0),  # box 1 plus box 3
+    ]
+    assert "1099-INT box 1" in payers[0].source and "box 3" in payers[1].source
+    assert _need(d, "Sch B", "2") == 1_800.0
+    assert _need(d, "Sch B", "3") == 0.0
+    assert _need(d, "Sch B", "4") == 1_800.0 == _need(d, "1040", "2b")
+    (fund,) = _rows_of(d, "Sch B", "5")
+    assert fund.label == "Example Fund (synthetic)" and "1099-DIV box 1a" in fund.source
+    assert _need(d, "Sch B", "6") == 2_000.0 == _need(d, "1040", "3b")
+    assert "Sch B" in draft.ORDER and "Schedule B" in draft.render(d)
+    # Part III is asked, never assumed
+    assert d.get("Sch B", "7a") is None
+    assert any("Schedule B Part III" in n and "foreign_accounts" in n for n in d.notes)
+    missing = {s.need.key for s in needed(lay, YEAR).by_state("missing")}
+    assert "foreign_accounts" in missing
+    enter(lay, YEAR, "foreign_accounts", "no")
+    d = draft.build(lay, YEAR)
+    (l7a,) = _rows_of(d, "Sch B", "7a")
+    assert l7a.label.endswith("No") and "foreign_accounts" in l7a.source
+    assert not any("Schedule B Part III" in n for n in d.notes)
+
+
+def test_schedule_b_left_out_at_1500_or_less(planner_home: Path) -> None:
+    lay = _sched_b_lay(planner_home, (800.0, 500.0), 1_500.0)  # 1,500 each: not over
+    d = draft.build(lay, YEAR)
+    assert _need(d, "1040", "2b") == 1_500.0 and _need(d, "1040", "3b") == 1_500.0
+    assert not [ln for ln in d.lines if ln.form == "Sch B"]
+    assert any("Schedule B is not required" in n for n in d.notes), d.notes
+    keys = {s.need.key for s in needed(lay, YEAR).items}
+    assert "foreign_accounts" not in keys  # asked only when Schedule B is required

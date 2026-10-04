@@ -38,6 +38,7 @@ TYPED = "Typed answers"  # the group of items no document supplies
 MANUAL_VALUES = "values"
 MANUAL_DONT_HAVE = "dont_have"
 ACCOUNT = "account:"  # dynamic keys: account:<number>, account:<number>:death
+SCHEDULE_B_OVER = 1500.0  # interest or ordinary dividends over this need Schedule B
 FILING = ("single", "married_joint", "married_separate", "head_of_household")
 
 
@@ -69,6 +70,9 @@ class Need:
     ) = None
     doc: str = ""  # key of DOCS: the document that supplies it ("" = typed)
     unlocks: tuple[str, ...] = ()  # plan outputs (OUTPUTS) this item feeds
+    # Asked only when this holds for the values so far (Schedule B's Part III
+    # only when Schedule B is required); None = always asked.
+    asked: Callable[[dict[str, Any]], bool] | None = None
 
     def __post_init__(self) -> None:
         if self.doc and self.doc not in DOCS:
@@ -664,6 +668,20 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("MAGI headroom", "Draft 1040", "Expected forms"),
     ),
     Need(
+        "foreign_accounts",
+        "A foreign financial account or foreign trust this year (yes or no)",
+        "Schedule B Part III lines 7a and 8: asked whenever Schedule B is "
+        "required, never assumed",
+        "your own records: a bank, brokerage or pension account held outside "
+        "the U.S., signature authority over one, or a foreign trust",
+        "enum",
+        choices=("yes", "no"),
+        unlocks=("Draft 1040",),
+        asked=lambda so_far: schedule_b_required(
+            so_far.get("interest"), so_far.get("ordinary_dividends")
+        ),
+    ),
+    Need(
         "qualified_dividends",
         "Qualified dividends",
         "0% / 15% rate stacking",
@@ -877,6 +895,12 @@ def group_by_document(items: Iterable[Status]) -> list[Group]:
         else:
             typed.items.append(st)
     return [*by_doc.values(), *([typed] if typed.items else [])]
+
+
+def schedule_b_required(interest: Any, dividends: Any) -> bool:
+    """Schedule B is filed when taxable interest or ordinary dividends are
+    over $1,500 (Schedule B instructions); a missing figure counts as 0."""
+    return any(float(x or 0) > SCHEDULE_B_OVER for x in (interest, dividends))
 
 
 def manual_path(lay: Layout, year: int) -> Path:
@@ -1178,12 +1202,20 @@ def needed(lay: Layout, year: int) -> NeedsReport:
         conn.close()
 
 
+def _so_far(report: NeedsReport) -> dict[str, Any]:
+    return {
+        s.need.key: s.value for s in report.items if s.state in ("actual", "estimate")
+    }
+
+
 def _needed(conn: sqlite3.Connection, lay: Layout, year: int) -> NeedsReport:
     profile = load_profile(lay)
     manual = load_manual(lay, year)
     profile_dh = set(_read(dont_have_path(lay)).get(MANUAL_DONT_HAVE, []))
     report = NeedsReport(year)
     for need in NEEDS:
+        if need.asked is not None and not need.asked(_so_far(report)):
+            continue
         if need.scope == PROFILE and profile.get(need.key) is not None:
             report.items.append(Status(need, "actual", profile[need.key], "profile"))
             continue
@@ -1217,11 +1249,7 @@ def _needed(conn: sqlite3.Connection, lay: Layout, year: int) -> NeedsReport:
             continue
         note = ""
         if need.derive_text is not None:
-            so_far = {
-                s.need.key: s.value
-                for s in report.items
-                if s.state in ("actual", "estimate")
-            }
+            so_far = _so_far(report)
             if (said := need.derive_text(lay.config, conn, year, so_far)) is not None:
                 if said[0] is not None:
                     report.items.append(Status(need, "actual", said[0], said[1]))
