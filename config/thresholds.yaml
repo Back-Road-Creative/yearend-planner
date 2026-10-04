@@ -1,6 +1,42 @@
 # Thresholds the planner watches. Every value carries its source. Refreshed from
 # the engine's parameters each year where the engine has them (Phase 4b).
 # All figures single filer unless noted; dollars.
+2025:
+  # Hand rows the planner reads beyond the engine's own (a 2025 return is
+  # prepared in 2026, so the prior year needs them too).
+  hsa_limit_self:
+    value: 4300
+    source: "Rev. Proc. 2024-25 (self-only HDHP coverage)"
+  hsa_limit_family:
+    value: 8550
+    source: "Rev. Proc. 2024-25 (family HDHP coverage)"
+  hsa_catchup_55plus:
+    value: 1000
+    source: "IRC 223(b)(3)(B) (not indexed)"
+  ira_phaseout_single_start:
+    value: 79000
+    source: "IRS Notice 2024-80 (covered by a workplace plan; single / head of household)"
+  ira_phaseout_single_width:
+    value: 10000
+    source: "IRC 219(g)(2)(A)(ii)"
+  ira_phaseout_joint_start:
+    value: 126000
+    source: "IRS Notice 2024-80 (covered by a workplace plan; married filing jointly)"
+  ira_phaseout_joint_width:
+    value: 20000
+    source: "IRC 219(g)(2)(A)(i)"
+  roth_phaseout_single_start:
+    value: 150000
+    source: "IRS Notice 2024-80 (Roth IRA contribution phase-out; single / head of household)"
+  roth_phaseout_single_width:
+    value: 15000
+    source: "IRC 408A(c)(3)(A)"
+  roth_phaseout_joint_start:
+    value: 236000
+    source: "IRS Notice 2024-80 (Roth IRA contribution phase-out; married filing jointly)"
+  roth_phaseout_joint_width:
+    value: 10000
+    source: "IRC 408A(c)(3)(A)"
 2026:
   std_deduction_single:
     value: 16100

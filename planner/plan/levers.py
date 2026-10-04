@@ -26,7 +26,7 @@ from typing import Any
 
 from planner.config import load_thresholds
 from planner.engine.household import Household, MissingInputError
-from planner.engine.tax import TaxResult, compute, r
+from planner.engine.tax import CONFIG_PARAMS, TaxResult, compute, engine_value, r
 from planner.ingest.needs import load_profile, need_values
 from planner.ledger import db, portfolio
 from planner.paths import Layout
@@ -170,7 +170,12 @@ def year_thresholds(lay: Layout, year: int) -> tuple[dict[str, float], list[str]
             f"limits for {year} not in config/thresholds.yaml: {have[-1]} values "
             "used (planner thresholds)"
         )
-    return {k: v["value"] for k, v in rows[have[-1]].items()}, notes
+    th = {k: v["value"] for k, v in rows[have[-1]].items()}
+    # a hand year lists only the rows the engine lacks; the engine's own rows
+    # come from the installed engine when its file does not cover this year
+    for name in CONFIG_PARAMS:
+        th.setdefault(name, engine_value(name, have[-1])[0])
+    return th, notes
 
 
 def _year_end(year: int) -> str:

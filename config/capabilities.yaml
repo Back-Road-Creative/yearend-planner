@@ -54,3 +54,6 @@ planner_run: verified  # tests/test_serve.py; 127.0.0.1 + per-run token + Host c
 backup_restore: verified  # tests/test_backup.py; AES-256 or plain zip + sha256 manifest; restore refuses hostile/damaged/wrong-password archives before data/ moves; data-previous until next clean run; --undo
 input_validation: verified  # tests/test_validation.py; typed answers bounded and refused with what is expected; CLI years/amounts/ports ranged
 stale_banner: verified  # tests/test_validation.py; >90 days since last import -> banner atop the page, plan still runs
+release: verified  # tests/test_privacy.py + .github/workflows/release.yml; tag -> suite, build, windows_proof, draft release with .sha256
+privacy_audit: verified  # tests/test_privacy.py; release stages git-tracked files only, audit() refuses private folders/databases, sentinel absent
+end_to_end: verified  # tests/test_end_to_end.py; inbox -> dashboard, fresh config + data/ renders the identical page

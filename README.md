@@ -716,3 +716,33 @@ and steps have bounds too. Click rejects a bad value with "Invalid value".
 
 More than 90 days after the last document import, a banner atop the page says
 how old the figures are. The plan still runs.
+
+## Releases and the privacy audit (Phase 8c)
+
+To publish a release, set `__version__` in `planner/__init__.py`, then push a
+tag `vX.Y.Z` that matches it. `.github/workflows/release.yml` then runs these
+steps on a clean Windows runner:
+
+1. checks that the tag matches the version
+2. runs the suite
+3. builds the zip
+4. proves it with `scripts/windows_proof.ps1`
+5. attaches the zip and its `.sha256` to a **draft** release
+
+Publishing the draft is a person's decision. The update check reads published
+releases only.
+
+The release can only contain files git tracks. `scripts/build_release.py`
+stages its contents from `git ls-files`, so a developer's own `data/`, `out/`
+or untracked notes cannot ship. Before zipping, `audit()` refuses a stage that
+holds a private folder or a database. `tests/test_privacy.py` plants a sentinel
+string in `data/`, `out/`, an untracked config file and an untracked module,
+then builds a release from that tree and checks that no entry carries the
+sentinel. It also checks that git tracks nothing under `data/`, `out/` or
+`dist/`.
+
+`tests/test_end_to_end.py` is the done test:
+
+1. synthetic 1099 PDFs dropped in the inbox reach the dashboard
+2. a fresh copy of the release's `config/` plus only the `data/` folder (a new
+   computer, or a restored backup) renders a byte-identical page
