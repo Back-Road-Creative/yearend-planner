@@ -848,7 +848,11 @@ def _inherited(c: _Ctx) -> Lever:
     amount, why = _roomed(c, balance)
     if amount <= 0:
         return _none(key, ROOM, label, due, why)
-    ends = ", ".join(f"{acct} empty by {by}" for acct, _, by in c.st.inherited)
+    ends = ", ".join(
+        f"{acct} empty by {by}"
+        + (f", {rmd}" if (rmd := portfolio.rmd_text(c.st, acct)) else "")
+        for acct, _, by in c.st.inherited
+    )
     return Lever(
         key,
         ROOM,

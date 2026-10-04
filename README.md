@@ -37,7 +37,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 
 | Command | What it does |
 |---|---|
-| `account` | Describe one account (type, name, date of death, typed balance) in data/profile/accounts.yaml; with no arguments, list them. |
+| `account` | Describe one account (type, name, date of death, yearly RMDs, typed balance) in data/profile/accounts.yaml; with no arguments, list them. |
 | `backup` | Zip data/ and config/ into one file you can copy to a USB drive. |
 | `categorize` | Schedule C from the bank rows: categorise them by a rule (a piece of the description) or one row at a time, then see the lines and what is left. |
 | `check-config` | Load config/ and report; exit non-zero on a malformed file. |
@@ -72,7 +72,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `schedule` | Register a monthly quiet run (`planner.cmd run --quiet`, the 1st at 09:00) with Windows Task Scheduler; `--remove` deletes it. |
 | `selfcheck` | Run one real federal calculation through the tax engine and print it; --regression runs the shipped reference cases instead and prints the engine's figure for each. |
 | `spend` | The spending band: rate x balance clamped to the floor and ceiling, the drawdown rule against the inflation-adjusted peak, and the return-band table under the floor and planning returns (real dollars). |
-| `status` | The portfolio today: every account, total, accessible and locked money, the all-time peak, YTD income by type, unrealized gains and the carryforward. |
+| `status` | The portfolio today: every account, total, accessible and locked money, the Roth withdrawal order, the all-time peak, YTD income by type and its gap to the filed 1099s, unrealized gains and the carryforward. |
 | `sweep` | Sweep one input across a range in a single engine run; one JSON row per step. |
 | `taxpack` | Everything a preparer asks for in out/tax-<year>/: the draft return (text and printable HTML), Form 8949 CSV, Schedule C, carryforward and basis, estimated payments, the form inventory, and the originals ZIP. |
 | `thresholds` | The sourced limits in config/thresholds.yaml for a year, checked against the engine's own parameters. |

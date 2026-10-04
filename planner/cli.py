@@ -894,11 +894,16 @@ def account(
     ),
     name: str | None = typer.Option(None, help="a label for the status page"),
     date_of_death: str | None = typer.Option(None, help="inherited IRA: YYYY-MM-DD"),
+    annual_rmd: bool | None = typer.Option(
+        None,
+        "--annual-rmd/--no-annual-rmd",
+        help="inherited IRA: the owner had begun RMDs, so yearly RMDs apply",
+    ),
     balance: str | None = typer.Option(
         None, help="typed balance for an account no export covers"
     ),
 ) -> None:
-    """Describe one account (type, name, date of death, typed balance) in
+    """Describe one account (type, name, date of death, yearly RMDs, typed balance) in
     data/profile/accounts.yaml; with no arguments, list them."""
     from datetime import date
 
@@ -914,6 +919,7 @@ def account(
         "type": type,
         "name": name,
         "date_of_death": date_of_death,
+        "annual_rmd": annual_rmd,
     }
     if balance is not None:
         need = portfolio.account_balance_need(number)
@@ -999,7 +1005,8 @@ def status(
     as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
 ) -> None:
     """The portfolio today: every account, total, accessible and locked money,
-    the all-time peak, YTD income by type, unrealized gains and the carryforward."""
+    the Roth withdrawal order, the all-time peak, YTD income by type and its gap
+    to the filed 1099s, unrealized gains and the carryforward."""
     from datetime import date
 
     from planner.ledger import portfolio
@@ -1025,14 +1032,28 @@ def status(
         typer.echo(f"untyped      {st.untyped:>14,.2f}")
     typer.echo(f"peak         {st.peak:>14,.2f}  ({st.peak_date})")
     for number, death, by in st.inherited:
+        rmd = portfolio.rmd_text(st, number)
+        rmd = f"; {rmd}" if rmd else ""
         typer.echo(
-            f"inherited IRA {number}: death {death}; empty it by {by} (10-year rule)"
+            f"inherited IRA {number}: death {death}; empty it by {by} "
+            f"(10-year rule){rmd}"
         )
     for c in st.conversions:
         typer.echo(
             f"conversion   {c.date} {c.amount:>12,.2f} from {c.source_account}; "
             f"penalty-free {c.accessible_date}"
         )
+    layers = portfolio.roth_layers(st)
+    if layers:
+        typer.echo("Roth withdrawal order")
+        for lr in layers:
+            typer.echo(f"  {lr.amount:>14,.2f}  {lr.label}")
+    for g in st.gaps:
+        if g.gap:
+            typer.echo(
+                f"{g.form} {g.reported:>14,.2f} vs YTD {g.box} {g.ytd:,.2f}: "
+                f"{g.gap:+,.2f} (the form is the figure filed)"
+            )
     if st.ytd_income:
         typer.echo(f"YTD income {st.year}")
         for box, value in st.ytd_income.items():

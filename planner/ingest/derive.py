@@ -44,6 +44,52 @@ LABELS = {
 }
 
 
+# YTD box -> the form box that reports the same figure once the year's forms
+# arrive. The form is then the authority (the needs lookup reads it first); the
+# YTD figure stays only to show how far the projection was off.
+FORM_BOXES = {
+    "st_proceeds": ("1099-B", "st_proceeds"),
+    "st_basis": ("1099-B", "st_basis"),
+    "lt_proceeds": ("1099-B", "lt_proceeds"),
+    "lt_basis": ("1099-B", "lt_basis"),
+    "dividends": ("1099-DIV", "1a"),
+    "capital_gain_distributions": ("1099-DIV", "2a"),
+    "interest": ("1099-INT", "1"),
+}
+
+
+@dataclass(frozen=True)
+class Gap:
+    box: str  # the YTD box
+    form: str  # "1099-DIV 1a"
+    ytd: float
+    reported: float  # every payer's form for the year, summed
+
+    @property
+    def gap(self) -> float:
+        return round(self.reported - self.ytd, 2)
+
+
+def gaps(conn: sqlite3.Connection, year: int) -> list[Gap]:
+    """Each YTD figure a filed form also reports, beside the form's figure:
+    the gap is reported, the two are never added. Boxes with no YTD figure or
+    no form yet are left out."""
+    ytd: dict[str, float] = defaultdict(float)
+    for f in db.facts_for(conn, year, FORM):
+        ytd[f.box] += f.value
+    reported: dict[tuple[str, str], float] = defaultdict(float)
+    forms = {form for form, _ in FORM_BOXES.values()}
+    for f in db.facts_for(conn, year):
+        if f.form in forms:
+            reported[(f.form, f.box)] += f.value
+    return [
+        Gap(box, f"{form} {fbox}", round(ytd[box], 2), round(reported[key], 2))
+        for box, key in FORM_BOXES.items()
+        for form, fbox in [key]
+        if box in ytd and key in reported
+    ]
+
+
 def _classify_income(kind: str, typ: str) -> str | None:
     low = typ.lower()
     if "capital gain" in low:

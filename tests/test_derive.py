@@ -18,6 +18,7 @@ from planner.ingest.derive import (
     counties_for_zip,
     derive,
     derive_year,
+    gaps,
     resolve_county,
 )
 from planner.ingest.needs import Status, enter, needed
@@ -317,3 +318,39 @@ def test_the_state_table_agrees_with_the_engines_county_list() -> None:
     mod = _refresh_script()
     # the engine also lists the US Minor Outlying Islands (74), which have no ZCTA
     assert engine - set(mod.STATE_BY_FIPS.items()) == {("74", "UM")}
+
+
+def test_ytd_vs_1099_gap_reported(lay: Layout) -> None:
+    """Once the 1099 is in it is the authority: each YTD figure it also reports
+    is shown beside the form's figure with the gap, never added to it."""
+    drop(lay, "income.csv", INCOME)
+    ingest(lay)
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    assert gaps(conn, 2025) == []  # no form yet: nothing to compare
+    db.add_document(
+        conn,
+        fingerprint="div-2025",
+        file_name="1099-div.pdf",
+        kind="pdf",
+        pages=1,
+        batch="b1",
+        facts=[
+            db.Fact("1099-DIV", 2025, "Vanguard", "1a", "Ordinary dividends", 850.0, 1),
+            db.Fact("1099-DIV", 2025, "Vanguard", "2a", "Capital gain dist", 150.0, 1),
+        ],
+    )
+    got = gaps(conn, 2025)
+    assert [(g.box, g.form, g.ytd, g.reported, g.gap) for g in got] == [
+        ("dividends", "1099-DIV 1a", 832.43, 850.0, 17.57),
+        ("capital_gain_distributions", "1099-DIV 2a", 150.0, 150.0, 0.0),
+    ]
+    # the needs lookup reads the form, not the form plus the YTD figure
+    from planner.ingest.needs import need_value
+
+    assert need_value(conn, lay, 2025, "ordinary_dividends") == 850.0
+    r = runner.invoke(
+        app, ["status", "--year", "2025"], env={"PLANNER_HOME": str(lay.root)}
+    )
+    assert r.exit_code == 0, r.output
+    assert "1099-DIV 1a" in r.output and "+17.57" in r.output
+    assert "1099-DIV 2a" not in r.output  # no gap, no line

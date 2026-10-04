@@ -159,7 +159,11 @@ year), deposits and withdrawals from bank rows. Every ingest recomputes them and
 supersedes the last run; `planner derive --year 2025` reruns one year by hand.
 `planner facts --year 2025 --form YTD` shows them beside the forms, box for box
 (the realized boxes use the 1099-B names), so the estimate and the statement can be
-compared the day the form lands.
+compared the day the form lands. Once a year's 1099 is in, it is the figure the
+plan and the return use; the YTD figure is never added to it. `planner status`
+and a dashboard alert show each gap (1099-B proceeds and basis, 1099-DIV 1a and
+2a, 1099-INT 1 against the YTD box), so a missed export or a late correction is
+visible instead of silently replaced.
 
 ## The Needed panel (Phase 2d)
 
@@ -254,7 +258,10 @@ Every account number the exports name is an account; the planner asks for each
 one's kind exactly once through the Needed panel (`planner enter
 account:12345678 taxable`, one of `taxable`, `trad_ira`, `inherited_ira`, `roth`,
 `hsa`, `cash`) and, for an inherited IRA, the date of death that starts the
-10-year clock. `planner account <number> --name ... --type ... --balance ...`
+10-year clock. An inherited IRA whose owner had already begun RMDs also owes a
+yearly RMD inside the 10 years: `planner account <number> --annual-rmd` (or
+`--no-annual-rmd`) records it, and `planner status` notes an inherited IRA
+whose answer is missing. `planner account <number> --name ... --type ... --balance ...`
 describes an account in `data/profile/accounts.yaml` directly; a typed balance
 is for an account no export covers (a bank export has no balance column).
 Balances are the newest holdings snapshot per account and lots the newest
@@ -267,7 +274,10 @@ contributions from `roth_basis_contributions` or the sum of Form 5498 box 10,
 and conversions past their clock) and the money that is *locked* (traditional
 and inherited IRAs, the HSA, Roth earnings, unseasoned conversions), the
 all-time peak (persisted in the ledger so a drawdown is measured from it), each
-inherited IRA's empty-by date, YTD income by type from the derived rows,
+inherited IRA's empty-by date and yearly-RMD answer, the Roth in withdrawal
+order (contributions, then each conversion oldest first with its penalty-free
+date, then earnings: Pub. 590-B; the balance caps it), YTD income by type from
+the derived rows and its gap to the filed 1099s,
 unrealized gains by lot split short/long, and the capital loss carried in
 (`prior_capital_loss_carryforward`, from last year's carryover worksheet).
 `planner convert 2026-06-01 25000 --from 33333333` records a Roth conversion and
