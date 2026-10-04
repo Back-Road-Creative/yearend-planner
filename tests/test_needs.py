@@ -17,7 +17,7 @@ from planner.plan import rollover
 from planner.taxprep import hsa
 from tests.pdfgen import make_pdf
 from tests.test_csv import BANK, REALIZED, drop
-from tests.test_forms import F1040_P1, F1040_P2, SSA
+from tests.test_forms import F1040_FILED_P1, F1040_P1, F1040_P2, M1098, SSA
 
 runner = CliRunner()
 
@@ -147,3 +147,143 @@ def test_loop_ends_when_nothing_is_missing(lay: Layout) -> None:
     assert rep.done
     r = runner.invoke(app, ["needed", "--year", "2026"])
     assert r.output.strip() == "nothing needed"
+
+
+def test_filed_1040_answers_filing_status_and_state(lay: Layout) -> None:
+    make_pdf(lay.data / "inbox" / "return.pdf", [F1040_FILED_P1, F1040_P2])
+    ingest(lay)
+    by = {s.need.key: s for s in needed(lay, 2026).items}
+    assert (by["filing_status"].state, by["filing_status"].value) == (
+        "actual",
+        "married_joint",
+    )
+    assert by["filing_status"].origin == "1040 2025 self"
+    assert (by["state"].state, by["state"].value) == ("actual", "NC")
+    assert by["county"].state == "missing"  # the ZIP is held; the county is 9h
+    assert not [k for k in ("filing_status", "state") if by[k].state == "missing"]
+
+
+def test_typed_answer_beats_the_filed_return(lay: Layout) -> None:
+    make_pdf(lay.data / "inbox" / "return.pdf", [F1040_FILED_P1, F1040_P2])
+    ingest(lay)
+    enter(lay, 2026, "filing_status", "single")
+    st = {s.need.key: s for s in needed(lay, 2026).items}["filing_status"]
+    assert (st.value, st.origin) == ("single", "profile")
+
+
+def test_a_return_with_no_check_mark_leaves_filing_status_to_be_typed(
+    lay: Layout,
+) -> None:
+    unchecked = [
+        line.replace("[X]", "[ ]") if line.startswith("[ ] Single") else line
+        for line in F1040_FILED_P1
+    ]
+    make_pdf(lay.data / "inbox" / "return.pdf", [unchecked, F1040_P2])
+    ingest(lay)
+    st = states(lay)
+    assert st["filing_status"] == "missing" and st["state"] == "actual"
+
+
+def test_latest_return_wins_and_later_years_do_not_answer_earlier_plans(
+    lay: Layout,
+) -> None:
+    old = [
+        line.replace("(2025)", "(2024)").replace("[ ] Single [X]", "[X] Single [ ]")
+        for line in F1040_FILED_P1
+    ]
+    old_p2 = [line.replace("(2025)", "(2024)") for line in F1040_P2]
+    make_pdf(lay.data / "inbox" / "old.pdf", [old, old_p2])
+    make_pdf(lay.data / "inbox" / "new.pdf", [F1040_FILED_P1, F1040_P2])
+    ingest(lay)
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    assert {f.tax_year for f in db.facts_for(conn, form="1040", text=True)} == {
+        2024,
+        2025,
+    }
+    conn.close()
+    by = {s.need.key: s for s in needed(lay, 2026).items}
+    assert by["filing_status"].value == "married_joint"
+    assert by["filing_status"].origin == "1040 2025 self"
+    by = {s.need.key: s for s in needed(lay, 2025).items}
+    assert by["filing_status"].origin == "1040 2025 self"
+    by = {s.need.key: s for s in needed(lay, 2024).items}
+    assert by["filing_status"].value == "single"
+    assert by["filing_status"].origin == "1040 2024 self"
+
+
+def _1098(year: int, interest: str, principal: str, lender: str) -> list[str]:
+    return [
+        "Form 1098 Mortgage Interest Statement",
+        f"Tax year {year}",
+        f"RECIPIENT'S/LENDER'S name: {lender}",
+        f"1 Mortgage interest received from payer(s)/borrower(s) $ {interest}",
+        f"2 Outstanding mortgage principal $ {principal}",
+    ]
+
+
+def test_two_consecutive_1098s_give_principal_and_interest(lay: Layout) -> None:
+    make_pdf(
+        lay.data / "inbox" / "a.pdf",
+        [_1098(2024, "6,500.00", "180,000.00", "Example Mortgage Co (synthetic)")],
+    )
+    make_pdf(
+        lay.data / "inbox" / "b.pdf",
+        [_1098(2025, "6,200.00", "175,000.00", "Example Mortgage Co (synthetic)")],
+    )
+    ingest(lay)
+    st = {s.need.key: s for s in needed(lay, 2026).items}["mortgage_monthly"]
+    # 2024: interest 6,500 + principal paid (180,000 - 175,000) = 11,500 a year
+    assert (st.state, st.value) == ("estimate", 958.33)
+    assert "P&I" in st.origin and "2024" in st.origin and "escrow" in st.origin
+    enter(lay, 2026, "mortgage_monthly", "1,400")  # P&I plus escrow, typed
+    st = {s.need.key: s for s in needed(lay, 2026).items}["mortgage_monthly"]
+    assert (st.state, st.value) == ("actual", 1400)
+
+
+def test_one_1098_or_a_balance_that_grew_derives_nothing(lay: Layout) -> None:
+    make_pdf(lay.data / "inbox" / "a.pdf", [M1098])
+    ingest(lay)
+    assert states(lay)["mortgage_monthly"] == "missing"
+    make_pdf(
+        lay.data / "inbox" / "b.pdf",
+        [_1098(2026, "6,200.00", "190,000.00", "Example Mortgage Co (synthetic)")],
+    )
+    ingest(lay)  # 2025 -> 2026: the balance rose (refinance); no P&I is inferred
+    assert states(lay, 2027)["mortgage_monthly"] == "missing"
+
+
+def test_1098s_from_different_lenders_are_not_paired(lay: Layout) -> None:
+    make_pdf(
+        lay.data / "inbox" / "a.pdf",
+        [_1098(2024, "6,500.00", "180,000.00", "First Lender (synthetic)")],
+    )
+    make_pdf(
+        lay.data / "inbox" / "b.pdf",
+        [_1098(2025, "6,200.00", "175,000.00", "Second Lender (synthetic)")],
+    )
+    ingest(lay)
+    assert states(lay)["mortgage_monthly"] == "missing"
+
+
+def test_a_refinanced_loan_counts_only_the_current_lender(lay: Layout) -> None:
+    old, new = "Old Lender (synthetic)", "New Lender (synthetic)"
+    statements = [
+        (2024, "7,000.00", "200,000.00", old),
+        (2025, "6,800.00", "195,000.00", old),  # paid off by the 2025 refinance
+        (2025, "6,000.00", "190,000.00", new),
+        (2026, "5,900.00", "185,000.00", new),
+    ]
+    for i, (year, interest, principal, lender) in enumerate(statements):
+        make_pdf(
+            lay.data / "inbox" / f"s{i}.pdf", [_1098(year, interest, principal, lender)]
+        )
+    ingest(lay)
+    st = {s.need.key: s for s in needed(lay, 2027).items}["mortgage_monthly"]
+    # only the pair ending in 2026 is current: (6,000 + 190,000 - 185,000) / 12
+    assert (st.state, st.value) == ("estimate", 916.67)
+    assert "New Lender" in st.origin and "Old Lender" not in st.origin
+    # a plan year before 2026 does not read the 2026 statement
+    st = {s.need.key: s for s in needed(lay, 2025).items}["mortgage_monthly"]
+    # 2024-2025 old lender: (7,000 + 200,000 - 195,000) / 12
+    assert (st.state, st.value) == ("estimate", 1000.0)
+    assert "Old Lender" in st.origin and "New Lender" not in st.origin

@@ -1,4 +1,6 @@
-# Form 1099-R. Box 7 is the distribution code; it is read as a number only when numeric.
+# Form 1099-R. Box 7 is the distribution code, kept as printed: a number, letters
+# or both ("7", "G", "1J", "7D"; Instructions for Forms 1099-R and 5498, Box 7).
+# It is optional: a missing code never unmatches the amounts.
 form: 1099-R
 years: [2024, 2025, 2026]
 match: ["1099-R"]
@@ -6,5 +8,5 @@ boxes:
   "1": {label: "Gross distribution", pattern: "\\b1 Gross distribution\\s+AMOUNT", required: true}
   "2a": {label: "Taxable amount", pattern: "\\b2a Taxable amount\\s+AMOUNT", required: true}
   "4": {label: "Federal income tax withheld", pattern: "\\b4 Federal income tax withheld\\s+AMOUNT"}
-  "7": {label: "Distribution code", pattern: "\\b7 Distribution code\\(?s?\\)?\\s+AMOUNT"}
+  "7": {label: "Distribution code", kind: text, pattern: "\\b7 Distribution code\\(?s?\\)?[ \\t]+(?-i:([1-9][A-Z]{0,2}|[A-Z]{1,2}))(?=\\s|$)"}
   "14": {label: "State tax withheld", pattern: "\\b14 State tax withheld\\s+AMOUNT"}

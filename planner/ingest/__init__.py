@@ -116,9 +116,10 @@ def _facts(forms: list[ParsedForm]) -> list[db.Fact]:
             issuer=f.issuer,
             box=box,
             label=label,
-            value=value,
+            value=0.0 if isinstance(value, str) else value,
             page=f.page,
             status="pending" if f.ocr else "accepted",
+            text=value if isinstance(value, str) else None,
         )
         for f in forms
         for box, (label, value) in sorted(f.boxes.items())

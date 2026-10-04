@@ -136,14 +136,19 @@ def due(lay: Layout, today: date) -> int | None:
     return last if held else None
 
 
-def _filing_status(lay: Layout) -> str:
-    from planner.ingest.needs import load_profile
+def _filing_status(lay: Layout, year: int) -> str:
+    """The year's filing status as the Needed panel has it (typed, else read
+    from the filed 1040); single when neither is known."""
+    from planner.ingest.needs import needed
 
-    return str(load_profile(lay).get("filing_status") or "single")
+    for st in needed(lay, year).items:
+        if st.need.key == "filing_status" and st.state in ("actual", "estimate"):
+            return str(st.value)
+    return "single"
 
 
 def _filed_carryover(
-    lay: Layout, filed: dict[str, float]
+    lay: Layout, year: int, filed: dict[str, float]
 ) -> tuple[float, float] | None:
     """(short, long) loss carried forward from the filed Schedule D, or None
     when the filed return has no Schedule D line 16."""
@@ -152,7 +157,7 @@ def _filed_carryover(
     l16 = filed.get("1040-SCHD 16")
     if l16 is None:
         return None
-    limit = 1500.0 if _filing_status(lay) == "married_separately" else 3000.0
+    limit = 1500.0 if _filing_status(lay, year) == "married_separate" else 3000.0
     l21 = filed.get("1040 7", l16 if l16 >= 0 else max(l16, -limit))
     return capgains.carryover(
         filed.get("1040-SCHD 7", 0.0),
@@ -180,7 +185,7 @@ def carry(lay: Layout, year: int) -> Carry:
     filed = close.closed(lay, year)
     if filed is not None:
         out = Carry(year, "filed")
-        loss = _filed_carryover(lay, filed)
+        loss = _filed_carryover(lay, year, filed)
         if loss is None and drafted and any(drafted):
             loss = drafted
             out.notes.append(

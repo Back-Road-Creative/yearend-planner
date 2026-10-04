@@ -173,3 +173,12 @@ def test_cli_rollover_asks_for_next_years_figures(lay: Layout) -> None:
     assert _status(lay, 2026)["ss_estimate_67"] == ("actual", 3000.0)
     r = runner.invoke(app, ["rollover", "--as-of", "2026-01-21", "--no-ask"])
     assert r.exit_code == 0 and "2025 unchanged: rolled as version 1" in r.output
+
+
+def test_married_separate_loss_limit_and_filing_status_from_the_return(
+    lay: Layout,
+) -> None:
+    filed = {"1040-SCHD 7": -5000.0, "1040-SCHD 16": -5000.0, "1040 15": 0.0}
+    assert rollover._filed_carryover(lay, 2025, filed) == (2000.0, 0.0)  # $3,000 limit
+    enter(lay, 2025, "filing_status", "married_separate")
+    assert rollover._filed_carryover(lay, 2025, filed) == (3500.0, 0.0)  # $1,500 limit

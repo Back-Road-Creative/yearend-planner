@@ -154,3 +154,37 @@ def test_no_hsa_no_form(planner_home: Path) -> None:
     finally:
         conn.close()
     assert not h.lines and "no HSA coverage" in hsa.render(h)
+
+
+def test_family_note_reads_the_filing_status_off_the_filed_return(lay: Layout) -> None:
+    enter(lay, 2025, "hsa_coverage", "family")
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    db.add_document(
+        conn,
+        fingerprint="synthetic-1040",
+        file_name="1040.pdf",
+        kind="pdf",
+        pages=1,
+        batch="b2",
+        facts=[
+            db.Fact("1040", 2024, "self", "filing_status", "", 0.0, 1, text="single")
+        ],
+    )
+    conn.close()
+    assert "split between you" not in " ".join(_store(lay, date(2025, 12, 1)).notes)
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    db.add_document(
+        conn,
+        fingerprint="synthetic-1040b",
+        file_name="1040b.pdf",
+        kind="pdf",
+        pages=1,
+        batch="b3",
+        facts=[
+            db.Fact(
+                "1040", 2025, "self", "filing_status", "", 0.0, 1, text="married_joint"
+            )
+        ],
+    )
+    conn.close()
+    assert "split between you" in " ".join(_store(lay, date(2025, 12, 1)).notes)

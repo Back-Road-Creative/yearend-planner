@@ -124,3 +124,28 @@ def test_header_shows_the_last_update_check_and_the_years_covered(
     assert "2027 is not published" in render.html(pg)
     pg.years = [*pg.years, 2027]
     assert "2027 is not published" not in render.html(pg)
+
+
+@pytest.mark.engine
+def test_page_renders_a_pending_ocr_document_with_a_text_box(
+    planner_home: Path,
+) -> None:
+    from planner.ingest import ingest
+    from tests.pdfgen import make_pdf
+    from tests.test_forms import F1099R
+
+    home = Layout(planner_home)
+    home.ensure()
+    make_pdf(home.data / "inbox" / "scan.pdf", [[]])
+    words = "\n".join(F1099R[:-1] + ["7 Distribution code(s) 6"])
+    ingest(home, ocr=lambda path: [words])
+    pg = page.gather(home, 2026, AS_OF)
+    (doc,) = pg.pending
+    assert ("7", "Distribution code", "6") in [
+        (box, label, value) for box, label, value in doc.values
+    ]
+    live = render.html(pg, token="t0k3n")  # noqa: S106
+    static = render.write_static(home, pg).read_text(encoding="utf-8")
+    for text in (live, static):
+        assert "Distribution code" in text and "12,000.00" in text
+        assert '<td class="num">6</td>' in text

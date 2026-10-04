@@ -10,15 +10,16 @@ from planner.paths import Layout
 
 
 def pending(conn: sqlite3.Connection) -> list[db.FactRow]:
-    return db.facts_for(conn, status="pending")
+    return db.facts_for(conn, status="pending", text=None)
 
 
 def accept(
-    conn: sqlite3.Connection, doc_id: int, edits: dict[str, float] | None = None
+    conn: sqlite3.Connection, doc_id: int, edits: dict[str, float | str] | None = None
 ) -> list[db.FactRow]:
     """Take one document's pending facts into the ledger, after any typed
-    corrections; the accepted facts they replace are superseded, as a fresh
-    drop of the form would do."""
+    corrections (a dollar figure for a money box, words for a text box); the
+    accepted facts they replace are superseded, as a fresh drop of the form
+    would do."""
     pend = [f for f in pending(conn) if f.document_id == doc_id]
     if not pend:
         raise KeyError(f"document {doc_id} has no values awaiting confirm")
@@ -28,11 +29,21 @@ def accept(
         raise KeyError(f"document {doc_id} has no box {', '.join(unknown)}")
     with conn:
         for box, value in edits.items():
-            conn.execute(
-                "UPDATE facts SET value_cents = ? WHERE document_id = ? AND box = ? "
-                "AND status = 'pending'",
-                (db.to_cents(value), doc_id, box),
-            )
+            for f in (f for f in pend if f.box == box):
+                if f.text is None:
+                    conn.execute(
+                        "UPDATE facts SET value_cents = ? WHERE document_id = ? "
+                        "AND box = ? AND form = ? AND status = 'pending' "
+                        "AND value_text IS NULL",
+                        (db.to_cents(_money(box, value)), doc_id, box, f.form),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE facts SET value_text = ? WHERE document_id = ? "
+                        "AND box = ? AND form = ? AND status = 'pending' "
+                        "AND value_text IS NOT NULL",
+                        (_words(box, value), doc_id, box, f.form),
+                    )
         for key in {(f.form, f.tax_year, f.issuer) for f in pend}:
             conn.execute(
                 "UPDATE facts SET status = 'superseded' WHERE form = ? AND "
@@ -44,7 +55,23 @@ def accept(
             "AND status = 'pending'",
             (doc_id,),
         )
-    return [f for f in db.facts_for(conn) if f.document_id == doc_id]
+    return [f for f in db.facts_for(conn, text=None) if f.document_id == doc_id]
+
+
+def _money(box: str, value: float | str) -> float:
+    if isinstance(value, str):
+        try:
+            return float(value.replace(",", "").replace("$", ""))
+        except ValueError:
+            raise ValueError(f"box {box}: a dollar amount, got {value!r}") from None
+    return value
+
+
+def _words(box: str, value: float | str) -> str:
+    words = " ".join(str(value).split())
+    if not words or not words.isprintable():
+        raise ValueError(f"box {box}: words with no control characters")
+    return words
 
 
 def reject(lay: Layout, conn: sqlite3.Connection, doc_id: int) -> str:
