@@ -441,8 +441,13 @@ trade inside a wash-sale window, needs outside cash, irreversible). Net is
 federal tax (income + SE) plus NC tax minus the ACA credit, saved or spent
 against doing nothing; friction is never folded into the number.
 
-- **Get under a line**: a loss harvest, deferring a planned sale (`--st`,
-  `--lt`), an HSA contribution, the SE health insurance deduction, a
+- **Get under a line**: pairing losses against the year's realized gains
+  (only enough loss to net the gain to 0; a lot can be sold in part, lots
+  clear of a wash-sale window first), a loss harvest of the rest, spending
+  cash or Roth basis (contributions and seasoned conversions) instead of a
+  planned sale (no MAGI: the gain is never realized), deferring a planned
+  sale (`--st`, `--lt`; it moves the same gain as spending basis, so it is
+  priced alone, not stacked), an HSA contribution, the SE health insurance deduction, a
   deductible traditional IRA contribution and last year's capital-loss
   carryforward. Each is worth what it adds inside the combined set (all of
   them, against all but this one), so overlapping moves are not double
@@ -454,6 +459,13 @@ against doing nothing; friction is never folded into the number.
   withdrawal, and a Roth contribution (no tax effect). They share the room
   before the next line, so each is priced alone and ranked by what each
   dollar costs now.
+- **Income targeting** (your choice; never picked for you): with a
+  traditional IRA, the conversion that keeps a month's income under the
+  Medicaid line, the one that lands just over it (the marketplace with the
+  largest credit) and the one just under the ACA 400% cliff sit side by side,
+  each with its tax, the credit it costs and how many of the 12 months stay
+  under the Medicaid line. Medicaid vs the marketplace is a coverage choice,
+  so the optimizer never makes it.
 
 A lever missing an input names it: `hsa_coverage` (none, self or family) and
 `workplace_plan` (W-2 box 13) are Needed-panel questions; limits, catch-ups

@@ -8,6 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from planner.cli import app
+from planner.engine.tax import compute
 from planner.ingest.needs import enter
 from planner.paths import Layout
 from planner.plan import conversion, levers, year
@@ -32,7 +33,9 @@ def test_catalog_sizes_from_the_ledger_and_names_what_it_needs(
     _, found, _ = levers.catalog(lots, 2026, AS_OF)
     by = {lv.key: lv for lv in found}
     assert [lv.key for lv in found] == [
+        "pair_losses",
         "harvest_losses",
+        "spend_basis",
         "defer_sales",
         "hsa",
         "se_health",
@@ -211,3 +214,82 @@ def test_conversion_names_the_nc_rate_step(lay: Layout) -> None:  # noqa: F811
         f"NC tax on it would be {saved:,} lower in 2027 at 3.49% (scheduled): "
         "a conversion that can wait saves that"
     ) in conv.side_effects
+
+
+@pytest.mark.engine
+def test_pair_losses_nets_gain_to_zero(lots: Layout) -> None:  # noqa: F811
+    """The loss sold is sized to the year's realized gain, not every loser."""
+    ov = Overrides(planned_lt_sales=8_000.0)
+    ctx, found, _ = levers.catalog(lots, 2026, AS_OF, ov)
+    gain = ctx.hh.short_term_gains + ctx.hh.long_term_gains
+    assert 0 < gain < 10_000
+    by = {lv.key: lv for lv in found}
+    pair, harvest = by["pair_losses"], by["harvest_losses"]
+    assert pair.amount == gain and pair.friction == levers.WASH
+    paired = pair.apply(ctx.hh)
+    assert paired.short_term_gains + paired.long_term_gains == 0
+    assert f"nets the year's realized gain of {gain:,.0f} to 0" in pair.why
+    assert harvest.amount == 10_000 - gain  # the rest of the loss, past the gains
+    m = levers.menu(answered(lots), 2026, AS_OF, ov)
+    rows = {rw.name: rw for rw in m.lower[1:]}
+    assert {"pair_losses", "harvest_losses", "spend_basis"} <= set(rows)
+    # inside the set the other losses already cover the gains; alone it saves
+    assert rows["pair_losses"].net >= 0
+    alone = levers.whatif(lots, 2026, ["pair_losses"], as_of=AS_OF, ov=ov)
+    assert alone.net > 0 and alone.after.agi == alone.before.agi - gain
+    # no realized gain: nothing to pair, the whole loss is the harvest
+    _, found, _ = levers.catalog(lots, 2026, AS_OF)
+    by = {lv.key: lv for lv in found}
+    assert not by["pair_losses"].available
+    assert by["pair_losses"].why.startswith("no realized gain")
+    assert by["harvest_losses"].amount == 10_000.0
+
+
+@pytest.mark.engine
+def test_spend_basis_zero_magi(lots: Layout) -> None:  # noqa: F811
+    """Cash and Roth basis fund spending with no MAGI: the planned gain is
+    never realized. Deferring the same gain is an alternative, not stacked."""
+    ov = Overrides(planned_lt_sales=8_000.0)
+    _, found, _ = levers.catalog(lots, 2026, AS_OF, ov)
+    spend = next(lv for lv in found if lv.key == "spend_basis")
+    assert (spend.amount, spend.delta) == (8_000.0, (("long_term_gains", -8_000),))
+    assert "200,000 of cash and 0 of Roth basis" in spend.why
+    m = levers.menu(answered(lots), 2026, AS_OF, ov)
+    rows = {rw.name: rw for rw in m.lower[1:]}
+    # deferring is priced alone; spending basis alone saves the same
+    alone = levers.whatif(answered(lots), 2026, ["spend_basis"], as_of=AS_OF, ov=ov)
+    assert rows["defer_sales"].net > 0 and alone.net == rows["defer_sales"].net
+    assert any(
+        n.startswith("defer_sales and spend_basis move the same") for n in m.notes
+    )
+    ctx, found, _ = levers.catalog(answered(lots), 2026, AS_OF, ov)
+    stacked = [
+        lv
+        for lv in found
+        if lv.mode == levers.LOWER and lv.available and lv.key != "defer_sales"
+    ]
+    assert m.together is not None
+    together = compute(2026, levers._apply(ctx.hh, stacked))
+    assert m.together.result.aca_magi == together.aca_magi
+    _, found, _ = levers.catalog(lots, 2026, AS_OF)
+    idle = next(lv for lv in found if lv.key == "spend_basis")
+    assert not idle.available and idle.why.startswith("no planned sale")
+    assert "200,000 of cash" in idle.why and "spend with no MAGI" in idle.why
+
+
+@pytest.mark.engine
+def test_income_targeting_sets_medicaid_beside_the_400_cliff(lots: Layout) -> None:  # noqa: F811
+    """Medicaid is never the optimizer's pick: the Medicaid line and the
+    just-under-400% option are priced side by side for the owner to choose."""
+    m = levers.menu(answered(lots, se_income="30,000"), 2026, AS_OF)
+    assert m.target is None
+    names = [t.name for t in m.targeting]
+    assert names[-1] == "aca_400" and names[0] in ("medicaid_under", "medicaid_over")
+    for t in m.targeting:
+        assert t.fed_delta >= 0 and 0 <= t.medicaid_months <= 12
+    cliff = m.targeting[-1]
+    assert cliff.aca_magi < m.base.aca_fpg * 4 and cliff.medicaid_months == 0
+    text = "\n".join(levers.summary(m))
+    assert "income targeting (your choice; never picked for you):" in text
+    assert "Medicaid 0 of 12 months" in text
+    assert "aca_400" not in {lv.key for lv in m.levers}
