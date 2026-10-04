@@ -9,6 +9,7 @@ import http.client
 import re
 import threading
 from collections.abc import Iterator
+from datetime import date
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -16,15 +17,18 @@ import pytest
 from typer.testing import CliRunner
 
 from planner.cli import app
+from planner.dashboard import page as dash
 from planner.dashboard import serve
 from planner.ingest import ingest, ocr
 from planner.ingest.confirm import pending
 from planner.ledger import db
 from planner.paths import Layout
 from tests.pdfgen import make_pdf
+from tests.test_expected import _form
 from tests.test_forms import SSA
 from tests.test_ingest import DIV_2025, INT_2025
 from tests.test_ocr import fake_engine, ruled_photo
+from tests.test_schedule_c import BANK, _nec
 from tests.test_spending import AS_OF
 
 runner = CliRunner()
@@ -408,3 +412,89 @@ def test_cli_run_quiet_reads_the_inbox_and_writes_the_page(planner_home: Path) -
     assert r.exit_code == 0, r.output
     assert "inbox: 1 imported" in r.output and "serving" not in r.output
     assert (lay.out / "index.html").exists()
+
+
+@pytest.mark.engine
+def test_needed_reaches_zero_from_page_only(live: tuple[serve.App, int]) -> None:
+    """A late 1099 and uncategorised bank rows are closed with page POSTs
+    alone, and every closing step can be undone from the page."""
+    a, port = live
+    a.as_of = date(2027, 3, 1)
+    (a.lay.data / "inbox" / "bank.csv").write_text(BANK, encoding="utf-8")
+    ingest(a.lay)
+    _nec(a.lay, 10_000.0)
+    _form(a.lay, "int-2025.pdf", "1099-INT", 2025, "First Example Bank (synthetic)")
+
+    def gather() -> dash.Page:
+        return dash.gather(a.lay, 2026, a.as_of)
+
+    pg = gather()
+    assert pg.loose_rows == 4 and pg.late_forms and pg.needed
+    text = call(port, "GET", "/?token=tok")[2]
+    assert 'action="/waive?token=tok"' in text
+    assert 'action="/categorize?token=tok"' in text
+    assert "planner categorize --year" not in text
+
+    for st in pg.needed:
+        post(port, "/dont-have", key=st.need.key)
+        assert a.message == f"marked {st.need.key}: don't have"
+    assert gather().needed == []
+    for e in pg.late_forms:
+        post(port, "/waive", form=e.form, issuer=e.issuer)
+        assert a.message.startswith("waived ")
+    after = gather()
+    assert after.late_forms == [] and after.needed_count == 1  # the bank rows
+
+    post(port, "/categorize", rule="client payment", category="receipts")
+    assert "2 row(s) this year; 2 left" in a.message
+    post(port, "/categorize", row="bank:T-3", category="office")
+    post(port, "/categorize", row="bank:T-4", category="personal")
+    assert a.message == "bank:T-4 -> personal; 0 row(s) left"
+    done = gather()
+    assert done.needed_count == 0 and done.loose_rows == 0
+    text = call(port, "GET", "/?token=tok")[2]
+    assert "Nothing more is needed" in text and "Set aside (" in text
+    assert 'action="/undo-dont-have?token=tok"' in text
+    assert 'action="/undo-waive?token=tok"' in text
+
+    # a mistake is undone from the page, one item back on the list at a time
+    key = pg.needed[0].need.key
+    post(port, "/undo-dont-have", key=key)
+    assert a.message == f"{key} is back on the Needed list"
+    assert [s.need.key for s in gather().needed] == [key]
+    post(port, "/undo-dont-have", key=key)
+    assert a.message == f"{key} was not marked don't have"
+    post(
+        port, "/undo-waive", form=pg.late_forms[0].form, issuer=pg.late_forms[0].issuer
+    )
+    assert a.message.endswith("is back on the Needed list")
+    assert gather().needed_count == 2
+
+
+@pytest.mark.engine
+def test_categorize_waive_and_undo_refuse_bad_input(
+    live: tuple[serve.App, int],
+) -> None:
+    a, port = live
+    a.as_of = date(2027, 3, 1)
+    (a.lay.data / "inbox" / "bank.csv").write_text(BANK, encoding="utf-8")
+    ingest(a.lay)
+    post(port, "/categorize", row="bank:NOPE", category="office")
+    assert a.message == "not saved: no bank row bank:NOPE in 2026"
+    post(port, "/categorize", row="bank:T-3", category="food")
+    assert a.message.startswith("not saved: unknown category food")
+    post(port, "/categorize", rule="grocery", category="")
+    assert a.message.startswith("not saved: unknown category")
+    post(port, "/categorize", rule="", category="personal")
+    assert a.message.startswith("not saved: name one bank row or one piece")
+    post(port, "/categorize", row="bank:T-3", rule="x", category="office")
+    assert a.message.startswith("not saved: name one bank row or one piece")
+    assert not (a.lay.data / "profile" / "categories.yaml").exists()
+    post(port, "/waive", form="1099-NEC", issuer="nobody")
+    assert (
+        a.message == "not saved: no form still to come: 1099-NEC from nobody for 2026"
+    )
+    post(port, "/undo-waive", form="1099-NEC", issuer="nobody")
+    assert a.message == "1099-NEC from nobody was not waived"
+    post(port, "/undo-dont-have", key="no_such_key")
+    assert a.message.startswith("not saved")

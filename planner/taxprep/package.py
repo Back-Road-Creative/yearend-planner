@@ -211,7 +211,7 @@ def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
             (
                 e.form,
                 e.issuer,
-                "LATE" if e.late else e.state,
+                "waived" if e.waived else "LATE" if e.late else e.state,
                 e.due,
                 "yes" if e.to_file else "no",
                 "; ".join(e.documents),

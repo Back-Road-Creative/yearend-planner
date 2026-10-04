@@ -108,17 +108,79 @@ td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap
     <b>{{ e.form }} from {{ e.issuer }} (due {{ e.due }})</b>
     <small>why: {{ e.reason }}</small>
     <small>from: {{ e.where }}; drop it on this page</small>
+    {% if live %}
+    <form method="post" action="/waive?token={{ token }}" class="inline">
+      <input type="hidden" name="form" value="{{ e.form }}">
+      <input type="hidden" name="issuer" value="{{ e.issuer }}">
+      <button type="submit" class="plain">It will not come: take it off the list</button>
+    </form>
+    {% else %}
+    <small>type: <code>planner waive --year {{ p.year }} --form {{ e.form }} --issuer "{{ e.issuer }}"</code></small>
+    {% endif %}
   </div>
   {% endfor %}
   {% if p.loose_rows %}
-  <div class="need">
+  <div class="need" id="loose">
     <b>{{ p.loose_rows }} bank row(s) with no Schedule C category</b>
     <small>why: Schedule C counts only categorised rows</small>
+    {% if live %}
+    <small>Give every row whose description holds some text one category, or set rows one at a time below. Use personal or transfer for what is not business.</small>
+    <form method="post" action="/categorize?token={{ token }}" class="inline">
+      <input name="rule" placeholder="description text" aria-label="description text to match" required>
+      <select name="category" aria-label="category for every matching row">{% for key, text in p.categories %}<option value="{{ key }}">{{ text }}</option>{% endfor %}</select>
+      <button type="submit">Categorise matching rows</button>
+    </form>
+    <details><summary>{{ p.shown_loose|length }} of {{ p.loose_rows }} row(s), one at a time</summary>
+    <div class="scroll"><table>
+      {% for r in p.shown_loose %}<tr>
+        <td>{{ r.date }}</td><td class="num">{{ '{:,.2f}'.format((r.amount_cents or 0) / 100) }}</td><td>{{ r.description }}</td>
+        <td><form method="post" action="/categorize?token={{ token }}" class="inline">
+          <input type="hidden" name="row" value="{{ r.row_key }}">
+          <select name="category" aria-label="category for {{ r.description }}">{% for key, text in p.categories %}<option value="{{ key }}"{% if key == 'personal' %} selected{% endif %}>{{ text }}</option>{% endfor %}</select>
+          <button type="submit">Set</button>
+        </form></td>
+      </tr>{% endfor %}
+    </table></div></details>
+    {% else %}
     <small>type: <code>planner categorize --year {{ p.year }}</code></small>
+    {% endif %}
   </div>
   {% endif %}
   {% if p.estimates %}
   <ul class="notes">{% for st in p.estimates %}<li>standing in from YTD until the form arrives: {{ st.need.key }} {{ '{:,.2f}'.format(st.value) }} ({{ st.origin }})</li>{% endfor %}</ul>
+  {% endif %}
+  {% if p.dont_have or p.waived_forms %}
+  <details id="set-aside"><summary>Set aside ({{ p.dont_have|length + p.waived_forms|length }}): marked as not available, kept off the list</summary>
+  {% for st in p.dont_have %}
+  <div class="need">
+    <b>{{ st.need.label }}</b>
+    <small>marked: I don't have this; the plan shows what depends on it as unavailable</small>
+    {% if live %}
+    <form method="post" action="/undo-dont-have?token={{ token }}" class="inline">
+      <input type="hidden" name="key" value="{{ st.need.key }}">
+      <button type="submit" class="plain">Put it back on the list</button>
+    </form>
+    {% else %}
+    <small>undo: <code>planner dont-have --undo --year {{ p.year }} {{ st.need.key }}</code></small>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% for e in p.waived_forms %}
+  <div class="need">
+    <b>{{ e.form }} from {{ e.issuer }}</b>
+    <small>waived: it will not come</small>
+    {% if live %}
+    <form method="post" action="/undo-waive?token={{ token }}" class="inline">
+      <input type="hidden" name="form" value="{{ e.form }}">
+      <input type="hidden" name="issuer" value="{{ e.issuer }}">
+      <button type="submit" class="plain">Put it back on the list</button>
+    </form>
+    {% else %}
+    <small>undo: <code>planner waive --undo --year {{ p.year }} --form {{ e.form }} --issuer "{{ e.issuer }}"</code></small>
+    {% endif %}
+  </div>
+  {% endfor %}
+  </details>
   {% endif %}
 </section>
 

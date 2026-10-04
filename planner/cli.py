@@ -535,6 +535,10 @@ def needed(
         typer.echo(f"form      {e.form} from {e.issuer} (due {e.due})")
         typer.echo(f"          why: {e.reason}")
         typer.echo(f"          from: {e.where}; drop it in the inbox")
+        typer.echo(
+            f"          or, if it will not come: planner waive --year {year} "
+            f'--form {e.form} --issuer "{e.issuer}"'
+        )
     if loose:
         typer.echo(f"categorize {loose} bank row(s) with no Schedule C category")
         typer.echo("          why: Schedule C counts only categorised rows")
@@ -773,17 +777,52 @@ def enter(
 def dont_have(
     key: str = typer.Argument(..., help="item name from `planner needed`"),
     year: int = typer.Option(..., help="plan year", min=1990, max=2100),
+    undo: bool = typer.Option(False, "--undo", help="put it back on the list"),
 ) -> None:
     """Mark an item as not available; it leaves the Needed list and the plan
-    shows it as unavailable instead of guessing."""
+    shows it as unavailable instead of guessing. --undo puts it back."""
     from planner.ingest.needs import dont_have as _dont_have
+    from planner.ingest.needs import undo_dont_have
 
     try:
+        if undo:
+            if not undo_dont_have(layout(), year, key):
+                typer.echo(f"{key} was not marked don't have")
+                raise typer.Exit(code=2)
+            typer.echo(f"{key} is back on the Needed list")
+            return
         _dont_have(layout(), year, key)
     except KeyError as exc:
         typer.echo(f"refused: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(f"marked {key}: don't have")
+
+
+@app.command()
+def waive(
+    year: int = typer.Option(..., help="tax year", min=1990, max=2100),
+    form: str = typer.Option(..., help="form, as `planner forms` lists it"),
+    issuer: str = typer.Option(..., help="issuer, as `planner forms` lists it"),
+    undo: bool = typer.Option(False, "--undo", help="put it back on the list"),
+) -> None:
+    """Take a form that will not come (the issuer never sends one, or you do
+    not have it) off the Needed list. It stays in `planner forms`, marked
+    waived. --undo puts it back."""
+    from planner.taxprep import expected
+
+    lay = layout()
+    if undo:
+        if not expected.unwaive(lay, year, form, issuer):
+            typer.echo(f"{form} from {issuer} was not waived")
+            raise typer.Exit(code=2)
+        typer.echo(f"{form} from {issuer} is back on the Needed list")
+        return
+    try:
+        expected.waive(lay, year, form, issuer)
+    except ValueError as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"waived {form} from {issuer}: it will not come")
 
 
 @app.command()

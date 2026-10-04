@@ -1026,6 +1026,21 @@ def dont_have(lay: Layout, year: int, key: str) -> None:
     _write(path, data)
 
 
+def undo_dont_have(lay: Layout, year: int, key: str) -> bool:
+    """Put an item marked don't-have back on the Needed list; False when it
+    was not marked."""
+    need = need_for(key)
+    profile = need.scope == PROFILE
+    path = dont_have_path(lay) if profile else manual_path(lay, year)
+    data = _read(path) if profile else load_manual(lay, year)
+    marked = data.get(MANUAL_DONT_HAVE, [])
+    if key not in marked:
+        return False
+    marked.remove(key)
+    _write(path, data)
+    return True
+
+
 def _text_box(
     conn: sqlite3.Connection,
     boxes: tuple[tuple[str, str], ...],
@@ -1178,11 +1193,18 @@ def _needed(conn: sqlite3.Connection, lay: Layout, year: int) -> NeedsReport:
         if entry.get("type"):
             report.items.append(Status(need, "actual", entry["type"], "accounts.yaml"))
         else:
-            report.items.append(Status(need, "missing"))
+            state = "dont_have" if need.key in profile_dh else "missing"
+            report.items.append(Status(need, state))
         if entry.get("type") == "inherited_ira":
             need = account_need(number, death=True)
             death = entry.get("date_of_death")
-            state = "actual" if death else "missing"
+            state = (
+                "actual"
+                if death
+                else "dont_have"
+                if need.key in profile_dh
+                else "missing"
+            )
             report.items.append(
                 Status(need, state, death, "accounts.yaml" if death else "")
             )

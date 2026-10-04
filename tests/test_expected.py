@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
 from typer.testing import CliRunner
 
 from planner.cli import app
@@ -120,3 +121,61 @@ def test_cli_forms_and_needed(lay: Layout) -> None:  # noqa: F811
     assert "form      1099-NEC from each client (due 2027-02-01)" in r.output
     r = runner.invoke(app, ["needed", "--year", "2026", "--as-of", "2026-12-01"])
     assert "form      " not in r.output
+
+
+def test_waive_takes_a_late_form_off_and_undo_restores_it(
+    lay: Layout,  # noqa: F811
+) -> None:
+    _form(lay, "int-2025.pdf", "1099-INT", 2025, "First Example Bank (synthetic)")
+    as_of = date(2027, 3, 1)
+    bank = ("1099-INT", "First Example Bank (synthetic)")
+    assert bank in {
+        (e.form, e.issuer) for e in expected.inventory(lay, 2026, as_of).late
+    }
+    expected.waive(lay, 2026, *bank, as_of)
+    inv = expected.inventory(lay, 2026, as_of)
+    held = _by(inv)[bank]
+    assert held.waived and held.late and held not in inv.late
+    assert held not in inv.outstanding and inv.waived == [held]
+    assert expected.lines(inv)[[e.issuer for e in inv.items].index(bank[1])].startswith(
+        "waived     1099-INT"
+    )
+    assert expected.load_waived(lay, 2026) == {bank}
+    assert expected.load_waived(lay, 2027) == set()  # one year only
+    expected.waive(lay, 2026, *bank, as_of)  # idempotent
+    assert expected.load_waived(lay, 2026) == {bank}
+    assert expected.unwaive(lay, 2026, *bank)
+    assert not expected.unwaive(lay, 2026, *bank)
+    inv = expected.inventory(lay, 2026, as_of)
+    assert bank in {(e.form, e.issuer) for e in inv.late} and inv.waived == []
+
+
+def test_waive_refuses_an_unknown_or_received_form(lay: Layout) -> None:  # noqa: F811
+    with pytest.raises(ValueError, match="no form still to come: 1099-B from nobody"):
+        expected.waive(lay, 2026, "1099-B", "nobody", date(2027, 3, 1))
+    _form(lay, "div.pdf", "1099-DIV", 2026, "Vanguard Brokerage Services")
+    with pytest.raises(ValueError, match="no form still to come: 1099-DIV"):
+        expected.waive(lay, 2026, "1099-DIV", "vanguard", date(2027, 3, 1))
+    assert not expected.waived_path(lay).exists()
+
+
+def test_cli_waive_and_needed_hint(lay: Layout) -> None:  # noqa: F811
+    args = ["--year", "2026", "--form", "1099-NEC", "--issuer", "each client"]
+    r = runner.invoke(app, ["needed", "--year", "2026", "--as-of", "2027-03-01"])
+    assert (
+        'planner waive --year 2026 --form 1099-NEC --issuer "each client"' in r.output
+    )
+    r = runner.invoke(app, ["waive", *args])
+    assert r.exit_code == 0 and "waived 1099-NEC from each client" in r.output
+    r = runner.invoke(app, ["needed", "--year", "2026", "--as-of", "2027-03-01"])
+    assert "1099-NEC from each client" not in r.output
+    r = runner.invoke(app, ["forms", "--year", "2026", "--as-of", "2027-03-01"])
+    assert "waived     1099-NEC" in r.output
+    r = runner.invoke(app, ["waive", *args, "--undo"])
+    assert r.exit_code == 0 and "back on the Needed list" in r.output
+    r = runner.invoke(app, ["waive", *args, "--undo"])
+    assert r.exit_code == 2 and "was not waived" in r.output
+    r = runner.invoke(
+        app, ["waive", "--year", "2026", "--form", "1099-B", "--issuer", "x"]
+    )
+    assert r.exit_code == 2 and "refused: no form still to come" in r.output

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import csv
 import zipfile
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,7 @@ from planner.ingest.needs import enter
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import esttax
-from planner.taxprep import draft, package
+from planner.taxprep import draft, expected, package
 from tests.test_capgains import IRA, LOTS, TAXABLE
 from tests.test_csv import drop
 
@@ -110,6 +111,29 @@ def test_taxpack_writes_every_file(lay: Layout) -> None:
     assert _rows(folder / "forms.csv")[0].keys() >= {"form", "source files"}
     with zipfile.ZipFile(folder / "originals.zip") as zf:
         assert "lots.csv" in zf.namelist()
+
+
+def test_taxpack_forms_csv_tags_a_waived_late_form_waived(lay: Layout) -> None:
+    as_of = date(2026, 12, 1)  # every form for 2025 is past its due date
+    inv = expected.inventory(lay, 2025, as_of)
+    assert inv.late, "the fixture should leave at least one form late"
+    target = inv.late[0]
+    pack = package.build(lay, 2025, as_of)
+    rows = {(r["form"], r["issuer"]): r for r in _rows(pack.folder / "forms.csv")}
+    assert rows[(target.form, target.issuer)]["state"] == "LATE"
+    count = len(inv.outstanding)
+    assert f"{count} expected form(s) still to come" in " ".join(pack.notes)
+
+    expected.waive(lay, 2025, target.form, target.issuer, as_of)
+    pack = package.build(lay, 2025, as_of)
+    rows = {(r["form"], r["issuer"]): r for r in _rows(pack.folder / "forms.csv")}
+    assert rows[(target.form, target.issuer)]["state"] == "waived"
+    assert not any(
+        r["state"] == "LATE"
+        and (r["form"], r["issuer"]) == (target.form, target.issuer)
+        for r in rows.values()
+    )
+    assert f"{count - 1} expected form(s) still to come" in " ".join(pack.notes)
 
 
 def test_taxpack_rerun_replaces_and_cli_lists(lay: Layout) -> None:
