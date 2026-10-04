@@ -21,6 +21,7 @@ from planner.engine import tax
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
+from planner.taxprep import capgains
 from planner.taxprep.expected import inventory
 
 ENGINE = (
@@ -36,6 +37,7 @@ ENGINE = (
     "self_employment_income",
     "irs_gross_income",
     "above_the_line_deductions",
+    "loss_ald",
     "adjusted_gross_income",
     "standard_deduction",
     "tax_unit_itemizes",
@@ -93,7 +95,7 @@ TAX_KEYS = (*inputs.MONEY, "ordinary_dividends", "qualified_dividends")
 
 @dataclass(frozen=True)
 class Line:
-    form: str  # "1040", "Sch 1", "Sch 2", "Sch 3", "Sch SE", "8962"
+    form: str  # a key of HEADINGS
     line: str
     label: str
     value: float
@@ -241,6 +243,7 @@ def build(lay: Layout, year: int) -> Draft:
     try:
         facts = db.facts_for(conn, year)
         paid = [p for p in esttax.payments(conn, lay, year) if p.agency == "fed"]
+        cg = capgains.build(conn, lay, year)
     finally:
         conn.close()
     hh = inp.household
@@ -306,15 +309,18 @@ def build(lay: Layout, year: int) -> Draft:
         "Sch 1",
         "20",
         "IRA deduction",
-        max(v["above_the_line_deductions"] - named, 0.0),
-        "engine above_the_line_deductions less lines 13-17",
+        max(v["above_the_line_deductions"] - v["loss_ald"] - named, 0.0),
+        "engine above_the_line_deductions less loss_ald and lines 13-17",
     )
+    # The engine counts only gains in gross income and deducts the allowed
+    # capital and business loss as loss_ald; the forms carry those losses on
+    # 1040 line 7a and Schedule 1 line 3 instead.
     s1_26 = add(
         "Sch 1",
         "26",
         "Adjustments to income",
-        v["above_the_line_deductions"],
-        "engine above_the_line_deductions",
+        v["above_the_line_deductions"] - v["loss_ald"],
+        "engine above_the_line_deductions less loss_ald",
     )
 
     # Schedule SE
@@ -434,7 +440,9 @@ def build(lay: Layout, year: int) -> Draft:
         "7a",
         "Capital gain or (loss)",
         v["loss_limited_net_capital_gains"],
-        f"{origin('short_term_gains')}; {origin('long_term_gains')}",
+        "Sch D line 16 (21 if a loss)"
+        if cg.lines
+        else f"{origin('short_term_gains')}; {origin('long_term_gains')}",
     )
     l8 = add(f, "8", "Additional income from Schedule 1", s1_10, "Sch 1 line 10")
     l9 = add(
@@ -544,10 +552,18 @@ def build(lay: Layout, year: int) -> Draft:
     else:
         add(f, "37", "Amount you owe", l24 - l33, "24 - 33")
 
+    if cg.lots or cg.lines:
+        limit = 1500.0 if hh.filing_status == "SEPARATE" else 3000.0
+        _schedule_d(sheet, d, cg, l7, l11 - l14, limit)
+
     # The lines against the engine's own totals: a gap is a mapping the draft
     # missed, and is said, never hidden.
     for got, want, what in (
-        (l9, v["irs_gross_income"], "line 9 against the engine's gross income"),
+        (
+            l9,
+            v["irs_gross_income"] - v["loss_ald"],
+            "line 9 against the engine's gross income less its loss deduction",
+        ),
         (l11, v["adjusted_gross_income"], "line 11a against the engine's AGI"),
         (l15, v["taxable_income"], "line 15 against the engine's taxable income"),
         (
@@ -567,7 +583,57 @@ def build(lay: Layout, year: int) -> Draft:
     return d
 
 
-ORDER = ("1040", "Sch 1", "Sch 2", "Sch 3", "Sch SE", "8962")
+def _schedule_d(
+    sheet: _Sheet,
+    d: Draft,
+    cg: capgains.CapGains,
+    l7a: float,
+    taxable: float,
+    limit: float,
+) -> None:
+    """Form 8949 rows, the Schedule D lines and, for a loss beyond the yearly
+    limit, the carryover worksheet for next year."""
+    seen = {"A": 0, "D": 0}
+    for lot in cg.lots:
+        seen[lot.box] += 1
+        wash = f"; W +{lot.adjustment:,.2f}" if lot.code else ""
+        sheet.add(
+            "8949",
+            f"{lot.box}{seen[lot.box]}",
+            f"{lot.description} {lot.acquired} to {lot.sold}",
+            lot.gain,
+            f"proceeds {lot.proceeds:,.2f} basis {lot.basis:,.2f}{wash}",
+        )
+    for line, value in cg.lines.items():
+        sheet.add("Sch D", line, capgains.LABELS[line], value, cg.sources[line])
+    d.notes.extend(cg.notes)
+    l16 = cg.lines.get("16", 0.0)
+    want = l16 if l16 >= 0 else max(l16, -limit)
+    if l16 < 0:
+        sheet.add("Sch D", "21", "Loss allowed this year", l7a, "1040 line 7a")
+        st, lt = capgains.carryover(cg.lines["7"], cg.lines["15"], l16, l7a, taxable)
+        for line, label, value in (("8", "Short-term", st), ("13", "Long-term", lt)):
+            sheet.add(
+                "Carryover",
+                line,
+                f"{label} loss carried to {cg.year + 1}",
+                value,
+                "Capital Loss Carryover Worksheet (Schedule D instructions)",
+            )
+    if abs(l7a - want) > TOLERANCE:
+        d.notes.append(
+            f"CHECK: 1040 line 7a {l7a:,.2f} vs Schedule D line 16 {l16:,.2f}: the "
+            "household's gains are not this Schedule D (typed or still an estimate)"
+        )
+
+
+ORDER = ("1040", "Sch 1", "Sch 2", "Sch 3", "Sch D", "Sch SE", "8949", "8962")
+HEADINGS = {
+    "1040": "Form 1040",
+    "8949": "Form 8949",
+    "8962": "Form 8962",
+    "Carryover": "Capital loss carryover to next year",
+}
 
 
 def render(d: Draft) -> str:
@@ -576,14 +642,12 @@ def render(d: Draft) -> str:
         "numbers follow the 2025 forms. A draft to check against the forms, not "
         "a filing.",
     ]
-    for form in ORDER:
+    for form in (*ORDER, "Carryover"):
         lines = [ln for ln in d.lines if ln.form == form]
         if not lines:
             continue
         out.append("")
-        out.append(
-            f"Form {form}" if form in ("1040", "8962") else f"Schedule {form[4:]}"
-        )
+        out.append(HEADINGS.get(form, f"Schedule {form[4:]}"))
         for ln in lines:
             places = 2 if round(ln.value, 2) == ln.value else 4
             out.append(

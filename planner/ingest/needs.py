@@ -357,19 +357,36 @@ NEEDS: tuple[Need, ...] = (
         "short_term_gains",
         "Short-term gain or loss",
         "ordinary income",
-        "1099-B (" + _VG + ") or the realized-gains CSV",
+        "the realized-lots CSV or 1099-B (" + _VG + "); Schedule D line 7 once "
+        "the year ends (planner gains)",
         "money",
-        boxes=(("1040-SCHD", "7"),),
+        boxes=(("SCH-D", "7"),),
         estimate=(("YTD", "st_gain"),),
     ),
     Need(
         "long_term_gains",
         "Long-term gain or loss",
         "0% LTCG room",
-        "1099-B or the realized-gains CSV",
+        "the realized-lots CSV or 1099-B, plus 1099-DIV box 2a; Schedule D line "
+        "15 once the year ends",
         "money",
-        boxes=(("1040-SCHD", "15"),),
-        estimate=(("YTD", "lt_gain"),),
+        boxes=(("SCH-D", "15"),),
+        estimate=(("YTD", "lt_gain"), ("YTD", "capital_gain_distributions")),
+    ),
+    Need(
+        "st_loss_carryover",
+        "Short-term capital loss carried in",
+        "Schedule D line 6",
+        "last year's Capital Loss Carryover Worksheet line 8 (Schedule D "
+        "instructions), or last year's draft (planner draft)",
+        "money",
+    ),
+    Need(
+        "lt_loss_carryover",
+        "Long-term capital loss carried in",
+        "Schedule D line 14",
+        "last year's Capital Loss Carryover Worksheet line 13, or last year's draft",
+        "money",
     ),
     Need(
         "ira_distributions",
