@@ -12,7 +12,7 @@ from typing import Any
 
 from planner.engine.household import MissingInputError
 from planner.engine.tax import r
-from planner.ingest.needs import load_profile
+from planner.ingest.needs import MANUAL_VALUES, load_manual, load_profile
 from planner.ledger import portfolio
 from planner.paths import Layout
 from planner.plan.inputs import age_at_year_end
@@ -55,6 +55,20 @@ class Spending:
     spending: float
     rows: list[BandRow] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+
+
+def against_actual(lay: Layout, year: int, spend: float) -> str | None:
+    """Last year's actual spending (the rollover asks for it) beside this
+    year's band; None until it is typed."""
+    actual = load_manual(lay, year)[MANUAL_VALUES].get("spending_actual")
+    if actual is None:
+        return None
+    gap = float(actual) - spend
+    side = "above" if gap > 0 else "below"
+    return (
+        f"{year - 1} spending was {float(actual):,.2f}: {abs(gap):,.2f} {side} "
+        f"the {year} band's {spend:,.2f}"
+    )
 
 
 def require(profile: dict[str, Any], keys: tuple[str, ...], year: int) -> None:
@@ -170,4 +184,7 @@ def plan(
         )
     if st.untyped:
         sp.notes.append(f"{st.untyped:,.2f} sits in untyped accounts")
+    said = against_actual(lay, year, sp.spending)
+    if said:
+        sp.notes.append(said)
     return sp

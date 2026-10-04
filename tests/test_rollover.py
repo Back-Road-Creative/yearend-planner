@@ -13,9 +13,9 @@ from typer.testing import CliRunner
 from planner.cli import app
 from planner.dashboard import page, serve
 from planner.ingest.needs import enter, needed
-from planner.ledger import db
+from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.plan import rollover
+from planner.plan import rollover, spending
 from planner.taxprep import capgains, close, draft
 from tests.test_capgains import lay as cg_lay  # noqa: F401  (the fixture)
 
@@ -161,7 +161,7 @@ def test_dashboard_alert_and_button_roll_the_year(lay: Layout) -> None:
 def test_cli_rollover_asks_for_next_years_figures(lay: Layout) -> None:
     r = runner.invoke(app, ["rollover", "--year", "2025", "--as-of", "2025-12-01"])
     assert r.exit_code == 2 and "2025 has not ended" in r.output
-    answers = ["", "", "", "", "", "3,000", "", "", "", ""]
+    answers = ["", "", "", "", "", "3,000", "", "", "", "", "58,000"]
     r = runner.invoke(
         app,
         ["rollover", "--as-of", "2026-01-20", "--ask"],
@@ -170,6 +170,7 @@ def test_cli_rollover_asks_for_next_years_figures(lay: Layout) -> None:
     assert r.exit_code == 0, r.output
     assert "rolled 2025 -> 2026" in r.output and "checklist:" in r.output
     assert "saved ss_estimate_67 = 3000" in r.output
+    assert "saved spending_actual = 58000" in r.output
     assert _status(lay, 2026)["ss_estimate_67"] == ("actual", 3000.0)
     r = runner.invoke(app, ["rollover", "--as-of", "2026-01-21", "--no-ask"])
     assert r.exit_code == 0 and "2025 unchanged: rolled as version 1" in r.output
@@ -182,3 +183,38 @@ def test_married_separate_loss_limit_and_filing_status_from_the_return(
     assert rollover._filed_carryover(lay, 2025, filed) == (2000.0, 0.0)  # $3,000 limit
     enter(lay, 2025, "filing_status", "married_separate")
     assert rollover._filed_carryover(lay, 2025, filed) == (3500.0, 0.0)  # $1,500 limit
+
+
+def test_roll_asks_spending_actual_and_reports_band(lay: Layout) -> None:
+    """The rollover asks what the year really cost, then reports next year's
+    spending band and glide path from the new balance beside it."""
+    assert rollover.ASK[-1] == "spending_actual"
+    ro = rollover.roll(lay, 2025, JAN)
+    assert any(
+        ln.startswith("glide path and spending band for 2026 wait on") for ln in ro.plan
+    )
+    assert _status(lay, 2026)["spending_actual"][0] == "missing"
+    for key, text in (
+        ("spending_floor", "50,000"),
+        ("spending_ceiling", "65,000"),
+        ("withdrawal_rate", "0.035"),
+        ("inflation", "0.025"),
+        ("return_floor", "0.0"),
+        ("return_track", "0.04"),
+        ("spending_actual", "58,000"),
+    ):
+        enter(lay, 2026, key, text)
+    portfolio.save_account(lay, "22222222", type="cash", balance=1_600_000.0)
+    assert _status(lay, 2026)["spending_actual"] == ("actual", 58000.0)
+    sp = spending.plan(lay, 2026, JAN)
+    gap = 58_000.0 - sp.spending
+    said = (
+        f"2025 spending was 58,000.00: {abs(gap):,.2f} "
+        f"{'above' if gap > 0 else 'below'} the 2026 band's {sp.spending:,.2f}"
+    )
+    assert said in sp.notes
+    again = rollover.roll(lay, 2025, JAN)  # nothing carried changed: no new version
+    assert again.new is False
+    text = rollover.render(again)
+    assert f"spending band for 2026: {sp.spending:,.2f}" in text
+    assert "glide path for 2026:" in text and said in text

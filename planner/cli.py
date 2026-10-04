@@ -716,7 +716,9 @@ def rollover(
     """Roll the year that ended into the next: carry AGI, total tax, NC tax and
     the capital loss carryforward (filed figures once closed, else the draft's),
     keep a snapshot of the ledger and the year's dashboard, make next year the
-    active one, refresh its limits and print the checklist. Running it again
+    active one, refresh its limits, report next year's spending band and glide
+    path and print the checklist; --ask then prompts for next year's figures,
+    last year's actual spending included. Running it again
     changes nothing unless a corrected form or the filed return changed what
     the year carries; then it records a new version."""
     import sys
