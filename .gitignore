@@ -1,6 +1,9 @@
 # Everything personal lives here. Never committed.
 data/
 out/
+data-previous/
+data-restored/
+restore-staging/
 # Runtime and build artifacts
 .venv/
 python/
