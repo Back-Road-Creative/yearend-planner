@@ -9,13 +9,15 @@ Layout inside the zip (contents at the zip root, no top-level folder):
     planner/     the package          config/  templates/
 
 Privacy: only files git tracks are staged (a developer's own data/, out/ or
-untracked notes cannot ship), and :func:`audit` refuses a stage that holds a
-private folder or a database before anything is zipped.
+untracked notes cannot ship), :func:`figure_scan` refuses a tracked file holding
+an ID-shaped string before anything is staged, and :func:`audit` refuses a
+stage that holds a private folder or a database before anything is zipped.
 """
 
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 import subprocess
 import sys
@@ -44,6 +46,14 @@ SHIP_DIRS = ("planner", "config", "templates")
 # never in a release: the user's figures, built output, restore leftovers
 PRIVATE = ("data", "out", "dist", "restore-staging", "data-previous", "data-restored")
 PRIVATE_SUFFIXES = (".db", ".sqlite", "-journal", "-wal", ".zip")
+# A real figure pasted into a tracked file: an SSN or EIN shape, an account
+# number (9 to 17 digits standing alone; a run of zeros is a placeholder), or
+# the sentinel the privacy tests plant. The repository is public, so every
+# tracked file is scanned, not only the shipped ones. ([-] keeps this line
+# from matching itself.)
+ID_SHAPES = re.compile(
+    r"\b(?:\d{3}-\d{2}-\d{4}|\d{2}-\d{7}|(?!0+\b)\d{9,17})\b|PRIVATE[-]SENTINEL"
+)
 
 
 def version() -> str:
@@ -118,6 +128,24 @@ def tracked(*paths: str) -> list[str]:
     ]
 
 
+def figure_scan(root: Path) -> list[str]:
+    """``path:line: match`` for each ID-shaped string in a file git tracks
+    under ``root``; binary files are skipped."""
+    git = shutil.which("git") or "git"
+    out = subprocess.run(  # noqa: S603  (fixed argv, our own paths)
+        [git, "ls-files", "-z"], cwd=root, check=True, capture_output=True, text=True
+    ).stdout
+    hits = []
+    for rel in sorted(p for p in out.split("\0") if p):
+        try:
+            text = (root / rel).read_text(encoding="utf-8")
+        except (UnicodeDecodeError, FileNotFoundError):
+            continue
+        for n, line in enumerate(text.splitlines(), 1):
+            hits += [f"{rel}:{n}: {m.group()}" for m in ID_SHAPES.finditer(line)]
+    return hits
+
+
 def stage_tree() -> Path:
     if STAGE.exists():
         shutil.rmtree(STAGE)
@@ -151,6 +179,9 @@ def zip_stage(stage: Path) -> Path:
 
 
 def main() -> int:
+    found = figure_scan(ROOT)
+    if found:
+        raise SystemExit("release refused: ID-shaped figures\n" + "\n".join(found))
     stage = stage_tree()
     audit(stage)
     out = zip_stage(stage)

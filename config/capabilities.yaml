@@ -75,7 +75,9 @@ backup_restore: verified  # tests/test_backup.py; AES-256 or plain zip + sha256 
 input_validation: verified  # tests/test_validation.py; typed answers bounded and refused with what is expected; CLI years/amounts/ports ranged
 stale_banner: verified  # tests/test_validation.py; >90 days since last import -> banner atop the page, plan still runs
 release: verified  # tests/test_privacy.py + .github/workflows/release.yml; tag -> suite, build, windows_proof, draft release with .sha256
-privacy_audit: verified  # tests/test_privacy.py; release stages git-tracked files only, audit() refuses private folders/databases, sentinel absent
+privacy_audit: verified  # tests/test_privacy.py; release stages git-tracked files only, figure_scan() refuses an ID-shaped string (SSN, EIN, account number, sentinel) in any tracked file before staging, audit() refuses private folders/databases, sentinel absent
+release_end_to_end: verified  # tests/test_privacy.py; windows_proof.ps1 step 4 runs scripts/synthetic_inbox.py PDFs through the unzipped release with the network blocked and checks out/index.html
+scheduled_run: verified  # tests/test_cli.py::test_schedule_builds_schtasks_argv; planner schedule --monthly / --remove
 end_to_end: verified  # tests/test_end_to_end.py; inbox -> dashboard, fresh config + data/ renders the identical page
 double_click_run: verified  # tests/test_launch.py; no arguments = planner run, a failed double-click pauses before the window closes
 single_writer_lock: verified  # tests/test_paths.py; OS lock on data/planner.lock (flock / msvcrt), a second writer exits 2 "another planner is running", a stale file never blocks, restore lets go before data/ moves

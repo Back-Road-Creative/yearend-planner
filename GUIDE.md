@@ -801,7 +801,10 @@ Repeat until the Needed list is empty. Press Ctrl+C in the window to stop.
   - `--no-open` serves the page without opening a browser.
   - `--port` fixes the port.
   - `--quiet` stops after writing `out/index.html` (no server, no browser),
-    for Windows Task Scheduler.
+    for Windows Task Scheduler. `planner schedule --monthly` registers that run
+    (the 1st of each month, 09:00, as you, task "Year-End Planner") with
+    `schtasks`; `planner schedule --remove` deletes it. Off Windows it prints the
+    `schtasks` command and changes nothing.
 
 ## Limits kept current on each launch (Phase 6a)
 
