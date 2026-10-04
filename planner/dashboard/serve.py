@@ -233,6 +233,14 @@ def handler(app: App) -> type[BaseHTTPRequestHandler]:
         def _refuse(self) -> None:
             self._send(HTTPStatus.FORBIDDEN, "forbidden\n", "text/plain")
 
+        def _drain(self) -> None:
+            """Read the request body before answering: a socket closed with
+            unread bytes is reset on Windows, and the client sees an abort
+            instead of the answer."""
+            size = int(self.headers.get("Content-Length") or 0)
+            if 0 < size <= MAX_BODY:
+                self.rfile.read(size)
+
         def do_GET(self) -> None:  # noqa: N802
             parts = urlsplit(self.path)
             if parts.path not in ("/", "/crop") or not self._allowed():
@@ -250,6 +258,7 @@ def handler(app: App) -> type[BaseHTTPRequestHandler]:
         def do_POST(self) -> None:  # noqa: N802
             route = urlsplit(self.path).path
             if not self._allowed() or route not in ROUTES:
+                self._drain()
                 self._refuse()
                 return
             size = int(self.headers.get("Content-Length") or 0)
