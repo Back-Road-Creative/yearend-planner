@@ -427,6 +427,21 @@ def taxpack(
 
 
 @app.command()
+def close(year: int = typer.Option(..., help="tax year")) -> None:
+    """Close the year from the filed return: every filed line beside the
+    draft's, and the filed figures kept as the year's record. An amended return
+    closes it again as a new version."""
+    from planner.taxprep import close as closing
+
+    try:
+        c = closing.close(layout(), year)
+    except closing.NotFiledError as exc:
+        typer.echo(f"blocked: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(closing.render(c), nl=False)
+
+
+@app.command()
 def enter(
     key: str = typer.Argument(..., help="item name from `planner needed`"),
     value: str = typer.Argument(..., help="the typed answer"),

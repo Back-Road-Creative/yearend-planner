@@ -490,3 +490,29 @@ How a run behaves:
   and exits 2.
 - The summary at the end names any form still to come and any `CHECK:` line
   to resolve first.
+
+## Closing the year from the filed return (Phase 4m)
+
+Once the return is filed, drop the filed 1040 (with its schedules) and the NC
+D-400 into the inbox, run `planner ingest`, then `planner close --year 2025`.
+
+- **The delta.** Each filed line read by the form templates is set beside
+  the draft's line, and every line more than $1 apart is listed with the gap.
+  - The templates follow the 2024 form numbers and the draft follows 2025's;
+    the planner pairs the lines by what they hold. For example, filed 1040
+    line 11 is draft line 11a.
+  - Filed lines the draft has no line for are listed separately: line 5b,
+    line 34 on a refund, and Schedule C, which `planner categorize` covers.
+- **The record.** The filed figures are written to
+  `data/private/returns/2025-closed.yaml`, and next year's rollover reads
+  them. It is your own data: it stays in the private folder, is never in the
+  repository, and is never in the tax pack.
+- **Amended returns.** Drop the amended return the same way. Its figures
+  replace the original's, and closing again writes version 2. The earlier
+  version stays in the file.
+- **Blocked or partial runs.**
+  - With no filed 1040 (line 24) on file, nothing is written and the command
+    exits 2.
+  - A D-400 the draft expects but that is not on file is named.
+  - Values read by OCR still waiting for `planner confirm` are named and left
+    out of the record.
