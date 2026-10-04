@@ -250,6 +250,43 @@ def add_document(
     return doc_id
 
 
+def replace_derived(
+    conn: sqlite3.Connection,
+    form: str,
+    year: int,
+    lines: dict[str, float],
+    labels: dict[str, str],
+    name: str,
+    issuer: str = "planner",
+) -> bool:
+    """Replace the planner's own ``form`` facts for a year with ``lines``
+    (dollars) as one derived document named ``name``; the old facts are kept as
+    superseded. False, and nothing written, when the lines are unchanged."""
+    if {f.box: f.value for f in facts_for(conn, year, form)} == lines:
+        return False
+    with conn:
+        conn.execute(
+            "UPDATE facts SET status = 'superseded' WHERE form = ? AND tax_year = ? "
+            "AND status = 'accepted'",
+            (form, year),
+        )
+    if lines:
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+        add_document(
+            conn,
+            fingerprint=f"{name.lower().replace(' ', '-')}:{stamp}",
+            file_name=name,
+            kind="derived",
+            pages=0,
+            batch=stamp,
+            facts=[
+                Fact(form, year, issuer, line, labels[line], value, 0)
+                for line, value in lines.items()
+            ],
+        )
+    return True
+
+
 def set_archived(conn: sqlite3.Connection, doc_id: int, archived_as: str) -> None:
     with conn:
         conn.execute(

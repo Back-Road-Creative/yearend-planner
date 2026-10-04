@@ -423,11 +423,44 @@ NEEDS: tuple[Need, ...] = (
     ),
     Need(
         "hsa_contribution",
-        "HSA contribution",
+        "HSA contribution you deduct (not through payroll)",
         "the HSA deduction",
-        "5498-SA box 2",
+        "Form 8889 line 13 once the year has ended (planner hsa); before then, "
+        "what you have put in yourself so far",
         "money",
-        boxes=(("5498-SA", "2"),),
+        boxes=(("8889", "13"),),
+    ),
+    Need(
+        "hsa_contributions",
+        "HSA contributions for the year, from every source",
+        "Form 8889: what went in against the limit",
+        "5498-SA box 2 plus box 3 (box 2 also counts money put in this year for "
+        "last year: take that part out)",
+        "money",
+        boxes=(("5498-SA", "2"), ("5498-SA", "3")),
+    ),
+    Need(
+        "hsa_employer_contributions",
+        "Employer and payroll HSA contributions",
+        "Form 8889 line 9: already excluded from wages, never deducted again",
+        "W-2 box 12 code W",
+        "money",
+        boxes=(("W-2", "12W"),),
+    ),
+    Need(
+        "hsa_months",
+        "Months with HSA-eligible coverage on the 1st (1-12)",
+        "Form 8889 line 3: the limit is pro-rated by month",
+        "your plan's start and end dates; 12 if covered all year or on December 1 "
+        "(the last-month rule, with a 13-month testing period)",
+        "int",
+    ),
+    Need(
+        "hsa_qualified_expenses",
+        "Qualified medical expenses paid from the HSA",
+        "Form 8889 line 15: HSA money not spent on medical care is taxed",
+        "your HSA's claims history or receipts for each 1099-SA distribution",
+        "money",
     ),
     Need(
         "se_health_premiums",
@@ -659,7 +692,15 @@ def _needed(conn: sqlite3.Connection, lay: Layout, year: int) -> NeedsReport:
 def need_value(conn: sqlite3.Connection, lay: Layout, year: int, key: str) -> Any:
     """One item's value as the Needed panel sees it (typed, form or estimate),
     or None when it is missing or marked don't-have."""
+    return need_values(conn, lay, year, (key,))[key]
+
+
+def need_values(
+    conn: sqlite3.Connection, lay: Layout, year: int, keys: tuple[str, ...]
+) -> dict[str, Any]:
+    """Several items at once, as ``need_value`` reads each."""
+    out: dict[str, Any] = dict.fromkeys(keys)
     for st in _needed(conn, lay, year).items:
-        if st.need.key == key:
-            return st.value if st.state in ("actual", "estimate") else None
-    return None
+        if st.need.key in out and st.state in ("actual", "estimate"):
+            out[st.need.key] = st.value
+    return out

@@ -27,7 +27,7 @@ from typing import Any
 from planner.config import load_thresholds
 from planner.engine.household import Household, MissingInputError
 from planner.engine.tax import TaxResult, compute, r
-from planner.ingest.needs import load_profile, need_value
+from planner.ingest.needs import load_profile, need_values
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import calendar, conversion, washsale
@@ -217,6 +217,7 @@ class _Ctx:
     roth_ytd: float
     room: float | None
     room_line: Line | None
+    hsa_employer: float  # W-2 box 12 code W: counts against the HSA limit
 
     @property
     def hh(self) -> Household:
@@ -315,7 +316,7 @@ def _hsa(c: _Ctx) -> Lever:
     limit = float(c.th[f"hsa_limit_{cover}"])
     if c.hh.age >= 55:
         limit += float(c.th["hsa_catchup_55plus"])
-    amount = r(max(limit - c.hh.hsa_contribution, 0.0))
+    amount = r(max(limit - c.hsa_employer - c.hh.hsa_contribution, 0.0))
     if not amount:
         return _none(key, LOWER, label, due, f"already at the {limit:,.0f} limit")
     return Lever(
@@ -327,9 +328,9 @@ def _hsa(c: _Ctx) -> Lever:
         CASH,
         f"{cover} limit {limit:,.0f}"
         f"{' with the 55+ catch-up' if c.hh.age >= 55 else ''} less "
-        f"{c.hh.hsa_contribution:,.0f} already in",
-        "pro-rated for months without HSA-eligible coverage; employer money counts "
-        "toward the limit",
+        f"{c.hsa_employer + c.hh.hsa_contribution:,.0f} already in"
+        f"{f' ({c.hsa_employer:,.0f} through payroll)' if c.hsa_employer else ''}",
+        "pro-rated for months without HSA-eligible coverage",
         (("hsa_contribution", int(round(amount))),),
     )
 
@@ -590,7 +591,13 @@ def _context(
         for b in washsale.buys(conn):
             if start <= date.fromisoformat(b.date) <= today:
                 recent[b.symbol] = max(recent.get(b.symbol, ""), b.date)
-        carry = need_value(conn, lay, year, "prior_capital_loss_carryforward")
+        got = need_values(
+            conn,
+            lay,
+            year,
+            ("prior_capital_loss_carryforward", "hsa_employer_contributions"),
+        )
+        carry = got["prior_capital_loss_carryforward"]
         roth_ytd = r(
             sum(f.value for f in db.facts_for(conn, year, "5498") if f.box == "10")
         )
@@ -612,6 +619,7 @@ def _context(
         roth_ytd,
         room,
         room_line,
+        float(got["hsa_employer_contributions"] or 0),
     )
     return ctx, notes
 

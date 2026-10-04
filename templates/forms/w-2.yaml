@@ -7,5 +7,6 @@ issuer_pattern: "Employer'?s name(?:, address,? and ZIP code)?\\s*:?\\s*([^\\n]+
 boxes:
   "1": {label: "Wages, tips, other compensation", pattern: "\\b1 Wages, tips, other comp(?:ensation|\\.)\\s+AMOUNT", required: true}
   "2": {label: "Federal income tax withheld", pattern: "\\b2 Federal income tax withheld\\s+AMOUNT", required: true}
+  "12W": {label: "Box 12 code W: employer and payroll HSA contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?W\s+AMOUNT'}
   "16": {label: "State wages, tips, etc.", pattern: "\\b16 State wages, tips, etc\\.?\\s+AMOUNT"}
   "17": {label: "State income tax", pattern: "\\b17 State income tax\\s+AMOUNT"}

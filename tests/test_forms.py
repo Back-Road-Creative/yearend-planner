@@ -107,6 +107,7 @@ W2 = [
     "c Employer's name, address, and ZIP code: Example Employer Inc (synthetic)",
     "1 Wages, tips, other compensation $ 30,000.00",
     "2 Federal income tax withheld $ 2,400.00",
+    "12a W $ 1,200.00",
     "16 State wages, tips, etc. $ 30,000.00",
     "17 State income tax $ 1,100.00",
 ]
@@ -227,6 +228,7 @@ def test_information_returns(tmp_path: Path) -> None:
     assert got["1099-NEC"].boxes["1"][1] == 20000.0
     assert got["1099-NEC"].issuer == "Example Client LLC (synthetic)"
     assert got["W-2"].boxes["2"][1] == 2400.0 and got["W-2"].boxes["17"][1] == 1100.0
+    assert got["W-2"].boxes["12W"][1] == 1200.0
     assert got["W-2"].issuer == "Example Employer Inc (synthetic)"
     assert got["1099-K"].boxes["1a"][1] == 5400.0
     assert got["1099-K"].issuer == "Example Processor (synthetic)"

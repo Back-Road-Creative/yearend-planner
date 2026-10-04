@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import date
 
 from planner.ingest.needs import MANUAL_VALUES, load_manual
 from planner.ledger import db, portfolio
@@ -297,29 +297,7 @@ def store(
             f"{year} is still open: the Needed panel keeps the year-to-date gains"
         )
         return cg
-    current = {f.box: f.value for f in db.facts_for(conn, year, FORM)}
-    if current == cg.lines:
-        return cg
-    with conn:
-        conn.execute(
-            "UPDATE facts SET status = 'superseded' WHERE form = ? AND tax_year = ? "
-            "AND status = 'accepted'",
-            (FORM, year),
-        )
-    if cg.lines:
-        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
-        db.add_document(
-            conn,
-            fingerprint=f"schedule-d:{year}:{stamp}",
-            file_name=f"Schedule D {year}",
-            kind="derived",
-            pages=0,
-            batch=stamp,
-            facts=[
-                db.Fact(FORM, year, ISSUER, line, LABELS[line], value, 0)
-                for line, value in cg.lines.items()
-            ],
-        )
+    db.replace_derived(conn, FORM, year, cg.lines, LABELS, f"Schedule D {year}")
     return cg
 
 

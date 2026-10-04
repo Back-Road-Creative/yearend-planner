@@ -20,7 +20,6 @@ from __future__ import annotations
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -226,26 +225,8 @@ def store(conn: sqlite3.Connection, lay: Layout, year: int) -> ScheduleC:
     """Rebuild the year and replace its SCH-C facts (none when no row is
     categorised into a Schedule C line)."""
     sc = build(conn, lay, year)
-    with conn:
-        conn.execute(
-            "UPDATE facts SET status = 'superseded' WHERE form = ? AND tax_year = ? "
-            "AND status = 'accepted'",
-            (FORM, year),
-        )
-    if sc.lines:
-        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
-        db.add_document(
-            conn,
-            fingerprint=f"schedule-c:{year}:{stamp}",
-            file_name=f"Schedule C {year}",
-            kind="derived",
-            pages=0,
-            batch=stamp,
-            facts=[
-                db.Fact(FORM, year, ISSUER, line, label(line), value, 0)
-                for line, value in sc.lines.items()
-            ],
-        )
+    labels = {line: label(line) for line in sc.lines}
+    db.replace_derived(conn, FORM, year, sc.lines, labels, f"Schedule C {year}", ISSUER)
     return sc
 
 
