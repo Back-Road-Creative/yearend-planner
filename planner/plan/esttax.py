@@ -221,6 +221,82 @@ def _agency(
     return ag
 
 
+@dataclass(frozen=True)
+class Flow:
+    """One estimated-tax cash movement on the glide path's monthly line."""
+
+    when: str
+    agency: str
+    amount: float
+    kind: (
+        str  # "paid" | "installment <n>" | "next year installment <n>" | "balance due"
+    )
+
+
+def next_year_required(ag: Agency, agi: float) -> float:
+    """The plan year + 1 annual payment the installments must cover, from the
+    year's projected tax repeated: its safe harbor (the lesser of 90% of that
+    tax and 100% of this year's, ``safe_harbor`` with this year's tax as both
+    legs) less the same withholding, floored at zero (IRC 6654(d)(1)(B): no
+    installment is due when withholding covers it), and zero under the de
+    minimis test. ``cash_flows`` and the year plan's calendar both read it."""
+    if r(ag.current_tax - ag.withheld) < DE_MINIMIS[ag.name]:
+        return 0.0
+    annual, _ = safe_harbor(ag.name, ag.current_tax, ag.current_tax, agi)
+    return r(max(annual - ag.withheld, 0.0))
+
+
+def cash_flows(et: EstTax) -> tuple[list[Flow], list[str]]:
+    """What the tax costs in cash, dated, from this estimate: payments already
+    made (bank rows and typed ones, on their own dates); each installment due
+    on or after the estimate's date at what its cumulative safe-harbor figure
+    still lacks, so an earlier shortfall is made up at the next due date; the
+    plan year + 1 installments that fall inside the following year; and the
+    tax the installments leave unpaid, due with the return.
+
+    Next year repeats this year's projected tax: its safe harbor is the lesser
+    of 90% of that tax and 100% of this year's (``safe_harbor`` with this
+    year's tax as both legs), less the same withholding, and the de minimis
+    test applies as it does here. Its January installment falls after the
+    two-year window and is left out. A refund is not counted as cash."""
+    as_of = date.fromisoformat(et.as_of)
+    flows: list[Flow] = []
+    notes: list[str] = []
+    filing = shift(date(et.year + 1, 4, 15))
+    for ag in et.agencies:
+        for p in ag.payments:
+            flows.append(Flow(p.date, ag.name, p.amount, "paid"))
+        running = r(sum(p.amount for p in ag.payments))
+        for inst in ag.installments:
+            if date.fromisoformat(inst.due) < as_of:
+                continue
+            need = r(max(inst.required - running, 0.0))
+            running = r(running + need)
+            flows.append(Flow(inst.due, ag.name, need, f"installment {inst.n}"))
+        owed = r(ag.current_tax - ag.withheld - running)
+        if owed < 0:
+            notes.append(
+                f"{ag.name}: the installments overpay by {-owed:,.2f}; the refund "
+                "is not counted as cash"
+            )
+        else:
+            flows.append(Flow(filing.isoformat(), ag.name, owed, "balance due"))
+        required = next_year_required(ag, et.agi)
+        before = 0.0
+        for n, due in enumerate(due_dates(et.year + 1)[:3], 1):
+            cum = r(required * n / 4)
+            flows.append(
+                Flow(
+                    due.isoformat(),
+                    ag.name,
+                    r(cum - before),
+                    f"next year installment {n}",
+                )
+            )
+            before = cum
+    return flows, notes
+
+
 def estimate(
     lay: Layout,
     year: int,

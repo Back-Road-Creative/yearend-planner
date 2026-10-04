@@ -39,11 +39,13 @@ magi_projection_lines: verified  # tests/test_plan.py; planner magi; engine-pric
 roth_conversion_candidates: verified  # tests/test_plan.py; planner conversions; one engine sweep, each candidate costed
 spending_band: verified
 glide_path_and_monthly_cash: verified
+glide_cash_line_estimated_tax: verified  # tests/test_esttax.py; payments made on their dates, later installments at the safe-harbor shortfall, next year's at 90%, the rest due with the return
+glide_cash_line_planned_flows: verified  # tests/test_year.py + test_withdraw.py; planned-sale proceeds priced from taxable lots at year-end, conversion tax through the installments and the balance due
 withdraw_lots: verified
 wash_sales: verified
 estimated_tax: verified
 underpayment_penalty: unsupported
-deadline_calendar: verified  # tests/test_year.py; federal holidays and DC Emancipation Day computed, never typed
+deadline_calendar: verified  # tests/test_year.py; federal holidays and DC Emancipation Day computed, never typed; Q2/Q3 marked "if required" from the esttax result
 year_end_plan_page: verified  # tests/test_year.py; planner plan; a missing input blocks one section, never the page
 plan_typed_fields: verified  # tests/test_year.py + test_plan.py; planner plan asks total income, Q4 dividends, planned sales, conversion target; auto adopts the recommended conversion everywhere
 conversion_spill_warning: verified  # tests/test_plan.py + test_year.py; a spill is gains tax the conversion adds over the year without it; shown by planner conversions and the plan page

@@ -4,8 +4,11 @@ rules, never typed in."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
+
+AGENCY_NAMES = {"fed": "federal", "nc": "NC"}
 
 
 def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
@@ -80,8 +83,32 @@ def _rule(year: int, month: int, day: int, item: str, move: int = NEXT) -> Deadl
     return Deadline(moved.isoformat(), nominal.isoformat(), item)
 
 
-def deadlines(year: int) -> list[Deadline]:
-    """The plan year's calendar from October through next April, in order."""
+def _conditional(
+    quarter: int, owing: Sequence[str] | None, why_none: str | None = None
+) -> str:
+    """A Q2 or Q3 line. ``owing`` is who must pay that installment, from the
+    estimated-tax result; ``None`` when it is not known. ``why_none`` is the
+    reason nobody owes, given by the caller that knows it."""
+    item = f"Q{quarter} estimated payments (federal and NC) if required"
+    if owing is None:
+        return item
+    if not owing:
+        return f"{item}: not required" + (f" ({why_none})" if why_none else "")
+    names = " and ".join(AGENCY_NAMES.get(a, a) for a in owing)
+    return f"{item}: required for {names}"
+
+
+def deadlines(
+    year: int,
+    owing: Mapping[int, Sequence[str]] | None = None,
+    why_none: str | None = None,
+) -> list[Deadline]:
+    """The plan year's calendar from October through next September, in order.
+    The June and September installments are marked "if required"; ``owing``
+    maps installment 2 and 3 to the agencies whose estimated-tax result says a
+    payment is required (empty: none), and names them on the line; when nobody
+    owes, ``why_none`` is the reason the line gives."""
+    owing = owing or {}
     items = [
         _rule(
             year, 10, 1, "loss harvest and gain pairing; set specific-ID first", NONE
@@ -111,8 +138,8 @@ def deadlines(year: int) -> list[Deadline]:
             15,
             f"Q1 estimated payments; {year} Roth IRA and HSA contributions; filing",
         ),
-        _rule(year + 1, 6, 15, "Q2 estimated payments (federal and NC)"),
-        _rule(year + 1, 9, 15, "Q3 estimated payments (federal and NC)"),
+        _rule(year + 1, 6, 15, _conditional(2, owing.get(2), why_none)),
+        _rule(year + 1, 9, 15, _conditional(3, owing.get(3), why_none)),
     ]
     if year == 2026:
         items.append(

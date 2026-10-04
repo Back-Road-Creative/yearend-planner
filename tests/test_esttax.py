@@ -5,13 +5,14 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
 from typer.testing import CliRunner
 
 from planner.cli import app
 from planner.ingest import ingest
 from planner.ingest.needs import enter
 from planner.paths import Layout
-from planner.plan import esttax, magi
+from planner.plan import esttax, glidepath, magi
 from tests.test_spending import lay  # noqa: F401
 
 runner = CliRunner()
@@ -121,3 +122,84 @@ def test_cli_esttax_and_paid(lay: Layout) -> None:  # noqa: F811
     assert r.exit_code == 0, r.output
     assert "fed:" in r.output and "nc:" in r.output and "next:" in r.output
     assert "due 2026-09-15" in r.output and "1,200.00" in r.output
+
+
+def test_cash_line_matches_esttax_installments(lay: Layout) -> None:  # noqa: F811
+    enter(lay, 2026, "prior_agi", "70,000")
+    enter(lay, 2026, "prior_total_tax", "8,000")
+    enter(lay, 2026, "prior_nc_tax", "2,000")
+    esttax.record(lay, 2026, "fed", "2026-04-10", 1_200.0)
+    asof = date(2026, 7, 10)
+    et = esttax.estimate(lay, 2026, asof)
+    fed, nc = et.agencies
+    g = glidepath.glide(lay, 2026, asof)
+    row = {(m.year, m.month): m for m in g.months}
+    # a past month shows what was paid, not a quarter of the year's tax
+    assert row[(2026, 4)].est_tax == 1_200.0
+    assert row[(2026, 6)].est_tax == 0.0
+    # the next due date takes esttax's own next amount, both agencies
+    assert fed.next_due == "2026-09-15" and nc.next_due == "2026-09-15"
+    assert row[(2026, 9)].est_tax == round(fed.next_amount + nc.next_amount, 2)
+    assert row[(2026, 9)].est_tax == 6_300.0
+    # January's installment is the rest of the safe harbor, not another quarter
+    assert row[(2027, 1)].est_tax == 2_500.0
+    paid = sum(m.est_tax for m in g.months if (m.year, m.month) <= (2027, 1))
+    assert paid == fed.required + nc.required == 10_000.0
+    # months with no installment carry none
+    assert [m.est_tax for m in g.months if m.year == 2026 and m.month in (1, 2, 3)] == [
+        0.0
+    ] * 3
+    assert row[(2026, 8)].est_tax == 0.0 and row[(2026, 12)].est_tax == 0.0
+    # next year: 90% of the repeated year less withholding, over the shifted dates
+    due = esttax.due_dates(2027)
+    nxt = [row[(d.year, d.month)].est_tax for d in due[:3]]
+    want = round(0.9 * (fed.current_tax + nc.current_tax) / 4, 2)
+    assert nxt == pytest.approx([want] * 3, abs=0.02)
+    # what the installments leave unpaid falls due with the return
+    owed = sum(ag.current_tax - ag.withheld - ag.required for ag in (fed, nc))
+    assert row[(2027, 4)].balance_due == pytest.approx(owed, abs=0.02)
+    assert sum(m.balance_due for m in g.months) == row[(2027, 4)].balance_due
+    # the net of each month counts the payment and the balance due
+    assert row[(2027, 4)].net == round(
+        row[(2027, 4)].se
+        + row[(2027, 4)].dividends
+        - row[(2027, 4)].living
+        - row[(2027, 4)].mortgage
+        - row[(2027, 4)].premiums
+        - row[(2027, 4)].est_tax
+        - row[(2027, 4)].balance_due
+        - row[(2027, 4)].irregular,
+        2,
+    )
+
+
+def _agency(name: str, current: float, withheld: float) -> esttax.Agency:
+    return esttax.Agency(
+        name, current, None, None, 0.0, "test", withheld, current - withheld < 1_000.0
+    )
+
+
+def test_next_year_required_is_the_one_figure_behind_cash_and_calendar() -> None:
+    et = esttax.EstTax(2026, "2026-07-10", 80_000.0, False)
+    # tax 10,000 with 9,000 withheld: 1,000 left is not under the de minimis, but
+    # withholding already meets next year's 90% safe harbor (IRC 6654(d)(1)(B))
+    covered = _agency("fed", 10_000.0, 9_000.0)
+    assert not covered.de_minimis
+    assert esttax.next_year_required(covered, et.agi) == 0.0
+    # 2,000 withheld leaves 90% of 10,000 less 2,000 to pay in installments
+    short = _agency("nc", 10_000.0, 2_000.0)
+    assert esttax.next_year_required(short, et.agi) == 7_000.0
+    # under the de minimis nothing is required whatever the harbor says
+    tiny = _agency("fed", 1_500.0, 600.0)
+    assert tiny.de_minimis and esttax.next_year_required(tiny, et.agi) == 0.0
+    et.agencies = [covered, short]
+    flows, _ = esttax.cash_flows(et)
+    nxt = {
+        (f.agency, f.kind): f.amount for f in flows if f.kind.startswith("next year")
+    }
+    assert [nxt[("fed", f"next year installment {n}")] for n in (1, 2, 3)] == [0.0] * 3
+    assert [nxt[("nc", f"next year installment {n}")] for n in (1, 2, 3)] == [
+        1_750.0,
+        1_750.0,
+        1_750.0,
+    ]

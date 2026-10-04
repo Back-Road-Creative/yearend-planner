@@ -55,7 +55,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `facts` | List the accepted facts in the ledger, each with its source file and page. |
 | `forms` | The forms the year should produce (from last year's issuers, the accounts and the Needed panel), which have arrived, and where to download the rest. |
 | `gains` | Form 8949 and Schedule D: each closed lot in a taxable account, wash sales across every account (code W), 1099-DIV capital gain distributions and the loss carried in. |
-| `glide` | The age/year table to 95 under the planning return, the accessible-bucket floor through the IRA access age, three stress rows, and the month-by-month cash line for this year and next. |
+| `glide` | The age/year table to 95 under the planning return, the accessible-bucket floor through the IRA access age, three stress rows, and the month-by-month cash line for this year and next, with estimated payments from `esttax` and the planned sales and conversion tax (no `--cash-in` needed). |
 | `hsa` | Form 8889: the HSA limit for your coverage and months, employer money against it, the deduction, any excess, and distributions not spent on medical care. |
 | `ingest` | Read every file in data/inbox/ into the ledger; archive or mark UNMATCHED. |
 | `init` | Set up this folder: create data/ and out/ with every subfolder. Refuses a folder inside OneDrive, Dropbox, iCloud Drive or Google Drive (exit 2). Safe to repeat. |
