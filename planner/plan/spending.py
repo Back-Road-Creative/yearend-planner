@@ -18,6 +18,7 @@ from planner.paths import Layout
 from planner.plan.inputs import age_at_year_end
 
 DRAWDOWN = 0.90
+BAND_YEARS = 10  # rows in the return-band table (planner spend, the plan page)
 REQUIRED = (
     "withdrawal_rate",
     "spending_floor",
@@ -122,8 +123,10 @@ def plan(
     st = portfolio.status(lay, year, today)
     bal = r(balance if balance is not None else st.total)
     inflation = float(profile["inflation"])
-    peak_adj = (
-        adjusted_peak(st.peak, st.peak_date, today, inflation) if st.peak else bal
+    # a January balance above the ledger's peak is the new peak
+    peak_adj = max(
+        adjusted_peak(st.peak, st.peak_date, today, inflation) if st.peak else bal,
+        bal,
     )
     rate = float(profile["withdrawal_rate"])
     floor = float(profile["spending_floor"])

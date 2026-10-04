@@ -85,6 +85,7 @@ class Panel:
     tag: str
     lines: list[str]
     notes: list[str]
+    tables: list[year_plan.Table] = field(default_factory=list)
 
 
 @dataclass
@@ -293,7 +294,7 @@ def gather(
     projected = today <= date(year, 12, 31) or bool(page.estimates)
     by_name = {s.name: s for s in plan.sections}
     page.panels = [
-        Panel(n, TITLES[n], _tag(s, projected), s.lines, s.notes)
+        Panel(n, TITLES[n], _tag(s, projected), s.lines, s.notes, s.tables)
         for n, s in ((n, by_name[n]) for n in ORDER)
     ]
     page.inventory = expected.inventory(lay, year, today)

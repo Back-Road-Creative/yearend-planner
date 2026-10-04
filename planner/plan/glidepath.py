@@ -1,6 +1,7 @@
 """The glide path: the age/year table from the current balance under the
 planning return (real and nominal dollars, Social Security from the claim age),
-the accessible-bucket floor through the IRA access age, three stress rows, and
+the accessible-bucket floor through the IRA access age, the comfort-floor line
+beside the on-track line, three stress rows, and
 a month-by-month cash line for this year and next so the bridge to 59½ is
 proven fundable by month, not only in annual bands.
 
@@ -98,6 +99,22 @@ class Glide:
     months: list[MonthRow] = field(default_factory=list)
     first_short_month: str | None = None
     notes: list[str] = field(default_factory=list)
+    # the comfort-floor line: the same spending rule run at the pessimistic
+    # floor return, row for row beside ``rows`` (the on-track line)
+    floor_rows: list[YearRow] = field(default_factory=list)
+    spending: float = 0.0  # this year's spend under the band
+    band: str = ""  # where that spend sits: floor, inside, ceiling, drawdown
+
+
+def band_name(sp: spending.Spending) -> str:
+    """Which band this year's spending sits in."""
+    if sp.in_drawdown:
+        return "drawdown, held at the floor"
+    if sp.spending <= sp.floor:
+        return "at the floor"
+    if sp.spending >= sp.ceiling:
+        return "at the ceiling"
+    return "inside the band"
 
 
 def ss_monthly(profile: dict[str, Any], claim_age: int) -> tuple[float, str | None]:
@@ -127,13 +144,16 @@ def run(
     claim_age: int | None,
     drop_year1: float = 0.0,
     horizon: int = HORIZON_AGE,
+    peak: float | None = None,
 ) -> list[YearRow]:
     """Real-dollar path: spend at the start of the year (SS first, the portfolio
     for the rest), grow what is left; the drawdown rule holds spending at the
-    floor while the balance sits under 90% of its peak."""
+    floor while the balance sits under 90% of its peak. ``peak`` is the
+    inflation-adjusted all-time peak the spending panel uses; a starting balance
+    above it is the peak."""
     rows: list[YearRow] = []
     bal = balance * (1 - drop_year1)
-    peak = balance
+    peak = balance if peak is None else max(peak, balance)
     for i in range(max(horizon - age + 1, 1)):
         a = age + i
         ss = ss_annual if claim_age is not None and a >= claim_age else 0.0
@@ -399,6 +419,8 @@ def glide(
         needed,
         r(max(needed - st.accessible, 0.0)),
         notes=list(sp.notes),
+        spending=sp.spending,
+        band=band_name(sp),
     )
     claim_age = profile.get("ss_claim_age")
     ss_annual = 0.0
@@ -423,6 +445,7 @@ def glide(
         inflation,
         ss_annual,
         claim,
+        peak=sp.peak_adjusted,
     )
     for name, ret, drop in (
         ("30% drop in year one", ret_track, STRESS_DROP),
@@ -441,8 +464,11 @@ def glide(
             ss_annual,
             claim,
             drop,
+            peak=sp.peak_adjusted,
         )
         g.stresses.append(Stress(name, runs_out(rows), rows[-1].balance_real))
+        if name == "floor returns":
+            g.floor_rows = rows  # the comfort-floor line is the floor-returns run
     cash_start = r(sum(p.value for p in st.positions if p.type == "cash"))
     g.months = months(
         lay, year, today, sp.spending, cash_start, cash_in or {}, overrides, g.notes

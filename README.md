@@ -46,7 +46,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `confirm` | Values read by OCR wait here. |
 | `conversions` | Size this year's Roth conversion: one engine sweep, a candidate per watched line, each with its federal and NC tax, ACA credit change, Medicaid effect and the cash needed from outside the IRA. |
 | `convert` | Record a Roth conversion; the planner dates when its principal becomes penalty-free. |
-| `dashboard` | Write the dashboard as a static page, out/index.html, for printing and backup: the Needed panel, every planner, the draft return and the alerts, each panel tagged actual, estimate or unavailable. |
+| `dashboard` | Write the dashboard as a static page, out/index.html, for printing and backup: the Needed panel, every planner, the draft return and the alerts, each panel tagged actual, estimate or unavailable. The glide panel carries the age/year table, the cash panel the monthly cash line and the spending panel the return-band table. |
 | `derive` | Recompute the YTD facts (realized gains, dividends, interest, bank flows) for one year from the imported rows; supersedes the previous run. |
 | `dont-have` | Mark an item as not available; it leaves the Needed list and the plan shows it as unavailable instead of guessing. `--undo` puts it back. |
 | `draft` | The draft return: Form 1040 with Schedules 1, 1-A, 2, 3, C, D and SE and the other forms, and the NC D-400 with Schedule S, every line priced by the engine and naming its source. |
@@ -55,7 +55,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `facts` | List the accepted facts in the ledger, each with its source file and page. |
 | `forms` | The forms the year should produce (from last year's issuers, the accounts and the Needed panel), which have arrived, and where to download the rest. |
 | `gains` | Form 8949 and Schedule D: each closed lot in a taxable account, wash sales across every account (code W), 1099-DIV capital gain distributions and the loss carried in. |
-| `glide` | The age/year table to 95 under the planning return, the accessible-bucket floor through the IRA access age, three stress rows, and the month-by-month cash line for this year and next, with estimated payments from `esttax` and the planned sales and conversion tax (no `--cash-in` needed). |
+| `glide` | The age/year table to 95 under the planning return, the accessible-bucket floor through the IRA access age, the comfort-floor line (the same rule at the floor return) beside it, three stress rows, and the month-by-month cash line for this year and next, with estimated payments from `esttax` and the planned sales and conversion tax (no `--cash-in` needed). |
 | `hsa` | Form 8889: the HSA limit for your coverage and months, employer money against it, the deduction, any excess, and distributions not spent on medical care. |
 | `ingest` | Read every file in data/inbox/ into the ledger; archive or mark UNMATCHED. |
 | `init` | Set up this folder: create data/ and out/ with every subfolder. Refuses a folder inside OneDrive, Dropbox, iCloud Drive or Google Drive (exit 2). Safe to repeat. |
@@ -64,7 +64,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `needed` | What the plan still lacks for a year: each missing item, why, and the document that supplies it, then every form past its due date that the return needs. |
 | `paid` | Record an estimated payment the bank export does not show. |
 | `paths` | Show where this planner keeps its folders, creating data/ and out/. |
-| `plan` | The year-end plan on one page: the Needed panel, projected MAGI against every line, the conversion, the spending band, the glide path, cash to raise, estimated tax, wash sales and the deadline calendar. From a terminal it first asks for total income, Q4 dividends, planned sales and the conversion target (`--total-income`, `--q4-dividends`, `--sales-st`, `--sales-lt`, `--conversion-target manual\|auto`; `--no-ask` skips the questions). |
+| `plan` | The year-end plan on one page: the Needed panel, projected MAGI against every line, the conversion, the spending band with its return-band table, the glide path with its age/year table, cash to raise with the monthly cash line, estimated tax, wash sales and the deadline calendar. From a terminal it first asks for total income, Q4 dividends, planned sales and the conversion target (`--total-income`, `--q4-dividends`, `--sales-st`, `--sales-lt`, `--conversion-target manual\|auto`; `--no-ask` skips the questions). |
 | `restore` | Check a backup (paths, size, every file against its manifest), then swap its data/ in. |
 | `rollover` | Roll the year that ended into the next: carry AGI, total tax, NC tax and the capital loss carryforward (filed figures once closed, else the draft's), keep a snapshot of the ledger and the year's dashboard, make next year the active one, refresh its limits and print the checklist. |
 | `rows` | List imported CSV rows (holdings, lots, transactions, income, bank lines). |

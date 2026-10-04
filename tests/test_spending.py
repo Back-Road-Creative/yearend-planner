@@ -4,6 +4,7 @@ cash account and a traditional IRA)."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -167,6 +168,39 @@ def test_glide_path_table_stresses_and_monthly_cash(lay: Layout) -> None:
     assert any("bridge is not funded" in n for n in g3.notes)
 
 
+def test_glide_comfort_floor_line_and_band(lay: Layout) -> None:
+    g = glidepath.glide(lay, 2026, AS_OF)
+    # the comfort-floor line is the same rule run at the pessimistic floor return
+    assert len(g.floor_rows) == len(g.rows)
+    assert [rw.age for rw in g.floor_rows] == [rw.age for rw in g.rows]
+    assert g.floor_rows[0].balance_real == g.rows[0].balance_real
+    assert g.floor_rows[1].balance_real == 1_800_000 - 63_000  # 0% floor return
+    assert g.floor_rows[-1].balance_real == g.stresses[2].balance_at_horizon
+    assert g.floor_rows[-1].balance_real < g.rows[-1].balance_real
+    # which band the household is in: inside, at the floor, at the ceiling, drawdown
+    assert g.band == "inside the band" and g.spending == 63_000.0
+    assert glidepath.glide(lay, 2026, AS_OF, balance=3_000_000.0).band == (
+        "at the ceiling"
+    )
+    for low in (900_000.0, 1_500_000.0):  # under 90% of the 1.8M peak
+        assert glidepath.glide(lay, 2026, AS_OF, balance=low).band == (
+            "drawdown, held at the floor"
+        )
+    # the glide table agrees with the band label: under 90% of the (inflation-
+    # adjusted) peak, year one is spent at the floor on both lines, and the
+    # comfort-floor line matches the spending panel's floor-return column
+    held = glidepath.glide(lay, 2026, AS_OF, balance=1_500_000.0)
+    banded = spending.plan(lay, 2026, AS_OF, balance=1_500_000.0)
+    assert held.rows[0].spend == held.floor_rows[0].spend == held.spending == 50_000.0
+    for i in range(3):
+        assert held.floor_rows[i].spend == banded.rows[i].spend_floor
+        assert held.floor_rows[i].balance_real == banded.rows[i].balance_floor
+    # at the floor without a drawdown (the rate times the balance is under it)
+    sp = spending.plan(lay, 2026, AS_OF)
+    pinned = replace(sp, spending=sp.floor)
+    assert glidepath.band_name(pinned) == "at the floor"
+
+
 def test_glide_ss_fallback_and_accessible_shortfall(lay: Layout) -> None:
     enter(lay, 2026, "ss_claim_age", "70")
     g = glidepath.glide(lay, 2026, AS_OF, balance=300_000.0)
@@ -199,4 +233,34 @@ def test_cli_spend_and_glide(lay: Layout) -> None:
     )
     assert r.exit_code == 0, r.output
     assert "covered" in r.output and "stress floor returns" in r.output
+    assert "comfort floor" in r.output and "(inside the band)" in r.output
     assert "2026-11  " in r.output and "25,000.00" in r.output
+
+
+def test_a_balance_above_the_ledger_peak_is_the_peak(lay: Layout) -> None:
+    """The ledger peak is 1.8M; a 3M January balance is the new peak, so a 30% drop
+    in year one (2.1M, under 90% of 3M) holds spending at the floor."""
+    rows = glidepath.run(
+        2026,
+        55,
+        3_000_000.0,
+        0.035,
+        50_000.0,
+        65_000.0,
+        0.0,
+        0.0,
+        0.0,
+        None,
+        drop_year1=0.3,
+        peak=1_800_000.0,
+    )
+    assert rows[0].spend == 50_000.0
+    g = glidepath.glide(lay, 2026, AS_OF, balance=3_000_000.0)
+    sp = spending.plan(lay, 2026, AS_OF, balance=3_000_000.0)
+    assert sp.peak_adjusted == 3_000_000.0
+    # the comfort-floor line (0% return) holds at the floor once under 2.7M
+    held = [rw for rw in g.floor_rows if rw.balance_real < 2_700_000.0]
+    assert held and all(rw.spend == 50_000.0 for rw in held)
+    assert all(
+        rw.spend_floor == 50_000.0 for rw in sp.rows if rw.balance_floor < 2_700_000.0
+    )

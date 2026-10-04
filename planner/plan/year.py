@@ -42,12 +42,24 @@ SECTIONS = (
 )
 
 
+@dataclass(frozen=True)
+class Table:
+    """A table a section carries beside its lines: the dashboard draws it as a
+    table, the text page as aligned columns. Cells are formatted strings; the
+    first column is a label, the rest are numbers."""
+
+    title: str
+    headers: list[str]
+    rows: list[list[str]]
+
+
 @dataclass
 class Section:
     name: str
     ok: bool  # False: the planner could not run; ``lines`` says what it needs
     lines: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    tables: list[Table] = field(default_factory=list)
 
 
 @dataclass
@@ -161,31 +173,141 @@ def _levers(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
 
 
 def _spending(lay: Layout, year: int, today: date, _ov: Overrides) -> Section:
-    sp = spending.plan(lay, year, today, years=3)
+    sp = spending.plan(lay, year, today, years=spending.BAND_YEARS)
     lines = [
         f"balance {sp.balance:,.2f}; peak {sp.peak:,.2f} ({sp.peak_date}); "
         f"spending {sp.spending:,.2f} (floor {sp.floor:,.2f}, ceiling "
         f"{sp.ceiling:,.2f})" + ("  DRAWDOWN" if sp.in_drawdown else "")
     ]
-    return Section("spending", True, lines, list(sp.notes))
+    band = Table(
+        f"Return bands, {sp.rows[0].year} to {sp.rows[-1].year} (real dollars)",
+        [
+            "year",
+            "age",
+            "floor-return balance",
+            "floor-return spend",
+            "planning-return balance",
+            "planning-return spend",
+        ],
+        [
+            [
+                str(rw.year),
+                str(rw.age),
+                f"{rw.balance_floor:,.2f}",
+                f"{rw.spend_floor:,.2f}",
+                f"{rw.balance_track:,.2f}",
+                f"{rw.spend_track:,.2f}",
+            ]
+            for rw in sp.rows
+        ],
+    )
+    return Section("spending", True, lines, list(sp.notes), [band])
 
 
-def _glide(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
-    g = glidepath.glide(lay, year, today, overrides=ov)
+def _glide(
+    lay: Layout,
+    year: int,
+    today: date,
+    ov: Overrides,
+    g: glidepath.Glide | None = None,
+) -> Section:
+    g = g or glidepath.glide(lay, year, today, overrides=ov)
     lines = [
         f"accessible {g.accessible:,.2f} vs floor through {g.access_age:g} "
         f"{g.floor_needed:,.2f}: "
-        + (f"SHORT by {g.floor_shortfall:,.2f}" if g.floor_shortfall else "covered")
+        + (f"SHORT by {g.floor_shortfall:,.2f}" if g.floor_shortfall else "covered"),
+        f"band: {g.band} (spending {g.spending:,.2f})",
     ]
     for s in g.stresses:
         end = f"runs out at {s.runs_out_age}" if s.runs_out_age else "lasts"
         lines.append(f"stress {s.name:22} {end}")
     if g.first_short_month:
-        lines.append(f"cash line goes negative in {g.first_short_month}")
-    return Section("glide", True, lines, list(g.notes))
+        lines.append(f"cash line falls under the target in {g.first_short_month}")
+    table = Table(
+        f"Age and year table, {g.rows[0].year} to {g.rows[-1].year} "
+        "(on-track line beside the comfort-floor line)",
+        [
+            "year",
+            "age",
+            "on-track real",
+            "on-track nominal",
+            "SS",
+            "spend",
+            "withdraw",
+            "comfort-floor real",
+            "comfort-floor spend",
+        ],
+        [
+            [
+                str(rw.year),
+                str(rw.age),
+                f"{rw.balance_real:,.2f}",
+                f"{rw.balance_nominal:,.2f}",
+                f"{rw.ss:,.2f}",
+                f"{rw.spend:,.2f}",
+                f"{rw.withdrawal:,.2f}",
+                f"{fl.balance_real:,.2f}",
+                f"{fl.spend:,.2f}",
+            ]
+            for rw, fl in zip(g.rows, g.floor_rows, strict=True)
+        ],
+    )
+    return Section("glide", True, lines, list(g.notes), [table])
 
 
-def _cash(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
+def _month_table(g: glidepath.Glide, target: float) -> Table:
+    """The monthly cash line for this year and next, each month against the
+    cash target; ``*`` marks income columns read from ledger rows."""
+    return Table(
+        f"Monthly cash line, {g.months[0].year}-{g.months[0].month:02d} to "
+        f"{g.months[-1].year}-{g.months[-1].month:02d} "
+        "(* income from ledger rows; other months at the run-rate)",
+        [
+            "month",
+            "SE",
+            "div",
+            "in",
+            "sales",
+            "living",
+            "mortgage",
+            "premiums",
+            "est tax",
+            "tax due",
+            "irregular",
+            "net",
+            "cash",
+            "vs target",
+        ],
+        [
+            [
+                f"{m.year}-{m.month:02d}{'*' if m.actual else ''}",
+                f"{m.se:,.2f}",
+                f"{m.dividends:,.2f}",
+                f"{m.cash_in:,.2f}",
+                f"{m.planned_in:,.2f}",
+                f"{m.living:,.2f}",
+                f"{m.mortgage:,.2f}",
+                f"{m.premiums:,.2f}",
+                f"{m.est_tax:,.2f}",
+                f"{m.balance_due:,.2f}",
+                f"{m.irregular:,.2f}",
+                f"{m.net:,.2f}",
+                f"{m.cash:,.2f}",
+                "UNDER" if m.cash < target else "ok",
+            ]
+            for m in g.months
+        ],
+    )
+
+
+def _cash(
+    lay: Layout,
+    year: int,
+    today: date,
+    ov: Overrides,
+    g: glidepath.Glide | None = None,
+    why_no_line: str = "",
+) -> Section:
     w = withdraw.pick(lay, year, as_of=today, overrides=ov)
     lines = [
         f"cash {w.cash_now:,.2f} vs target {w.target:,.2f}: "
@@ -201,7 +323,17 @@ def _cash(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
             f"sell {s.account} {s.symbol} {s.acquired} {s.quantity:g} "
             f"-> {s.proceeds:,.2f} (gain {s.gain:,.2f})"
         )
-    return Section("cash", True, lines, list(w.notes))
+    notes = list(w.notes)
+    tables: list[Table] = []
+    if g is not None:
+        tables.append(_month_table(g, w.target))
+        if g.first_short_month:
+            lines.append(
+                f"monthly cash line falls under the target in {g.first_short_month}"
+            )
+    else:
+        notes.append(f"monthly cash line not drawn: {why_no_line}")
+    return Section("cash", True, lines, notes, tables)
 
 
 def _esttax(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
@@ -318,9 +450,34 @@ def assemble(
     ov = overrides or Overrides()
     # conversion_target=auto: one sizing, adopted by every section that follows
     ov, sizing = conversion.resolve(lay, year, ov)
+    # the glide section and the cash section's monthly line read one glide run
+    memo: dict[str, glidepath.Glide | MissingInputError | OverrideError] = {}
+
+    def shared_glide(lay_: Layout, y: int, t: date, o: Overrides) -> glidepath.Glide:
+        if "g" not in memo:
+            try:
+                memo["g"] = glidepath.glide(lay_, y, t, overrides=o)
+            except (MissingInputError, OverrideError) as exc:
+                memo["g"] = exc
+        got = memo["g"]
+        if isinstance(got, Exception):
+            raise got
+        return got
+
+    def cash(lay_: Layout, y: int, t: date, o: Overrides) -> Section:
+        try:
+            g, why = shared_glide(lay_, y, t, o), ""
+        except (MissingInputError, OverrideError) as exc:
+            g, why = None, str(exc)
+        return _cash(lay_, y, t, o, g, why)
+
     builders: dict[str, Callable[[Layout, int, date, Overrides], Section]] = {
         **BUILDERS,
         "conversion": lambda lay_, y, t, o: _conversion(lay_, y, t, o, sizing),
+        "glide": lambda lay_, y, t, o: _glide(
+            lay_, y, t, o, shared_glide(lay_, y, t, o)
+        ),
+        "cash": cash,
     }
     plan = YearPlan(year, today.isoformat())
     for name in SECTIONS:
@@ -329,6 +486,21 @@ def assemble(
         except (MissingInputError, OverrideError) as exc:
             plan.sections.append(Section(name, False, [f"needs: {exc}"]))
     return plan
+
+
+def text_table(t: Table) -> list[str]:
+    """Aligned columns: the label column left, the numbers right."""
+    cols = list(zip(t.headers, *t.rows, strict=True))
+    width = [max(len(c) for c in col) for col in cols]
+
+    def line(cells: list[str]) -> str:
+        first, rest = cells[0], cells[1:]
+        return " ".join(
+            [first.ljust(width[0])]
+            + [c.rjust(w) for c, w in zip(rest, width[1:], strict=True)]
+        ).rstrip()
+
+    return [line(t.headers)] + [line(row) for row in t.rows]
 
 
 def render(plan: YearPlan) -> str:
@@ -342,6 +514,8 @@ def render(plan: YearPlan) -> str:
         out.append(f"## {s.name}" + ("" if s.ok else "  (not run)"))
         out += [f"  {ln}" for ln in s.lines]
         out += [f"  note: {n}" for n in s.notes]
+        for t in s.tables:
+            out += ["", f"  {t.title}"] + [f"  {ln}" for ln in text_table(t)]
         out.append("")
     return "\n".join(out)
 
