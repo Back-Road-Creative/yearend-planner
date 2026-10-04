@@ -157,6 +157,11 @@ td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap
 <section id="alerts">
   <h2>Alerts <span class="tag {{ 'actual' if not p.alerts else 'estimate' }}">{{ p.alerts|length }}</span></h2>
   {% if p.alerts %}<ul>{% for a in p.alerts %}<li><b>{{ a.kind }}</b>: {{ a.text }}</li>{% endfor %}</ul>{% else %}<p>none</p>{% endif %}
+  {% if live and p.alerts|selectattr("kind", "equalto", "rollover")|list %}
+  <form method="post" action="/rollover?token={{ token }}" class="inline">
+    <button type="submit">Roll over to {{ p.year + 1 }}</button>
+  </form>
+  {% endif %}
 </section>
 {% if message %}<section id="message"><h2>Last action</h2><pre>{{ message }}</pre></section>{% endif %}
 </main>

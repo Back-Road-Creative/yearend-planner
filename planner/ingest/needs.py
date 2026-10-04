@@ -265,6 +265,7 @@ NEEDS: tuple[Need, ...] = (
         "money",
         PRIOR,
         boxes=(("1040", "11"),),
+        estimate=(("CARRY-EST", "agi"),),
     ),
     Need(
         "prior_total_tax",
@@ -274,6 +275,7 @@ NEEDS: tuple[Need, ...] = (
         "money",
         PRIOR,
         boxes=(("1040", "24"),),
+        estimate=(("CARRY-EST", "total_tax"),),
     ),
     Need(
         "prior_nc_tax",
@@ -283,15 +285,19 @@ NEEDS: tuple[Need, ...] = (
         "money",
         PRIOR,
         boxes=(("NC-D400", "15"),),
+        estimate=(("CARRY-EST", "nc_tax"),),
     ),
     Need(
         "prior_capital_loss_carryforward",
         "Capital loss carried into this year ($)",
         "offsets this year's gains before any is taxed",
         "last year's return: the Capital Loss Carryover Worksheet in the Schedule D "
-        "instructions (0 when Schedule D line 16 was not a loss)",
+        "instructions (0 when Schedule D line 16 was not a loss); planner "
+        "rollover carries it",
         "money",
         PRIOR,
+        boxes=(("CARRY", "st"), ("CARRY", "lt")),
+        estimate=(("CARRY-EST", "st"), ("CARRY-EST", "lt")),
     ),
     Need(
         "fed_withheld",
@@ -402,15 +408,23 @@ NEEDS: tuple[Need, ...] = (
         "Short-term capital loss carried in",
         "Schedule D line 6",
         "last year's Capital Loss Carryover Worksheet line 8 (Schedule D "
-        "instructions), or last year's draft (planner draft)",
+        "instructions), or last year's draft (planner draft); planner rollover "
+        "carries it",
         "money",
+        PRIOR,
+        boxes=(("CARRY", "st"),),
+        estimate=(("CARRY-EST", "st"),),
     ),
     Need(
         "lt_loss_carryover",
         "Long-term capital loss carried in",
         "Schedule D line 14",
-        "last year's Capital Loss Carryover Worksheet line 13, or last year's draft",
+        "last year's Capital Loss Carryover Worksheet line 13, or last year's "
+        "draft; planner rollover carries it",
         "money",
+        PRIOR,
+        boxes=(("CARRY", "lt"),),
+        estimate=(("CARRY-EST", "lt"),),
     ),
     Need(
         "ira_distributions",

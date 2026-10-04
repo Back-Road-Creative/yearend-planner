@@ -13,6 +13,7 @@ from planner.ingest import ingest
 from planner.ingest.needs import NEEDS, dont_have, enter, need_for, needed, parse_value
 from planner.ledger import db
 from planner.paths import Layout
+from planner.plan import rollover
 from planner.taxprep import hsa
 from tests.pdfgen import make_pdf
 from tests.test_csv import BANK, REALIZED, drop
@@ -45,6 +46,7 @@ def test_registry_keys_are_unique_and_every_box_names_a_template(
     forms["SCH-C"] = {}  # stored by planner categorize, not read from a PDF
     forms["SCH-D"] = {}  # stored by planner gains from the lots
     forms["8889"] = dict.fromkeys(hsa.LABELS)  # stored by planner hsa
+    forms[rollover.FILED] = dict.fromkeys(rollover.LABELS)  # planner rollover
     for n in NEEDS:
         for form, box in n.boxes:
             assert form in forms, (n.key, form)

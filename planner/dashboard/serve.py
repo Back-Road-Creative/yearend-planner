@@ -27,6 +27,7 @@ from planner.engine.household import MissingInputError
 from planner.ingest import confirm, ingest, needs
 from planner.ledger import db
 from planner.paths import Layout
+from planner.plan import rollover
 from planner.taxprep import package
 
 HOST = "127.0.0.1"
@@ -103,6 +104,15 @@ class App:
             return f"not done: {exc}"
         finally:
             conn.close()
+
+    def rollover(self) -> str:
+        today = self.as_of or date.today()
+        due = rollover.due(self.lay, today)
+        if due is None:
+            return "nothing to roll over"
+        ro = rollover.roll(self.lay, due, today)
+        self.year = rollover.active_year(self.lay, today)
+        return rollover.render(ro)
 
     def taxpack(self) -> str:
         try:
@@ -201,6 +211,7 @@ ROUTES: dict[str, Callable[[App, str, bytes], str]] = {
         _form(b).get("doc", ""), _form(b).get("action", "")
     ),
     "/taxpack": lambda a, ct, b: a.taxpack(),
+    "/rollover": lambda a, ct, b: a.rollover(),
 }
 
 

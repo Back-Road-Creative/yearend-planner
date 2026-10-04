@@ -17,6 +17,7 @@ from planner.ingest import confirm
 from planner.ingest.needs import Status, needed
 from planner.ledger import db
 from planner.paths import Layout
+from planner.plan import rollover
 from planner.plan import year as year_plan
 from planner.plan.inputs import Overrides
 from planner.taxprep import draft, expected, schedule_c
@@ -103,10 +104,6 @@ class Page:
         return next(p for p in self.panels if p.name == name)
 
 
-def default_year(today: date) -> int:
-    return today.year
-
-
 def _tag(section: year_plan.Section, projected: bool) -> str:
     if not section.ok:
         return UNAVAILABLE
@@ -139,6 +136,15 @@ def last_import(lay: Layout) -> str | None:
 
 def _alerts(lay: Layout, page: Page, today: date) -> list[Alert]:
     out: list[Alert] = []
+    due = rollover.due(lay, today)
+    if due is not None:
+        out.append(
+            Alert(
+                "rollover",
+                f"{due} has ended: roll it over to plan {due + 1} (the button "
+                f"below, or planner rollover --year {due})",
+            )
+        )
     hold = feed.held(lay)
     if hold:
         out.append(
