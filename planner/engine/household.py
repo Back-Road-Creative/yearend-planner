@@ -56,6 +56,13 @@ class Household:
     tipped_occupation_code: int = 0
     qualified_overtime: int = 0
     car_loan_interest: int = 0
+    # Schedule A: gifts to charity (cash, and shares at market value) and the
+    # two largest other itemized lines. The engine decides whether itemizing
+    # beats the standard deduction.
+    charitable_cash: int = 0
+    charitable_shares: int = 0
+    real_estate_taxes: int = 0
+    mortgage_interest: int = 0
     other: dict[str, int] = field(default_factory=dict)
     # Tax-unit variables the engine takes as given instead of computing: the
     # draft return sets a Schedule 1-A deduction to the form's own figure (the
@@ -108,6 +115,10 @@ class Household:
             "tip_income": {y: self.qualified_tips},
             "treasury_tipped_occupation_code": {y: self.tipped_occupation_code},
             "fsla_overtime_premium": {y: self.qualified_overtime},
+            "charitable_cash_donations": {y: self.charitable_cash},
+            "charitable_non_cash_donations": {y: self.charitable_shares},
+            "real_estate_taxes": {y: self.real_estate_taxes},
+            "home_mortgage_interest": {y: self.mortgage_interest},
         }
         for k, v in self.other.items():
             person[k] = {y: v}

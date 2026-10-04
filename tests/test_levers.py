@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 from planner.cli import app
 from planner.engine.tax import compute
 from planner.ingest.needs import enter
+from planner.ledger import portfolio
 from planner.paths import Layout
 from planner.plan import conversion, levers, year
 from planner.plan.inputs import Overrides
@@ -37,6 +38,8 @@ def test_catalog_sizes_from_the_ledger_and_names_what_it_needs(
         "harvest_losses",
         "spend_basis",
         "defer_sales",
+        "donate_shares",
+        "daf_bunch",
         "hsa",
         "se_health",
         "traditional_ira",
@@ -293,3 +296,77 @@ def test_income_targeting_sets_medicaid_beside_the_400_cliff(lots: Layout) -> No
     assert "income targeting (your choice; never picked for you):" in text
     assert "Medicaid 0 of 12 months" in text
     assert "aca_400" not in {lv.key for lv in m.levers}
+
+
+@pytest.mark.engine
+def test_donate_appreciated_priced_when_itemizing(lots: Layout) -> None:  # noqa: F811
+    """Shares instead of cash: the same deduction, the gain never taxed. A
+    donor-advised fund bunches next year's gift into this one, worth what the
+    engine says only once itemizing beats the standard deduction."""
+    _, found, _ = levers.catalog(lots, 2026, AS_OF)
+    by = {lv.key: lv for lv in found}
+    assert by["donate_shares"].why.startswith("needs planned_giving")
+    assert by["daf_bunch"].why.startswith("needs planned_giving")
+    answered(lots, planned_giving="12,000", real_estate_taxes="9,000")
+    ctx, found, _ = levers.catalog(lots, 2026, AS_OF)
+    by = {lv.key: lv for lv in found}
+    give, daf = by["donate_shares"], by["daf_bunch"]
+    assert ctx.base.itemizes and ctx.base.itemized_deductions > 21_000
+    assert give.amount == 12_000.0
+    assert give.delta == (("charitable_cash", -12_000), ("charitable_shares", 12_000))
+    # the 2019 lot first (most gain per dollar): 12,000 x 260/560
+    assert "5,571 of gain is never taxed" in give.why
+    assert (daf.amount, daf.friction) == (12_000.0, levers.IRREVERSIBLE)
+    assert daf.delta == (("charitable_shares", 12_000),)
+    assert "itemized" in daf.why
+    alone = levers.whatif(lots, 2026, ["daf_bunch"], as_of=AS_OF)
+    assert alone.net > 0
+    m = levers.menu(lots, 2026, AS_OF)
+    assert {"donate_shares", "daf_bunch"} <= {rw.name for rw in m.lower[1:]}
+    assert not any("donating appreciated shares" in n for n in m.notes)
+    # a small gift and nothing else to itemize: the standard deduction wins
+    enter(lots, 2026, "planned_giving", "500")
+    enter(lots, 2026, "real_estate_taxes", "0")
+    _, found, _ = levers.catalog(lots, 2026, AS_OF)
+    daf = next(lv for lv in found if lv.key == "daf_bunch")
+    assert "the standard deduction is larger" in daf.why
+
+
+def test_swap_flags_a_high_yield_fund_when_the_gain_is_about_zero() -> None:
+    bond = "VANGUARD TOTAL BOND MARKET INDEX ADMIRAL"
+    reit = "VANGUARD REAL ESTATE INDEX ADMIRAL"
+    stock = "VANGUARD TOTAL STOCK MARKET INDEX ADMIRAL"
+    st = portfolio.Status(
+        "2026-07-10",
+        2026,
+        positions=[
+            portfolio.Position("9", "Brokerage", "taxable", 0.0, "", "typed"),
+            portfolio.Position("8", "IRA", "trad_ira", 0.0, "", "typed"),
+        ],
+        lots=[
+            portfolio.Lot(
+                "9", "VBTLX", "2026-01-05", "short", 4_000, 40_100, 40_000, bond
+            ),
+            portfolio.Lot("9", "VGSLX", "2020-02-03", "long", 100, 5_000, 9_000, reit),
+            portfolio.Lot("9", "VTSAX", "2021-03-01", "long", 100, 9_000, 9_050, stock),
+            portfolio.Lot("8", "VBTLX", "2020-01-02", "long", 100, 1_000, 1_000, bond),
+        ],
+    )
+    found, notes = levers.swaps(st)
+    assert [(s.account, s.symbol, s.gain) for s in found] == [("9", "VBTLX", -100.0)]
+    assert notes == [
+        f"VGSLX ({reit}) in 9: selling realizes 4,000 of gain; hold it, or move "
+        "new money into a broad index fund instead"
+    ]
+    text = "\n".join(levers.swap_lines(found))
+    assert "swap VBTLX" in text and "next year's MAGI" in text
+
+
+@pytest.mark.engine
+def test_lots_carry_the_fund_name(lots: Layout) -> None:  # noqa: F811
+    st = portfolio.status(lots, 2026, AS_OF)
+    assert {lot.name for lot in st.lots} == {
+        "VANGUARD TOTAL STOCK MARKET INDEX ADMIRAL"
+    }
+    m = levers.menu(answered(lots), 2026, AS_OF)
+    assert m.swaps == [] and not any("tax-efficient funds" in n for n in m.notes)

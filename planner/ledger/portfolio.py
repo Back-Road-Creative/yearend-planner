@@ -143,6 +143,7 @@ class Lot:
     quantity: float
     basis: float
     value: float
+    name: str = ""  # the fund's name as the brokerage file gives it
 
     @property
     def gain(self) -> float:
@@ -225,6 +226,7 @@ def lots(conn: sqlite3.Connection) -> list[Lot]:
             r.quantity or 0.0,
             db.from_cents(r.basis_cents or 0),
             db.from_cents(r.amount_cents or 0),
+            r.description,
         )
         for r in db.latest_rows(conn, "lot")
     ]

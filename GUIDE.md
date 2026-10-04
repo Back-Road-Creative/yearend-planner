@@ -448,8 +448,12 @@ against doing nothing; friction is never folded into the number.
   planned sale (no MAGI: the gain is never realized), deferring a planned
   sale (`--st`, `--lt`; it moves the same gain as spending basis, so it is
   priced alone, not stacked), an HSA contribution, the SE health insurance deduction, a
-  deductible traditional IRA contribution and last year's capital-loss
-  carryforward. Each is worth what it adds inside the combined set (all of
+  deductible traditional IRA contribution, last year's capital-loss
+  carryforward, giving long-held shares instead of the cash gift
+  (`planned_giving`: same deduction, the gain never taxed) and bunching next
+  year's gift into a donor-advised fund this year (worth what the engine says
+  only once Schedule A, with `real_estate_taxes` and `mortgage_interest`,
+  beats the standard deduction; the lever says which wins). Each is worth what it adds inside the combined set (all of
   them, against all but this one), so overlapping moves are not double
   counted; a "together" row says whether the set reaches under the nearest
   line you are over. Medicaid tests income month by month when you apply, so
@@ -466,6 +470,11 @@ against doing nothing; friction is never folded into the number.
   each with its tax, the credit it costs and how many of the 12 months stay
   under the Medicaid line. Medicaid vs the marketplace is a coverage choice,
   so the optimizer never makes it.
+- **Tax-efficient swaps** (next year's dividends, not this year's tax): a
+  bond, REIT, income or Treasury fund in a taxable account whose gain is
+  within 1% of its value is listed to sell for about no tax and hold in the
+  IRA instead; one with a real gain is named with "hold it, or move new money
+  into a broad index fund".
 
 A lever missing an input names it: `hsa_coverage` (none, self or family) and
 `workplace_plan` (W-2 box 13) are Needed-panel questions; limits, catch-ups
