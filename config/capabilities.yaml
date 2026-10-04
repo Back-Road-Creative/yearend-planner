@@ -23,6 +23,7 @@ zip_to_county_crosswalk: verified  # tests/test_derive.py; config/zip_county.csv
 mortgage_pi_from_two_1098s: verified  # tests/test_needs.py::test_two_consecutive_1098s_give_principal_and_interest
 ytd_facts_from_rows: verified  # tests/test_derive.py; planner derive / ingest
 pdf_scanned_ocr_confirm: verified  # tests/test_ocr.py; values land pending until planner confirm
+ocr_crop_beside_value_edit_before_accept: verified  # tests/test_ocr.py::test_crop_written_per_value + test_real_engine_crop_shows_the_line_it_was_cut_for, tests/test_serve.py::test_confirm_with_edit_from_page; the live page shows the scan line beside each pending value, retype before Accept; /crop is token-checked and pending-only
 pdf_mixed_text_and_scanned_pages: verified  # tests/test_ocr.py::test_mixed_pdf_ocrs_scanned_pages; text pages accepted from the text layer, bare pages OCR'd and pending; without an engine the file imports with a note naming the unread pages
 zip_subfolders_nested_corrupt: verified  # tests/test_ingest.py::test_zip_with_subfolder_imports; folders and nested ZIPs (5 deep) unpack, a corrupt/locked/escaping ZIP goes to UNMATCHED once, no overwrite
 needed_panel_registry_diff: verified  # tests/test_needs.py; planner needed / enter / dont-have

@@ -156,6 +156,20 @@ drop would. `planner confirm --doc 3 --reject` drops the values, forgets the doc
 photos go to `UNMATCHED` with that reason and the values can still be typed with
 `planner enter`.
 
+On the live page (`planner run`) each pending value sits beside a picture of the line
+of the scan it was read from, so you check the number against the source before it
+counts. The value is in a box you can retype; **Accept** takes in what the boxes
+hold, and the line at the top of the page says how many you corrected. **Reject**
+drops the document as above. The pictures are cut from the scan when it is read and
+saved under `data/crops/<document>/` (on this computer only; the page serves them
+only with the run's key, and only while the value is pending). Rejecting a document
+deletes its pictures. A value whose line the engine could not place has no picture
+and says so, and `planner ingest` prints a `note`. The printed copy
+(`planner dashboard`) shows the values without pictures; use `planner confirm` there.
+A box that two forms in one scan share (for example box 4 of a 1099-INT and a
+1099-DIV on one page) cannot be corrected on the page or with `--set`, because the
+correction would not say which form it means.
+
 A PDF that has text on some pages and none on others (a consolidated 1099 with a
 scanned page) is read both ways: the text pages from the text layer, as accepted, and
 only the bare pages by OCR, as pending. The file shows as `pending` until the scanned
@@ -587,7 +601,8 @@ On the live page:
   read, and why.
 - **Answer** a Needed item in its box, or press *Don't have*. The item leaves
   the list, and the panels that waited on it recompute.
-- **Confirm or reject** values read from scans.
+- **Confirm or reject** values read from scans, each beside the scan line it
+  came from, correcting a wrong number in place before accepting it.
 - **Build the tax pack** from the forms panel.
 
 Repeat until the Needed list is empty. Press Ctrl+C in the window to stop.

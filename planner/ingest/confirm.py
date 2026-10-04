@@ -4,13 +4,25 @@ from __future__ import annotations
 
 import shutil
 import sqlite3
+from collections.abc import Iterable
 
+from planner.ingest import ocr
 from planner.ledger import db
 from planner.paths import Layout
 
 
 def pending(conn: sqlite3.Connection) -> list[db.FactRow]:
     return db.facts_for(conn, status="pending", text=None)
+
+
+def shared_boxes(facts: Iterable[db.FactRow]) -> frozenset[str]:
+    """The boxes that more than one form (a form, tax year and payer) carries
+    among ``facts``, one document's pending values. A correction names only a
+    box, so it cannot say which of those it means."""
+    owners: dict[str, set[tuple[str, int, str]]] = {}
+    for f in facts:
+        owners.setdefault(f.box, set()).add((f.form, f.tax_year, f.issuer))
+    return frozenset(box for box, forms in owners.items() if len(forms) > 1)
 
 
 def accept(
@@ -27,22 +39,42 @@ def accept(
     unknown = sorted(set(edits) - {f.box for f in pend})
     if unknown:
         raise KeyError(f"document {doc_id} has no box {', '.join(unknown)}")
+    ambiguous = sorted(set(edits) & shared_boxes(pend))
+    if ambiguous:
+        raise ValueError(
+            f"box {', '.join(ambiguous)} is on more than one form, payer or year "
+            f"in document {doc_id}; a correction cannot say which one it means"
+        )
     with conn:
         for box, value in edits.items():
             for f in (f for f in pend if f.box == box):
                 if f.text is None:
                     conn.execute(
                         "UPDATE facts SET value_cents = ? WHERE document_id = ? "
-                        "AND box = ? AND form = ? AND status = 'pending' "
-                        "AND value_text IS NULL",
-                        (db.to_cents(_money(box, value)), doc_id, box, f.form),
+                        "AND box = ? AND form = ? AND tax_year = ? AND issuer = ? "
+                        "AND status = 'pending' AND value_text IS NULL",
+                        (
+                            db.to_cents(money(box, value)),
+                            doc_id,
+                            box,
+                            f.form,
+                            f.tax_year,
+                            f.issuer,
+                        ),
                     )
                 else:
                     conn.execute(
                         "UPDATE facts SET value_text = ? WHERE document_id = ? "
-                        "AND box = ? AND form = ? AND status = 'pending' "
-                        "AND value_text IS NOT NULL",
-                        (_words(box, value), doc_id, box, f.form),
+                        "AND box = ? AND form = ? AND tax_year = ? AND issuer = ? "
+                        "AND status = 'pending' AND value_text IS NOT NULL",
+                        (
+                            _words(box, value),
+                            doc_id,
+                            box,
+                            f.form,
+                            f.tax_year,
+                            f.issuer,
+                        ),
                     )
         for key in {(f.form, f.tax_year, f.issuer) for f in pend}:
             conn.execute(
@@ -59,7 +91,7 @@ def accept(
     return [f for f in db.facts_for(conn, text=None) if f.document_id == doc_id]
 
 
-def _money(box: str, value: float | str) -> float:
+def money(box: str, value: float | str) -> float:
     if isinstance(value, str):
         try:
             return float(value.replace(",", "").replace("$", ""))
@@ -101,6 +133,7 @@ def reject(lay: Layout, conn: sqlite3.Connection, doc_id: int) -> str:
         )
         if not kept:
             conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+    ocr.forget_crops(lay, doc_id)
     if kept:
         return str(row["archived_as"])
     dest = lay.data / "inbox" / "UNMATCHED"

@@ -25,6 +25,9 @@ ul.notes { margin:6px 0 0; padding-left:18px; color:var(--muted); font-size:13px
 .need:first-of-type { border-top:0; }
 .need b { display:block; }
 .need small { display:block; color:var(--muted); }
+td.crop { width:60%; }
+td.crop img { display:block; max-width:100%; height:auto; border:1px solid var(--line); background:#fff; }
+form.confirm .inline { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
 form.inline { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
 input, select, button { font:inherit; padding:4px 8px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--ink); }
 button { cursor:pointer; background:var(--accent); color:#fff; border-color:var(--accent); }
@@ -114,14 +117,22 @@ td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap
   {% for d in p.pending %}
   <div class="need">
     <b>{{ d.file_name }} ({{ d.form }})</b>
-    <table>{% for box, label, value in d.values %}<tr><td>{{ box }}</td><td>{{ label }}</td><td class="num">{{ value if value is string else '{:,.2f}'.format(value) }}</td></tr>{% endfor %}</table>
     {% if live %}
-    <form method="post" action="/confirm?token={{ token }}" class="inline">
+    <form method="post" action="/confirm?token={{ token }}" class="confirm">
       <input type="hidden" name="doc" value="{{ d.document_id }}">
-      <button type="submit" name="action" value="accept">Accept</button>
-      <button type="submit" name="action" value="reject" class="plain">Reject (rescan)</button>
+      <small>Check each value against the scan beside it. Retype a wrong one, then Accept.</small>
+      <table>{% for box, label, value in d.values %}<tr>
+        <td>{{ box }}</td><td>{{ label }}</td>
+        <td class="num">{% if box in d.shared %}{{ value if value is string else '{:,.2f}'.format(value) }}<br><small>read for more than one form, payer or year, so it cannot be retyped here; if it is wrong, Reject and rescan</small>{% else %}<input type="text" name="edit_{{ box }}" value="{{ value if value is string else '{:,.2f}'.format(value) }}" size="14" inputmode="{{ 'text' if value is string else 'decimal' }}" aria-label="box {{ box }}, {{ label }}">{% endif %}</td>
+        <td class="crop">{% if d.crops.get(loop.index0) %}<img src="/crop?token={{ token }}&amp;fact={{ d.crops[loop.index0] }}" alt="the scan where box {{ box }} was read" loading="lazy">{% else %}<small>no image for this value</small>{% endif %}</td>
+      </tr>{% endfor %}</table>
+      <div class="inline">
+        <button type="submit" name="action" value="accept">Accept</button>
+        <button type="submit" name="action" value="reject" class="plain">Reject (rescan)</button>
+      </div>
     </form>
     {% else %}
+    <table>{% for box, label, value in d.values %}<tr><td>{{ box }}</td><td>{{ label }}</td><td class="num">{{ value if value is string else '{:,.2f}'.format(value) }}</td></tr>{% endfor %}</table>
     <small>type: <code>planner confirm</code></small>
     {% endif %}
   </div>
