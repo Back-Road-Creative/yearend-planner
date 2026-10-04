@@ -66,6 +66,8 @@ class Sizing:
     trad_ira_balance: float | None
     candidates: list[Candidate] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    medicaid_month: float = 0.0  # this year's Medicaid line, a month
+    recurring_monthly: float = 0.0  # a month's income without the conversions
 
     @property
     def recommendation(self) -> Candidate | None:
@@ -163,6 +165,7 @@ def size(
     # so the test is recurring monthly income (without this year's conversions)
     # plus the increment being sized.
     recurring_monthly = (base_row["aca_magi"] - already) / 12
+    sizing.medicaid_month, sizing.recurring_monthly = medicaid_month, recurring_monthly
     picks: dict[str, dict[str, float] | None] = {
         "ltcg_0pct": _largest(
             rows, lambda rw: rw["taxable_income"] <= th["ltcg_0pct_top"] - margin

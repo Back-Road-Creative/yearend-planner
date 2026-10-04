@@ -31,7 +31,7 @@ from planner.ingest.needs import load_profile, need_values
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import calendar, conversion, washsale
-from planner.plan.inputs import Inputs, Overrides, build
+from planner.plan.inputs import Inputs, OverrideError, Overrides, build
 from planner.plan.magi import Line, Watch, lines, watch_for
 
 LOWER = "get under a line"
@@ -69,6 +69,7 @@ class Lever:
     side_effects: str = ""
     delta: tuple[tuple[str, int], ...] = ()  # Household field -> dollars added
     priced: bool = True  # False: moves no income (a Roth contribution)
+    overlaps: tuple[str, ...] = ()  # levers moving the same dollars: not stacked
 
     @property
     def available(self) -> bool:
@@ -107,6 +108,56 @@ class Row:
         return round(-self.net / self.lever.amount, 4)
 
 
+@dataclass(frozen=True)
+class Target:
+    """A conversion that lands income on a coverage line on purpose (Medicaid
+    or the marketplace credit), priced by the engine for the owner to choose."""
+
+    name: str
+    amount: float
+    aca_magi: float
+    fed_delta: float
+    state_delta: float
+    ptc_delta: float
+    medicaid_months: int  # of 12, under the Medicaid line by month
+    note: str
+
+
+TARGETS = ("medicaid_under", "medicaid_over", "aca_400")
+
+
+def targeting(lay: Layout, year: int, ov: Overrides) -> tuple[list[Target], list[str]]:
+    """The Medicaid line beside the just-under-400% cliff. Never selected by
+    the optimizer: Medicaid tests income month by month when you apply."""
+    try:
+        sz = conversion.size(lay, year, replace(ov, conversion_target="manual"))
+    except (MissingInputError, OverrideError) as exc:
+        return [], [f"income targeting: {exc}"]
+    if sz.trad_ira_balance is None:
+        return [], []
+    out = []
+    for c in sz.candidates:
+        if c.name not in TARGETS:
+            continue
+        under = sz.recurring_monthly <= sz.medicaid_month
+        months = (12 - int(c.medicaid_month_over)) if under else 0
+        out.append(
+            Target(
+                c.name,
+                c.amount,
+                c.aca_magi,
+                c.fed_delta,
+                c.state_delta,
+                c.ptc_delta,
+                months,
+                c.note,
+            )
+        )
+    out.sort(key=lambda t: TARGETS.index(t.name))
+    missing = [n for n in TARGETS if n not in {t.name for t in out}]
+    return out, [f"income targeting: {n} is out of reach this year" for n in missing]
+
+
 @dataclass
 class Menu:
     year: int
@@ -121,6 +172,7 @@ class Menu:
     lower: list[Row] = field(default_factory=list)
     rooms: list[Row] = field(default_factory=list)
     together: Row | None = None
+    targeting: list[Target] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
 
@@ -250,39 +302,165 @@ def _none(key: str, mode: str, label: str, deadline: str, why: str) -> Lever:
     return Lever(key, mode, label, 0.0, deadline, AUTOMATIC, why)
 
 
-def _harvest(c: _Ctx) -> Lever:
-    key, label, due = "harvest_losses", "tax-loss harvest", _year_end(c.year)
-    losers = c.lots(gain=False)
-    if not losers:
-        return _none(key, LOWER, label, due, "no taxable lot is below its basis")
-    short = r(sum(lot.gain for lot in losers if lot.term == "short"))
-    long = r(sum(lot.gain for lot in losers if lot.term != "short"))
-    symbols = sorted({lot.symbol for lot in losers})
-    washed = [s for s in symbols if s in c.recent]
-    why = (
-        f"{len(losers)} lot(s) below basis in {', '.join(symbols)}: short "
-        f"{-short:,.0f}, long {-long:,.0f}"
+Part = tuple[portfolio.Lot, float]  # a loss lot and the loss taken from it
+
+
+def _realized(c: _Ctx) -> int:
+    return max(c.hh.short_term_gains + c.hh.long_term_gains, 0)
+
+
+def _loss_parts(c: _Ctx) -> tuple[list[Part], list[Part]]:
+    """The taxable losses split in two: the part that nets the year's realized
+    gain to zero (lots clear of a wash window first, then the biggest loss),
+    and the rest. A lot can be split: sell part of it."""
+    left = float(_realized(c))
+    losers = sorted(
+        c.lots(gain=False), key=lambda lot: (lot.symbol in c.recent, lot.gain)
     )
+    pair: list[Part] = []
+    rest: list[Part] = []
+    for lot in losers:
+        use = min(-lot.gain, left)
+        left -= use
+        if use > 0:
+            pair.append((lot, use))
+        if -lot.gain - use > 0:
+            rest.append((lot, -lot.gain - use))
+    return pair, rest
+
+
+def _loss_lever(
+    c: _Ctx, key: str, label: str, parts: list[Part], why: str, side: str
+) -> Lever:
+    short = r(sum(loss for lot, loss in parts if lot.term == "short"))
+    long = r(sum(loss for lot, loss in parts if lot.term != "short"))
+    washed = sorted({lot.symbol for lot, _ in parts} & set(c.recent))
     for s in washed:
         clear = date.fromisoformat(c.recent[s]) + timedelta(days=washsale.WINDOW + 1)
         why += f"; {s} was bought {c.recent[s]}: selling before {clear} washes it"
     delta = tuple(
-        (k, int(round(v)))
+        (k, -int(round(v)))
         for k, v in (("short_term_gains", short), ("long_term_gains", long))
         if v
+    )
+    side += (
+        "; lowers basis (the gain returns when sold later); no buy of the same fund "
+        "in any account, IRA included, for 30 days"
     )
     return Lever(
         key,
         LOWER,
         label,
-        r(-(short + long)),
-        due,
+        r(short + long),
+        _year_end(c.year),
         WASH if washed else TRADE,
         why,
-        "lowers basis (the gain returns when sold later); no buy of the same fund "
-        "in any account, IRA included, for 30 days; loss past this year's gains "
-        "and 3,000 of income carries forward",
+        side,
         delta,
+    )
+
+
+def _pair(c: _Ctx) -> Lever:
+    key, label, due = "pair_losses", "pair losses against gains", _year_end(c.year)
+    gain = _realized(c)
+    if not gain:
+        return _none(key, LOWER, label, due, "no realized gain this year to pair")
+    pair, _ = _loss_parts(c)
+    if not pair:
+        return _none(key, LOWER, label, due, "no taxable lot is below its basis")
+    amount = r(sum(loss for _, loss in pair))
+    symbols = ", ".join(sorted({lot.symbol for lot, _ in pair}))
+    why = f"sell {amount:,.0f} of loss in {symbols}: "
+    why += (
+        f"nets the year's realized gain of {gain:,.0f} to 0"
+        if amount >= gain
+        else f"covers {amount:,.0f} of the year's {gain:,.0f} realized gain"
+    )
+    return _loss_lever(
+        c, key, label, pair, why, "the paired gains are no longer taxed this year"
+    )
+
+
+def _harvest(c: _Ctx) -> Lever:
+    key, label, due = "harvest_losses", "tax-loss harvest", _year_end(c.year)
+    losers = c.lots(gain=False)
+    if not losers:
+        return _none(key, LOWER, label, due, "no taxable lot is below its basis")
+    _, rest = _loss_parts(c)
+    if not rest:
+        return _none(
+            key, LOWER, label, due, "every loss nets this year's gains (pair_losses)"
+        )
+    lots_ = {id(lot) for lot, _ in rest}
+    short = r(sum(loss for lot, loss in rest if lot.term == "short"))
+    long = r(sum(loss for lot, loss in rest if lot.term != "short"))
+    why = (
+        f"{len(lots_)} lot(s) below basis in "
+        f"{', '.join(sorted({lot.symbol for lot, _ in rest}))}: short {short:,.0f}, "
+        f"long {long:,.0f}"
+    )
+    if _realized(c):
+        why += " (past what pair_losses nets against the year's gains)"
+    return _loss_lever(
+        c,
+        key,
+        label,
+        rest,
+        why,
+        "loss past this year's gains and 3,000 of income carries forward",
+    )
+
+
+def zero_magi_funds(st: portfolio.Status) -> tuple[float, float]:
+    """Cash, and Roth basis (contributions plus seasoned conversions, no more
+    than the Roth balance): money spent with no MAGI."""
+    cash = r(sum(p.value for p in st.positions if p.type == "cash"))
+    basis = (st.roth_contributions or 0.0) + st.seasoned
+    return cash, r(min(st.roth_balance, basis))
+
+
+def _spend_basis(c: _Ctx) -> Lever:
+    key, label, due = "spend_basis", "spend cash or Roth basis first", _year_end(c.year)
+    cash, basis = zero_magi_funds(c.st)
+    funds = f"{cash:,.0f} of cash and {basis:,.0f} of Roth basis"
+    planned = [
+        (k, v)
+        for k, v in (
+            ("short_term_gains", c.ov.planned_st_sales),
+            ("long_term_gains", c.ov.planned_lt_sales),
+        )
+        if v > 0
+    ]
+    if not planned:
+        return _none(
+            key,
+            LOWER,
+            label,
+            due,
+            f"no planned sale to replace (--st/--lt); {funds} spend with no MAGI",
+        )
+    if cash + basis <= 0:
+        return _none(key, LOWER, label, due, "no cash and no Roth basis to spend")
+    left, delta = cash + basis, []
+    for k, v in planned:
+        use = min(v, left)
+        left -= use
+        if use > 0:
+            delta.append((k, -int(round(use))))
+    amount = r(-sum(v for _, v in delta))
+    return Lever(
+        key,
+        LOWER,
+        label,
+        amount,
+        due,
+        AUTOMATIC,
+        f"spend from {funds} instead of selling: {amount:,.0f} of planned gain is "
+        "never realized (no MAGI)",
+        "the cash or Roth basis is gone for later; Roth contributions come out "
+        "first and tax-free, conversions only once seasoned (5 years)",
+        tuple(delta),
+        overlaps=("defer_sales",),
     )
 
 
@@ -571,7 +749,9 @@ def _roth_contribution(c: _Ctx) -> Lever:
 
 
 BUILDERS = (
+    _pair,
     _harvest,
+    _spend_basis,
     _defer,
     _hsa,
     _se_health,
@@ -684,7 +864,13 @@ def menu(
         after = lines(res, hh.filing_status, ctx.watch)
         return Row(lv, r(net), res, crossings(ctx.lines, after))
 
-    lower = [lv for lv in levers if lv.mode == LOWER and lv.available]
+    lower: list[Lever] = []
+    alone: list[Lever] = []
+    for lv in (x for x in levers if x.mode == LOWER and x.available):
+        if any(lv.key in kept.overlaps for kept in lower):
+            alone.append(lv)
+        else:
+            lower.append(lv)
     if lower:
         together = compute(year, _apply(hh, lower))
         m.together = priced(together, None, cost(base) - cost(together))
@@ -693,6 +879,14 @@ def menu(
             others = [o for o in lower if o is not lv]
             without = compute(year, _apply(hh, others)) if others else base
             rows.append(Row(lv, r(cost(without) - cost(together)), together))
+        for lv in alone:
+            res = compute(year, lv.apply(hh))
+            rows.append(priced(res, lv, cost(base) - cost(res)))
+            first = next(k.key for k in lower if lv.key in k.overlaps)
+            m.notes.append(
+                f"{lv.key} and {first} move the same dollars: {lv.key} is priced "
+                "alone, not stacked in the combined set"
+            )
         rows.sort(key=lambda rw: -rw.net)
         m.lower = [nothing, *rows]
     rooms = []
@@ -717,7 +911,8 @@ def menu(
             "Medicaid coverage (no premium) is not, and Medicaid tests income "
             "month by month when you apply, not at filing"
         )
-    m.notes += list(ADVICE)
+    m.targeting, waiting = targeting(lay, year, ctx.ov)
+    m.notes += waiting + list(ADVICE)
     return m
 
 
@@ -784,6 +979,14 @@ def summary(m: Menu, top: int | None = None) -> list[str]:
     if m.rooms:
         out.append(f"{ROOM} (each alone; they share the room):")
         out += [f"  {_row_text(rw)}" for rw in m.rooms[: (top + 1) if top else None]]
+    if m.targeting:
+        out.append("income targeting (your choice; never picked for you):")
+        out += [
+            f"  {t.name:16} convert {t.amount:>10,.0f}  ACA MAGI {t.aca_magi:>10,.0f}  "
+            f"tax {t.fed_delta + t.state_delta:>+9,.0f}  credit {t.ptc_delta:>+9,.0f}  "
+            f"Medicaid {t.medicaid_months} of 12 months ({t.note})"
+            for t in m.targeting
+        ]
     return out
 
 
