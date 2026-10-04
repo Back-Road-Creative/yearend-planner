@@ -282,7 +282,14 @@ engine, never by formula. `planner magi --year 2026` projects the full year
 (add `--q4-dividends`, `--sales-st`, `--sales-lt`, `--conversion`, `--hsa` for
 the planning numbers no document supplies) and shows the distance to every
 watched line: the standard deduction, the 0% LTCG ceiling, the 12% bracket
-top, the Medicaid line (tested monthly), the ACA 250% and 400% lines and NIIT.
+top, the Medicaid line (tested monthly), the ACA 250% and 400% lines, NIIT
+and next year's 110% safe harbor (AGI over $150,000). The household adds its
+own: IRMAA's first tier from age 63 (Medicare premiums two years on), the
+Social Security 50% and 85% taxability lines on provisional income when
+benefits are typed, NC's scheduled rate step (3.99% to 3.49% in 2027; the
+conversion lever names what waiting would save on the NC side), and from
+2027, with the Medicaid objective, the 80-hour monthly work requirement
+against the thinnest month in the `se_hours` log (`1:85, 2:60`).
 Unknown inputs are named and left out, never treated as zero; unknown
 qualified dividends are priced as ordinary and flagged. Tax-exempt interest
 (1099-INT box 8, 1099-DIV box 12, or a typed answer) is one of those inputs:

@@ -18,7 +18,7 @@ from planner.ledger import db
 from planner.paths import Layout
 from planner.plan.calendar import shift
 from planner.plan.inputs import Overrides
-from planner.plan.magi import project
+from planner.plan.magi import HIGH_INCOME_AGI, project
 
 PAYMENTS = "payments"  # top-level list in the year's manual file
 AGENCIES = ("fed", "nc")
@@ -27,7 +27,6 @@ DESCRIPTIONS = {
     "nc": re.compile(r"NCDOR|NC ?DOR|N\.?C\.? DEPT\.? OF REV|NC DEPT REVENUE", re.I),
 }
 DE_MINIMIS = {"fed": 1_000.0, "nc": 1_000.0}
-HIGH_INCOME_AGI = 150_000.0
 HIGH_INCOME_FACTOR = {"fed": 1.10, "nc": 1.00}
 LUMPY_SHARE = 0.50
 

@@ -32,7 +32,7 @@ from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import calendar, conversion, washsale
 from planner.plan.inputs import Inputs, Overrides, build
-from planner.plan.magi import Line, lines
+from planner.plan.magi import Line, Watch, lines, watch_for
 
 LOWER = "get under a line"
 ROOM = "use the room"
@@ -223,6 +223,7 @@ class _Ctx:
     room: float | None
     room_line: Line | None
     hsa_employer: float  # W-2 box 12 code W: counts against the HSA limit
+    watch: Watch  # what the watched lines read beyond the engine result
 
     @property
     def hh(self) -> Household:
@@ -468,6 +469,17 @@ def _conversion(c: _Ctx) -> Lever:
 
 
 def _conversion_lever(c: _Ctx, amount: float, why: str) -> Lever:
+    effects = (
+        "taxed now as ordinary income; each conversion starts its own 5-year clock "
+        "before it can be spent penalty-free"
+    )
+    now, nxt = c.watch.nc_rate, c.watch.nc_next_rate
+    if now and nxt is not None and nxt < now:
+        effects += (
+            f"; NC tax on it would be {round(amount * (now - nxt)):,} lower in "
+            f"{c.year + 1} at {nxt:.2%} (scheduled): a conversion that can wait "
+            "saves that"
+        )
     return Lever(
         "conversion",
         ROOM,
@@ -476,8 +488,7 @@ def _conversion_lever(c: _Ctx, amount: float, why: str) -> Lever:
         _year_end(c.year),
         IRREVERSIBLE,
         why,
-        "taxed now as ordinary income; each conversion starts its own 5-year clock "
-        "before it can be spent penalty-free",
+        effects,
         (("roth_conversion", int(round(amount))),),
     )
 
@@ -578,7 +589,8 @@ def _context(
 ) -> tuple[_Ctx, list[str]]:
     inputs = build(lay, year, ov)
     base = compute(year, inputs.household)
-    watched = lines(base, inputs.household.filing_status)
+    watch = watch_for(lay, year, inputs)
+    watched = lines(base, inputs.household.filing_status, watch)
     th, notes = year_thresholds(lay, year)
     std = next(ln.limit for ln in watched if ln.name == "standard deduction")
     room_line, room = None, None
@@ -622,6 +634,7 @@ def _context(
         room,
         room_line,
         float(got["hsa_employer_contributions"] or 0),
+        watch,
     )
     return ctx, notes
 
@@ -668,7 +681,7 @@ def menu(
     nothing = Row(None, 0.0, base)
 
     def priced(res: TaxResult, lv: Lever | None, net: float) -> Row:
-        after = lines(res, hh.filing_status)
+        after = lines(res, hh.filing_status, ctx.watch)
         return Row(lv, r(net), res, crossings(ctx.lines, after))
 
     lower = [lv for lv in levers if lv.mode == LOWER and lv.available]
@@ -734,7 +747,9 @@ def whatif(
             raise ValueError(f"--set {key}: add it to --apply")
     after = compute(year, _apply(ctx.hh, chosen))
     status = ctx.hh.filing_status
-    return WhatIf(year, chosen, ctx.base, after, ctx.lines, lines(after, status))
+    return WhatIf(
+        year, chosen, ctx.base, after, ctx.lines, lines(after, status, ctx.watch)
+    )
 
 
 def _row_text(rw: Row) -> str:

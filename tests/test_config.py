@@ -107,3 +107,17 @@ def test_yaml_is_never_executed(tmp_path: Path) -> None:
     p.write_text("!!python/object/apply:os.system ['echo pwned']\n", encoding="utf-8")
     with pytest.raises(Exception):  # noqa: B017 - any constructor error is the point
         load_assumptions(p)
+
+
+def test_needs_work_requirement_year_matches_the_config(repo_root: Path) -> None:
+    """The Needed panel asks for the SE-hours log from the year the Medicaid
+    work requirement starts; that year is the config's."""
+    from planner.ingest.needs import MEDICAID_WORK_FROM
+
+    t = load_thresholds(repo_root / "config" / "thresholds.yaml", merged=False)
+    starts = {
+        str(rows["medicaid_work_requirement_start"]["value"])
+        for rows in t.values()
+        if "medicaid_work_requirement_start" in rows
+    }
+    assert starts == {f"{MEDICAID_WORK_FROM}-01-01"}

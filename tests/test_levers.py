@@ -198,3 +198,16 @@ def test_total_income_changes_the_conversion_lever_sizing(lots: Layout) -> None:
     # the typed 120,000 leaves no room for the objective; the ledger wages do
     assert ledger.available and ledger.amount > 0
     assert not typed.available and typed.amount == 0.0
+
+
+def test_conversion_names_the_nc_rate_step(lay: Layout) -> None:  # noqa: F811
+    """NC's 3.99% is scheduled to drop to 3.49% in 2027: the conversion lever
+    says what waiting would save on the NC side."""
+    _, found, _ = levers.catalog(lay, 2026, AS_OF)
+    conv = next(lv for lv in found if lv.key == "conversion")
+    assert conv.available, conv.why
+    saved = round(conv.amount * (0.0399 - 0.0349))
+    assert (
+        f"NC tax on it would be {saved:,} lower in 2027 at 3.49% (scheduled): "
+        "a conversion that can wait saves that"
+    ) in conv.side_effects
