@@ -125,7 +125,7 @@ def paths() -> None:
 @app.command()
 def selfcheck() -> None:
     """Run one real federal calculation through the tax engine and print it."""
-    from planner.engine.selfcheck import run
+    from planner.engine.selfcheck import YEARS_LABEL, format_years, run
 
     result = run()
     typer.echo(
@@ -133,6 +133,7 @@ def selfcheck() -> None:
         f"{result.year} wages ${result.wages:,} -> federal income tax "
         f"${result.income_tax:,.2f}"
     )
+    typer.echo(f"{YEARS_LABEL}{format_years(result.years)}")
     if not result.income_tax > 0:
         typer.echo("selfcheck failed: tax is not positive", err=True)
         raise typer.Exit(code=1)
@@ -219,11 +220,19 @@ def update(
     sha256: str | None = typer.Option(None, help="sha256 published beside the zip"),
     rollback: bool = typer.Option(False, "--rollback", help="restore python-previous/"),
     check: bool = typer.Option(False, "--check", help="look for a newer release now"),
+    allow_major: bool = typer.Option(
+        False,
+        "--allow-major",
+        help="install a release that jumps a major version of the planner or "
+        "policyengine-us (alone: fetch the feed's release)",
+    ),
     finish: bool = typer.Option(False, "--finish", hidden=True),
 ) -> None:
     """Swap in a newer release after its own selfcheck passes; --rollback undoes
-    it; --check looks for one on the update feed. From planner.cmd the folders
-    move after this process exits (it cannot move the interpreter it runs on)."""
+    it; --check looks for one on the update feed now (the automatic check runs
+    at most weekly). A release that jumps a major version waits for
+    --allow-major. From planner.cmd the folders move after this process exits
+    (it cannot move the interpreter it runs on)."""
     from planner.engine import feed
     from planner.engine import update as upd
 
@@ -233,7 +242,8 @@ def update(
             typer.echo(upd.finish(root))
             return
         if check:
-            typer.echo(feed.check(layout()) or "no newer release found")
+            line = feed.check(layout(), force=True, allow_major=allow_major)
+            typer.echo(line or "no newer release found")
             return
         if rollback:
             if not (root / upd.PREVIOUS / "VERSION").exists():
@@ -245,15 +255,23 @@ def update(
                 raise typer.Exit(code=upd.LAUNCHER_SWAP)
             typer.echo(f"rolled back to {upd.rollback(root)}")
             return
+        if release_zip is None and sha256 is None and allow_major:
+            if feed.feed_url(layout()) is None:
+                raise upd.UpdateError("the update feed is off (PLANNER_UPDATE_FEED)")
+            line = feed.check(layout(), force=True, allow_major=True)
+            typer.echo(line or "no newer release found")
+            return
         if release_zip is None or sha256 is None:
             typer.echo(
                 "update needs a release zip and --sha256 (or --rollback)", err=True
             )
             raise typer.Exit(code=2)
         exe = "python.exe" if sys.platform == "win32" else "python"
-        result = upd.stage(release_zip, sha256, root, python_exe=exe)
+        result = upd.stage(
+            release_zip, sha256, root, python_exe=exe, allow_major=allow_major
+        )
         if upd.launcher_swaps(root):
-            typer.echo(f"staged {result.version}; swapping it in")
+            typer.echo(f"staged {result.version}; swapping it in; {result.years_note}")
             upd.write_swap(root, "in", rerun=False)
             raise typer.Exit(code=upd.LAUNCHER_SWAP)
         typer.echo(upd.apply_staged(root))
@@ -1424,6 +1442,11 @@ def run(
             upd.write_swap(lay.root, "in", rerun=True)
             raise typer.Exit(code=upd.LAUNCHER_SWAP)
         typer.echo(f"{upd.apply_staged(lay.root)}; restart to use it")
+    # the update check comes first (at most weekly, so rarely a wait); its
+    # outcome is on disk before the page is built, so the header shows it
+    update_line = feed.check(lay) if update_check else ""
+    if update_line:
+        typer.echo(update_line)
     rep = _ingest(lay)
     typer.echo(
         f"inbox: {len(rep.imported)} imported, {len(rep.pending)} awaiting "
@@ -1441,22 +1464,11 @@ def run(
     if backup_.settle(lay):
         typer.echo("restore kept: data-previous/ removed")
     if quiet:
-        if update_check and (line := feed.check(lay)):
-            typer.echo(line)
         return
     app_ = serve.App(lay, active, today)
-    if ro is not None and ro.new:
-        app_.message = rollover.render(ro).splitlines()[0]
+    notes = [rollover.render(ro).splitlines()[0]] if ro is not None and ro.new else []
+    app_.message = "\n".join([*notes, *([update_line] if update_line else [])])
     srv = serve.server(app_, port)
-    if update_check:
-        # in the background, so a slow download never holds up the page
-        import threading
-
-        def look() -> None:
-            if line := feed.check(lay):
-                app_.message = line
-
-        threading.Thread(target=look, daemon=True).start()
     address = serve.url(app_, srv)
     typer.echo(f"serving {address}  (Ctrl+C to stop)")
     if open_browser:

@@ -8,8 +8,14 @@ sends one plain GET with no personal data. Offline, a refused address or a
 feed with no newer release is not an error: the check says nothing. A newer
 release is downloaded to ``data/update/``, verified and self-checked into
 ``python-candidate/``; the next start swaps it in. A candidate that fails its
-selfcheck is recorded in ``data/update-held.json`` and shown on the dashboard;
-the live install is never touched."""
+selfcheck, or that jumps a major version of policyengine-us or the planner, is
+recorded in ``data/update-held.json`` and shown on the dashboard; the live
+install is never touched. A major jump waits for ``planner update --allow-major``.
+
+The check runs at most once every 7 days: each answer from the feed is written
+to ``data/update/last-check.json`` (shown in the page header). An unreachable
+feed is recorded too but does not start the week, so the next launch asks again.
+``planner update --check`` ignores the throttle."""
 
 from __future__ import annotations
 
@@ -29,7 +35,10 @@ from planner.engine import update as upd
 from planner.paths import Layout
 
 HELD = "update-held.json"
+LAST_CHECK = "last-check.json"
 TIMEOUT = 10
+WEEK = 7  # days between automatic checks
+THROTTLED = ("current", "ready", "held")  # outcomes that count as "checked"
 
 
 @dataclass(frozen=True)
@@ -82,24 +91,88 @@ def held(lay: Layout) -> dict[str, Any] | None:
     return data
 
 
-def check(lay: Layout, today: date | None = None) -> str:
+def last_check(lay: Layout) -> dict[str, Any] | None:
+    """The record of the newest check: date, status, message."""
+    path = lay.data / "update" / LAST_CHECK
+    try:
+        data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        date.fromisoformat(data["date"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return data
+
+
+def status_line(lay: Layout) -> str:
+    """The page header's words for the update check."""
+    if feed_url(lay) is None:
+        return "update check off"
+    rec = last_check(lay)
+    if rec is None:
+        return "update check not yet run"
+    return f"update check {rec['date']}: {rec.get('message', rec.get('status', ''))}"
+
+
+def _record(lay: Layout, today: date, status: str, message: str) -> None:
+    folder = lay.data / "update"
+    folder.mkdir(parents=True, exist_ok=True)
+    tmp = folder / (LAST_CHECK + ".tmp")
+    record = {"date": today.isoformat(), "status": status, "message": message}
+    tmp.write_text(json.dumps(record), encoding="utf-8")
+    tmp.replace(folder / LAST_CHECK)
+
+
+def _due(lay: Layout, today: date) -> bool:
+    rec = last_check(lay)
+    if rec is None or rec.get("status") not in THROTTLED:
+        return True
+    age = (today - date.fromisoformat(rec["date"])).days
+    return not 0 <= age < WEEK  # a clock set back also asks again
+
+
+def check(
+    lay: Layout,
+    today: date | None = None,
+    force: bool = False,
+    allow_major: bool = False,
+) -> str:
     """One update check; returns a line for the user, or "" when there is
-    nothing to say (no feed, offline, nothing newer, already staged)."""
+    nothing to say (no feed, checked within 7 days, offline, nothing newer,
+    already staged). ``force`` skips the weekly throttle; ``allow_major``
+    stages a release that jumps a major version and retries a held one."""
     url = feed_url(lay)
     if url is None:
         return ""
+    today = today or date.today()
+    if not force and not _due(lay, today):
+        return ""
     try:
         offer = latest(url)
-    except (OSError, ValueError, KeyError):
+    except OSError:
+        _record(lay, today, "offline", "update feed not reachable")
+        return ""
+    except (ValueError, KeyError):
+        _record(lay, today, "unreadable", "update feed not readable")
         return ""
     current = upd.installed_version(lay.root)
-    if offer is None or upd.version_key(offer.version) <= upd.version_key(current):
+    if offer is None:
+        _record(lay, today, "current", "no installable release is published")
+        return ""
+    if upd.version_key(offer.version) <= upd.version_key(current):
+        _record(lay, today, "current", f"up to date ({current})")
         return ""
     ready = upd.staged(lay.root)
     if ready and ready["version"] == offer.version:
+        _record(
+            lay, today, "ready", f"update {offer.version} ready; swaps in at next start"
+        )
         return ""
     known = held(lay)
-    if known and known["version"] == offer.version:
+    if known and known["version"] == offer.version and not allow_major:
+        _record(lay, today, "held", f"update {offer.version} held (see alerts)")
+        if force:
+            return (
+                f"update {known['version']} held: {known['reason']}; still on {current}"
+            )
         return ""
     folder = lay.data / "update"
     folder.mkdir(parents=True, exist_ok=True)
@@ -108,23 +181,37 @@ def check(lay: Layout, today: date | None = None) -> str:
         zip_path.write_bytes(_open(offer.zip_url, 600))
         sha = _open(offer.sha_url, TIMEOUT).decode("ascii").split()[0]
     except (OSError, ValueError, UnicodeDecodeError, IndexError):
+        _record(
+            lay, today, "offline", f"update {offer.version} could not be downloaded"
+        )
         return ""
     exe = "python.exe" if sys.platform == "win32" else "python"
     try:
-        upd.stage(zip_path, sha, lay.root, python_exe=exe)
+        result = upd.stage(
+            zip_path,
+            sha,
+            lay.root,
+            python_exe=exe,
+            allow_major=allow_major,
+            today=today,
+        )
     except upd.UpdateError as exc:
         shutil.rmtree(lay.root / upd.CANDIDATE, ignore_errors=True)
         record = {
             "version": offer.version,
             "installed": current,
             "reason": str(exc).splitlines()[0],
-            "date": (today or date.today()).isoformat(),
+            "date": today.isoformat(),
         }
         (lay.data / HELD).write_text(json.dumps(record), encoding="utf-8")
+        _record(lay, today, "held", f"update {offer.version} held (see alerts)")
         return f"update {offer.version} held: {record['reason']}; still on {current}"
     finally:
         zip_path.unlink(missing_ok=True)
+    (lay.data / HELD).unlink(missing_ok=True)
+    note = result.years_note
+    _record(lay, today, "ready", f"update {offer.version} ready; {note}")
     return (
         f"update {offer.version} is ready; it is swapped in the next time you "
-        "start the planner"
+        f"start the planner; {note}"
     )
