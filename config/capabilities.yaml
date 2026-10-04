@@ -9,14 +9,14 @@ qbi_deduction: verified  # tests/test_tax.py::test_self_employment_30k
 nc_income_tax: verified  # tests/test_tax.py (3.99%, 12,750 std), tests/test_verify.py (2025)
 federal_total_tax_line_24: verified  # tests/test_tax.py::test_fed_total_tax_matches_draft_line_24; engine total = draft 1040 line 24 (SE tax, additional Medicare tax, NIIT; refundable credits kept out); with Household.aptc the excess advance credit (Sch 2 line 1a, 8962 line 29 after the line 28 cap) is in line 22 and line 24
 aca_magi_tax_exempt_interest: verified  # tests/test_plan.py::test_aca_magi_adds_exempt_interest; 1099-INT box 8 and 1099-DIV box 12 reach the plan household, the MAGI lines, conversion sizes and levers
-aca_premium_tax_credit: partial
+aca_premium_tax_credit: partial  # tests/test_tax.py::test_fpl_boundaries, tests/test_tax.py::test_aca_400_cliff; credit hand-worked from Rev. Proc. 2025-25 at 138%, 150%, just under 400% and over it; the credit's FPL is the prior year's (Form 8962 line 4); KNOWN DEVIATION: at 400.00% to 400.99% the engine pays 0 where IRC 36B(c)(1)(A) and Form 8962 line 5 allow 3,365.04 (policyengine ptc_income_eligibility switches off at a ratio of 4.00); strict xfail in test_aca_400_cliff, tests/test_tax.py::test_aca_400_engine_deviation_is_pinned
 aca_slcsp_county: verified  # tests/test_tax.py::test_slcsp_for_named_county; Wake, Mecklenburg and Guilford within $1 of CMS's PY2025 county table (average SLCSP, 40-year-old; CMS publishes only these three NC counties)
-medicaid_expansion_magi: partial
+medicaid_expansion_magi: verified  # tests/test_tax.py::test_medicaid_138_boundary; 138% of this year's guideline, at, just under and just over, 2025 and 2026; the engine rounds the monthly limit up to a whole dollar
 se_health_insurance_deduction: verified  # tests/test_tax.py::test_se_health_ptc_iteration_pub974 (Pub. 974 iterative method, hand-worked within $1, with an advance credit), ::test_se_health_step_cycle_inside_the_phase_in_band_is_not_the_cliff (whole-percent step, not the cliff), ::test_se_health_deduction_is_limited_by_profit_less_half_the_se_tax (Worksheet W), ::test_se_health_at_the_400pct_cliff_has_no_fixed_point (two-pass answer, flagged); tests/test_draft.py::test_draft_settles_the_se_health_deduction_with_the_credit; one plan, full year, specified premiums, one business
 # Intake (not engine rules): what the templates read today.
 pdf_text_1099_int_div_b_r_1095a: verified  # tests/test_ingest.py
 pdf_filed_1040_and_schedules_1_2_3_c_d_se: verified  # tests/test_forms.py, synthetic dot-leader text
-pdf_nc_d400: partial  # lines 6, 12b, 15, 20a verified; payment lines checked against the 2025 D-401 (28 overpayment, 34 refund), not a real filed PDF
+pdf_nc_d400: partial  # tests/test_forms.py::test_nc_d400_and_ssa_statement; lines 6, 12b, 15, 20a verified; payment lines checked against the 2025 D-401 (28 overpayment, 34 refund), not a real filed PDF
 pdf_ssa_statement: verified  # tests/test_forms.py
 pdf_1099_nec_k_1098_5498_5498sa_1099sa: verified  # tests/test_forms.py
 pdf_1099_r_distribution_code: verified  # tests/test_forms.py::test_1099r_letter_code
@@ -31,20 +31,20 @@ zip_subfolders_nested_corrupt: verified  # tests/test_ingest.py::test_zip_with_s
 needed_panel_registry_diff: verified  # tests/test_needs.py; planner needed / enter / dont-have
 needed_grouped_by_document: partial  # tests/test_needs.py::test_vanguard_items_group_into_one_download, tests/test_dashboard.py::test_needed_grouped_by_document; one entry per document with its download path and the outputs it unlocks (planner needed and the page); Vanguard and other issuers' click paths are the planner's best description of their sites and are not checked against the live pages
 csv_vanguard_download: verified  # tests/test_csv.py (holdings + transactions blocks)
-csv_vanguard_cost_basis_realized_income: partial  # synthetic headers; real export confirms
+csv_vanguard_cost_basis_realized_income: partial  # tests/test_csv.py::test_cost_basis_realized_and_income; synthetic headers; real export confirms
 csv_bank: verified  # tests/test_csv.py (signed Amount; Debit/Credit)
 ledger_accounts_balances_lots: verified  # tests/test_portfolio.py; planner account / status
 roth_conversion_clock: verified  # tests/test_portfolio.py; planner convert; earlier of Jan 1 +5y and the access age
 magi_projection_lines: verified  # tests/test_plan.py; planner magi; engine-priced, unknown never zero
 roth_conversion_candidates: verified  # tests/test_plan.py; planner conversions; one engine sweep, each candidate costed
-spending_band: verified
-glide_path_and_monthly_cash: verified
+spending_band: verified  # tests/test_spending.py::test_spending_band_clamps_and_the_drawdown_rule
+glide_path_and_monthly_cash: verified  # tests/test_spending.py::test_glide_path_table_stresses_and_monthly_cash
 glide_cash_line_estimated_tax: verified  # tests/test_esttax.py; payments made on their dates, later installments at the safe-harbor shortfall, next year's at 90%, the rest due with the return
 glide_cash_line_planned_flows: verified  # tests/test_year.py + test_withdraw.py; planned-sale proceeds priced from taxable lots at year-end, conversion tax through the installments and the balance due
-withdraw_lots: verified
-wash_sales: verified
-estimated_tax: verified
-underpayment_penalty: unsupported
+withdraw_lots: verified  # tests/test_withdraw.py::test_withdraw_cash_first_then_cheapest_gain_lots
+wash_sales: verified  # tests/test_withdraw.py::test_wash_sales_across_accounts_and_open_windows
+estimated_tax: verified  # tests/test_esttax.py::test_safe_harbor_and_installments
+underpayment_penalty: unsupported  # the planner computes the safe harbor and installments (estimated_tax); the Form 2210 penalty is not computed (planner esttax names it unavailable)
 deadline_calendar: verified  # tests/test_year.py; federal holidays and DC Emancipation Day computed, never typed; Q2/Q3 marked "if required" from the esttax result
 year_end_plan_page: verified  # tests/test_year.py; planner plan; a missing input blocks one section, never the page
 plan_typed_fields: verified  # tests/test_year.py + test_plan.py; planner plan asks total income, Q4 dividends, planned sales, conversion target; auto adopts the recommended conversion everywhere

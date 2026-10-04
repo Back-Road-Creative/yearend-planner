@@ -155,9 +155,10 @@ def size(
     rows = compute_sweep(year, replace(hh, roth_conversion=0), VARIABLE, 0, hi, step)
     base_row = _smallest(rows, lambda rw: rw[VARIABLE] >= already) or rows[0]
     th = thresholds(year, hh.filing_status)
-    fpg = base.result.fpg
-    cliff = fpg * CLIFF_FPL - margin
-    medicaid_month = fpg * MEDICAID_FPL / 12
+    # the credit's cliff uses last year's guideline (Form 8962 line 4);
+    # Medicaid uses this year's
+    cliff = base.result.aca_fpg * CLIFF_FPL - margin
+    medicaid_month = base.result.fpg * MEDICAID_FPL / 12
     # Medicaid counts a conversion only in the month it lands (42 CFR 435.603(e)(1)),
     # so the test is recurring monthly income (without this year's conversions)
     # plus the increment being sized.
@@ -169,7 +170,9 @@ def size(
         "bracket_12": _largest(
             rows, lambda rw: rw["taxable_income"] <= th["bracket_12pct_top"] - margin
         ),
-        "aca_400": _largest(rows, lambda rw: rw["aca_magi"] <= cliff),
+        # strictly under: the engine pays no credit on exactly 400.00%
+        # (ENGINE_400_BRACKET in tests/test_tax.py), so a row on the line is not "under"
+        "aca_400": _largest(rows, lambda rw: rw["aca_magi"] < cliff),
         "medicaid_under": _largest(
             rows,
             lambda rw: (

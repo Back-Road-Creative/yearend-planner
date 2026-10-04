@@ -35,6 +35,37 @@ def test_the_reference_cases_ship_inside_the_package() -> None:
     )
 
 
+FPL_CASES = (
+    "fpl_138_under_2026",
+    "fpl_138_over_2026",
+    "fpl_138_at_2025",
+    "fpl_400_under_2026",
+    "fpl_400_at_2026",
+    "fpl_400_over_2026",
+)
+
+
+@pytest.mark.engine
+def test_fpl_cases_run_in_the_candidate_regression() -> None:
+    """The 138% and 400% FPL cases ship in reference.yaml, so ``selfcheck
+    --regression`` prints their credit, poverty percentages and Medicaid result and
+    ``planner update`` holds a release that moves one."""
+    assert set(FPL_CASES) <= set(verify.reference_cases())
+    got = verify.parse_regression(verify.format_regression(verify.regression_values()))
+    for case in FPL_CASES:
+        for figure in (
+            "aca_ptc",
+            "aca_fpl_pct",
+            "medicaid_fpl_pct",
+            "medicaid_eligible",
+        ):
+            assert f"{case}.{figure}" in got, (case, figure)
+    assert got["fpl_138_over_2026.aca_ptc"] == pytest.approx(8812.76, abs=0.01)
+    assert got["fpl_400_at_2026.aca_fpl_pct"] == pytest.approx(400.0, abs=0.01)
+    assert got["fpl_138_under_2026.medicaid_eligible"] == 1.0
+    assert got["fpl_138_over_2026.medicaid_eligible"] == 0.0
+
+
 def test_a_single_return_file_still_verifies_as_one_report(tmp_path: Path) -> None:
     case = verify.reference_cases()["single_wages_2025"]
     p = tmp_path / "2025.yaml"

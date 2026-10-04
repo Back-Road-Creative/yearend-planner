@@ -413,3 +413,165 @@ def test_values_and_sweep_use_the_settled_deduction() -> None:
         )
         assert row["aca_ptc"] == pytest.approx(point.aca_ptc, abs=D)
         assert row["adjusted_gross_income"] == pytest.approx(point.agi, abs=D)
+
+
+# --- the 138% and 400% FPL lines -------------------------------------------------
+# HHS poverty guideline, one person, 48 states + DC: $15,650 in 2025 and $15,960 in
+# 2026 (config/thresholds.yaml fpl_household_1 for the 2025 figure). Two different
+# guidelines apply to one 2026 return:
+#  * Medicaid (42 CFR 435.119: 133% + the 5-point disregard of 435.603(d) = 138%)
+#    tests the guideline in force for the year, $15,960, so 138% = $22,024.80 a year
+#    ($1,835.40 a month);
+#  * the premium tax credit (IRC 36B(b)(3)(A); Form 8962 line 4) tests the guideline
+#    of the year BEFORE the tax year, $15,650, so 400% = $62,600.
+# Credit = SLCSP - applicable percentage x MAGI, the applicable percentage coming from
+# Rev. Proc. 2025-25 (2026 table: 9.96% flat from 300% to 400% FPL; 3.14% at 133%
+# rising linearly to 4.19% at 150%, 36B(b)(3)(A)(ii)), found at the whole-percent
+# FPL that Form 8962 line 5 truncates to. A person eligible for Medicaid takes no
+# credit (36B(c)(2)(B)). SLCSP below is $800 a month, $9,600 a year.
+SLCSP = 800
+FPL_2025, FPL_2026 = 15_650, 15_960
+
+
+def _fpl(year: int, wages: int) -> tuple[Any, float]:
+    h = Household(**BASE, wages=wages, slcsp_monthly=SLCSP)
+    return compute(year, h), values(year, h, ["is_medicaid_eligible"])[
+        "is_medicaid_eligible"
+    ]
+
+
+@pytest.mark.parametrize(
+    "year,wages,medicaid_pct,eligible",
+    [
+        # 2025: 138% x 15,650 = 21,597.00 exactly (monthly 1,799.75)
+        (2025, 21_596, 137.99, True),  # $1 under
+        (2025, 21_597, 138.00, True),  # at the line: income "at or below" qualifies
+        # $1 a month over the exact line is $1,800.08 a month against $1,799.75
+        (2025, 21_601, 138.03, False),
+        # 2026: 138% x 15,960 = 22,024.80; 22,037 is $1.02 a month over it
+        (2026, 22_024, 137.99, True),
+        (2026, 22_037, 138.08, False),
+    ],
+)
+def test_medicaid_138_boundary(
+    year: int, wages: int, medicaid_pct: float, eligible: bool
+) -> None:
+    r, in_medicaid = _fpl(year, wages)
+    assert r.medicaid_fpl_pct == pytest.approx(medicaid_pct, abs=0.01)
+    assert bool(in_medicaid) is eligible
+    assert r.medicaid_eligible == (1.0 if eligible else 0.0)
+    assert r.medicaid_magi_monthly == pytest.approx(wages / 12, abs=0.01)
+
+
+# IRC 36B(c)(1)(A) allows the credit when household income "does not exceed 400
+# percent" of the poverty line, and Form 8962 line 5 truncates the ratio to a whole
+# percent (i8962 Worksheet 2; planner.taxprep.draft floors it the same way), so
+# exactly 400.00% is line 5 = 400: eligible. Hand-worked at MAGI 62,600:
+# 9,600 - 0.0996 x 62,600 = 9,600 - 6,234.96 = 3,365.04. policyengine-us 2.21.0
+# ends eligibility at a ratio >= 4.00 for 2026 (policyengine_us/parameters/gov/aca/
+# ptc_income_eligibility.yaml, the 4.00 bracket switches to false from 2026-01-01),
+# so it returns 0 at exactly 400.00% and on up to 400.99%, where line 5 is still
+# 400. That is the engine's deviation; the planner is conservative about it
+# (it sizes conversions to strictly under the line, never onto it).
+ENGINE_400_BRACKET = (
+    "policyengine-us ends ACA PTC eligibility at a ratio >= 4.00 for 2026 "
+    "(parameters/gov/aca/ptc_income_eligibility.yaml); IRC 36B(c)(1)(A) and Form "
+    "8962 line 5 (whole-percent truncation) still allow the credit at 400.00%"
+)
+
+
+@pytest.mark.parametrize(
+    "wages,aca_pct,ptc",
+    [
+        # 399.99% of 15,650: 9.96% x 62,599 = 6,234.86; 9,600 - 6,234.86
+        (62_599, 399.99, 3_365.14),
+        # exactly 400.00%: the statute and Form 8962 line 5 keep the credit,
+        # 9,600 - 0.0996 x 62,600 = 3,365.04. The engine returns 0 (see above), so
+        # this is a strict xfail: when an engine release fixes the bracket it turns
+        # into an error that says to drop the marker.
+        pytest.param(
+            62_600,
+            400.00,
+            3_365.04,
+            marks=pytest.mark.xfail(strict=True, reason=ENGINE_400_BRACKET),
+        ),
+        # 401.28%: line 5 = 401, over the line under every reading
+        (62_800, 401.28, 0.0),
+    ],
+)
+def test_aca_400_cliff(wages: int, aca_pct: float, ptc: float) -> None:
+    r, _ = _fpl(2026, wages)
+    assert r.aca_fpg == FPL_2025 and r.fpg == FPL_2026
+    assert r.aca_fpl_pct == pytest.approx(aca_pct, abs=0.01)
+    assert r.aca_ptc == pytest.approx(ptc, abs=D)
+
+
+@pytest.mark.parametrize("state", ["AK", "HI"])
+def test_the_credit_uses_the_prior_year_guideline_of_the_households_state(
+    state: str,
+) -> None:
+    """IRC 36B(d)(3)(B): the credit uses the prior year's guideline, and HHS
+    publishes separate ones for Alaska and Hawaii. The prior year must carry the
+    household's state, or every household gets the 48-state table. Made-up wages."""
+    h = Household(**{**BASE, "state": state}, wages=40_000, slcsp_monthly=800)
+    this_year, prior = compute(2026, h), compute(2025, h)
+    assert this_year.aca_fpg == pytest.approx(prior.fpg)
+    assert this_year.aca_fpg > FPL_2025  # above the 48-state guideline
+
+
+def test_aca_400_engine_deviation_is_pinned() -> None:
+    """The engine's zero at exactly 400.00% is a known deviation, not the rule: the
+    statutory 3,365.04 is the strict xfail in ``test_aca_400_cliff``. This pins what
+    the planner relies on meanwhile: the percentage is measured correctly, and the
+    credit is not paid on the line, and the conversion sizer picks only rows strictly
+    under the line (``test_plan.py``, margin 0 with a row on 62,600), so no plan
+    depends on the deviation."""
+    r, _ = _fpl(2026, 62_600)
+    assert r.aca_fpl_pct == pytest.approx(400.00, abs=0.01)
+    assert r.aca_ptc == 0  # the deviation; see ENGINE_400_BRACKET
+
+
+def test_fpl_boundaries() -> None:
+    """2026 single, NC, wages only, SLCSP $800 a month, across both lines.
+
+    The 138% line has no "at" point here: 2026's line is 22,024.80, not a whole
+    dollar, and ``Household.wages`` is an int. The "at" case is the 2025 line,
+    21,597.00 exactly, in ``test_medicaid_138_boundary`` and the reference case
+    ``fpl_138_at_2025``. The statutory value at exactly 400% is the strict xfail in
+    ``test_aca_400_cliff``."""
+    # Medicaid-eligible (under 138%): no credit however low the premium share is.
+    under, in_medicaid = _fpl(2026, 22_024)
+    assert in_medicaid and under.aca_ptc == 0
+    # Just over 138% the credit starts. 22,037 / 15,650 = 140.8% -> 140%, so the
+    # applicable percentage is 3.14% + (1.40 - 1.33) / (1.50 - 1.33) x 1.05%
+    # = 3.5724%; 9,600 - 0.035724 x 22,037 = 8,812.76 (Form 8962 Table 2 rounds the
+    # percentage to 4 places, which moves this by under $1).
+    over, in_medicaid = _fpl(2026, 22_037)
+    assert not in_medicaid
+    assert over.aca_ptc == pytest.approx(8_812.76, abs=D)
+    # 150% (23,475) opens the 4.19% bracket: 9,600 - 0.0419 x 23,475 = 8,616.40
+    assert _fpl(2026, 23_475)[0].aca_ptc == pytest.approx(8_616.40, abs=D)
+    # the credit falls through the 300-400% band at 9.96%; just under 400% it is
+    # 3,365.14 and over 401% it is gone (the value on the line is test_aca_400_cliff)
+    just_under_cliff, _ = _fpl(2026, 62_599)
+    over_cliff, _ = _fpl(2026, 62_800)
+    assert just_under_cliff.aca_ptc == pytest.approx(3_365.14, abs=D)
+    assert over_cliff.aca_ptc == 0
+    # crossing the cliff costs the whole credit
+    assert just_under_cliff.aca_ptc - over_cliff.aca_ptc > 3_000
+
+
+def test_se_health_insurance_deduction() -> None:
+    # 30,000 of SE income with 3,600 of self-paid health premiums (IRC 162(l),
+    # limited to net SE earnings less half the SE tax: 27,880.57, so allowed in full).
+    # AGI 30,000 - 2,119.43 - 3,600 = 24,280.57. QBI (Reg. 1.199A-3(b)(1)(vi)
+    # lowers it by both): 20% x 24,280.57 = 4,856.11, capped at 20% of taxable
+    # income before QBI (24,280.57 - 16,100 = 8,180.57) = 1,636.11; taxable
+    # 6,544.46; tax 10% = 654.45. A zero benchmark means no premium tax credit, so
+    # the Pub. 974 settlement leaves the 162(l) limit alone (test_se_health_ptc_*).
+    h = Household(**BASE, se_income=30_000, se_health_premiums=3_600, slcsp_monthly=0)
+    r = compute(2026, h)
+    assert r.agi == pytest.approx(24_280.57, abs=D)
+    assert r.qbi_deduction == pytest.approx(1_636.11, abs=D)
+    assert r.taxable_income == pytest.approx(6_544.46, abs=D)
+    assert r.fed_income_tax_after_credits == pytest.approx(654.45, abs=D)

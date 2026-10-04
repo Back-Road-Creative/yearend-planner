@@ -105,7 +105,12 @@ def test_projection_is_the_engine_on_the_fixture_household(lay: Layout) -> None:
     assert by["0% LTCG / qualified-dividend ceiling"].room == pytest.approx(
         49450 - pj.result.taxable_income
     )
-    assert by["ACA 400% FPL cliff"].limit == pytest.approx(4 * pj.result.fpg)
+    # the credit's lines use the guideline of the year before (Form 8962 line 4):
+    # 2025's $15,650, so 250% = 39,125 and 400% = 62,600; Medicaid uses 2026's
+    assert pj.result.aca_fpg == 15650 and pj.result.fpg == 15960
+    assert by["ACA 400% FPL cliff"].limit == 62600
+    assert by["ACA CSR 250% FPL"].limit == 39125
+    assert by["Medicaid 138% FPL (monthly)"].limit == pytest.approx(1835.40)
     assert by["Medicaid 138% FPL (monthly)"].over is True
     assert by["NIIT"].limit == 200000 and by["NIIT"].over is False
     with_hsa = magi.project(lay, 2026, inputs.Overrides(planned_hsa=4400))
@@ -217,6 +222,7 @@ def test_total_income_counts_a_net_capital_loss_only_up_to_the_limit(
 def test_conversion_candidates_are_priced_from_one_sweep(lay: Layout) -> None:
     enter(lay, 2026, "conversion_margin", "1,000")
     enter(lay, 2026, "conversion_cap", "120,000")
+    enter(lay, 2026, "slcsp_monthly", "800")
     sz = conversion.size(lay, 2026, step=1000)
     assert sz.already == 40000 and sz.cap == 120000 and sz.trad_ira_balance == 200000
     by = {c.name: c for c in sz.candidates}
@@ -230,6 +236,13 @@ def test_conversion_candidates_are_priced_from_one_sweep(lay: Layout) -> None:
         fill.fed_delta + fill.state_delta - fill.ptc_delta
     )
     assert fill.qualified_spill is False
+    # the credit's cliff is 400% of LAST year's guideline (IRC 36B, Form 8962 line 4):
+    # 4 x 15,650 = 62,600, less the 1,000 margin = 61,600. Priced from this year's
+    # guideline (15,960) it would be 63,840 - 1,000 and land past the real line.
+    aca = by["aca_400"]
+    assert aca.aca_magi <= 62600 - 1000
+    assert aca.aca_magi + 1000 > 62600 - 1000  # the next step would cross
+    assert aca.ptc_delta > -sz.base.result.aca_ptc  # the credit is kept, not lost
     assert by["bracket_12"].amount >= fill.amount
     assert by["cap"].amount == 120000
     assert by["cap"].qualified_spill is True
@@ -270,6 +283,27 @@ def test_spill_only_when_conversion_adds_15pct(lay: Layout) -> None:
     assert by["cap"].amount == 150000 > sz.already
     assert by["cap"].fed_delta > 0  # the conversion still costs ordinary tax
     assert [c.name for c in sz.candidates if c.qualified_spill] == []
+
+
+def test_aca_400_candidate_stays_strictly_under_the_line_at_margin_zero(
+    lay: Layout,
+) -> None:
+    """With no margin a sweep row can land exactly on 400% (62,600). The engine pays
+    no credit on that row, so it must not be picked as "stay under the cliff"."""
+    enter(lay, 2026, "conversion_cap", "58,600")
+    enter(lay, 2026, "slcsp_monthly", "800")
+    # recurring MAGI is 4,000 (interest + dividends), so a 58,600 conversion is
+    # exactly 62,600; a 2,930 step puts a sweep row on it
+    sz = conversion.size(lay, 2026, step=2930)
+    assert sz.margin == 0
+    aca = {c.name: c for c in sz.candidates}["aca_400"]
+    assert aca.aca_magi == 4000 + 55_670  # one step short of the line
+    assert aca.aca_magi < 62600
+    assert aca.ptc_delta > -sz.base.result.aca_ptc  # the credit is kept
+    assert aca.aca_ptc > 0
+    # the row on the line is in the sweep and is the cap candidate, priced at zero
+    cap = {c.name: c for c in sz.candidates}["cap"]
+    assert cap.aca_magi == 62600 and cap.aca_ptc == 0
 
 
 @pytest.mark.engine

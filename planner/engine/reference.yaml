@@ -74,3 +74,105 @@ cases:
       qbi_deduction: 2356.11
       fed_income_tax_after_credits: 942.45
       fed_total_tax: 5181.32
+  # The FPL lines. 2026 single, NC, wages only, benchmark silver premium $800 a month
+  # ($9,600 a year). Two guidelines: Medicaid tests this year's $15,960 (138% =
+  # 22,024.80, 42 CFR 435.119 with the 435.603(d) disregard); the premium tax credit
+  # (IRC 36B, Form 8962 line 4) tests the prior year's $15,650 (400% = 62,600).
+  # Taxable = wages - 16,100 (Rev. Proc. 2025-32); tax 10% to 12,400, 12% to 50,400.
+  # Credit = 9,600 - applicable percentage x MAGI (Rev. Proc. 2025-25), none while
+  # Medicaid-eligible (36B(c)(2)(B)). The credit is on Schedule 3, not in line 22.
+  #
+  # 22,024: 137.99% of 15,960, under the Medicaid line -> credit 0.
+  fpl_138_under_2026:
+    year: 2026
+    household:
+      age: 55
+      filing_status: SINGLE
+      state: NC
+      wages: 22024
+      slcsp_monthly: 800
+    filed:
+      agi: 22024
+      taxable_income: 5924
+      fed_income_tax_after_credits: 592.40
+      aca_ptc: 0
+  # 22,037: $1.02 a month over 138%. 140.8% of 15,650 -> 140%; applicable percentage
+  # 3.14% + (1.40 - 1.33) / (1.50 - 1.33) x (4.19% - 3.14%) = 3.5724%;
+  # credit 9,600 - 0.035724 x 22,037 = 8,812.76.
+  fpl_138_over_2026:
+    year: 2026
+    household:
+      age: 55
+      filing_status: SINGLE
+      state: NC
+      wages: 22037
+      slcsp_monthly: 800
+    filed:
+      agi: 22037
+      taxable_income: 5937
+      fed_income_tax_after_credits: 593.70
+      aca_ptc: 8812.76
+  # 62,599: 399.99% of 15,650 -> 399%; 9.96% flat from 300% to 400% (Rev. Proc. 2025-25);
+  # credit 9,600 - 0.0996 x 62,599 = 3,365.14. Tax 1,240 + 12% x 34,099 = 5,331.88.
+  fpl_400_under_2026:
+    year: 2026
+    household:
+      age: 55
+      filing_status: SINGLE
+      state: NC
+      wages: 62599
+      slcsp_monthly: 800
+    filed:
+      agi: 62599
+      taxable_income: 46499
+      fed_income_tax_after_credits: 5331.88
+      aca_ptc: 3365.14
+  # 62,600: exactly 400.00%. IRC 36B(c)(1)(A) ("does not exceed 400 percent") and Form
+  # 8962 line 5 (whole-percent truncation, line 5 = 400) keep the credit:
+  # 9,600 - 0.0996 x 62,600 = 3,365.04. policyengine-us 2.21.0 ends it at a ratio of
+  # 4.00 (parameters/gov/aca/ptc_income_eligibility.yaml) and returns 0, so aca_ptc is
+  # NOT a filed line here: the engine's figure is not the truth and must not be held as
+  # one. The statutory value is the strict xfail in tests/test_tax.py::test_aca_400_cliff;
+  # the engine's figure is still in the candidate regression baseline. Tax 1,240 + 12%
+  # x 34,100 = 5,332.
+  fpl_400_at_2026:
+    year: 2026
+    household:
+      age: 55
+      filing_status: SINGLE
+      state: NC
+      wages: 62600
+      slcsp_monthly: 800
+    filed:
+      agi: 62600
+      taxable_income: 46500
+      fed_income_tax_after_credits: 5332
+  # 62,800: 401.28% of 15,650, over the cliff by every reading -> credit 0.
+  # Tax 1,240 + 12% x 34,300 = 5,356.
+  fpl_400_over_2026:
+    year: 2026
+    household:
+      age: 55
+      filing_status: SINGLE
+      state: NC
+      wages: 62800
+      slcsp_monthly: 800
+    filed:
+      agi: 62800
+      taxable_income: 46700
+      fed_income_tax_after_credits: 5356
+      aca_ptc: 0
+  # 2025 single, NC, wages 21,597 = 138% x 15,650 exactly (monthly 1,799.75): at the
+  # Medicaid line, which qualifies at or below. Taxable 21,597 - 15,750 = 5,847;
+  # tax 10% = 584.70 (Rev. Proc. 2024-40; std deduction P.L. 119-21 sec. 70102).
+  fpl_138_at_2025:
+    year: 2025
+    household:
+      age: 55
+      filing_status: SINGLE
+      state: NC
+      wages: 21597
+    filed:
+      agi: 21597
+      taxable_income: 5847
+      fed_income_tax_after_credits: 584.70
