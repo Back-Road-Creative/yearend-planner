@@ -1106,6 +1106,30 @@ def plan(
         typer.echo(f"written {year_plan.write(layout(), yp)}")
 
 
+@app.command()
+def dashboard(
+    year: int | None = typer.Option(None, help="plan year; default this year"),
+    as_of: str | None = AS_OF,
+) -> None:
+    """Write the dashboard as a static page, out/index.html, for printing and
+    backup: the Needed panel, every planner, the draft return and the alerts,
+    each panel tagged actual, estimate or unavailable."""
+    from datetime import date
+
+    from planner.dashboard import page, render
+
+    lay = layout()
+    lay.ensure()
+    today = date.fromisoformat(as_of) if as_of else date.today()
+    pg = page.gather(lay, year or page.default_year(today), today)
+    typer.echo(f"written {render.write_static(lay, pg)}")
+    typer.echo(
+        f"{pg.needed_count} needed, {len(pg.alerts)} alert(s)"
+        if pg.needed_count or pg.alerts
+        else "nothing needed, no alerts"
+    )
+
+
 def _lever_amounts(pairs: list[str]) -> dict[str, float]:
     out: dict[str, float] = {}
     for pair in pairs:
