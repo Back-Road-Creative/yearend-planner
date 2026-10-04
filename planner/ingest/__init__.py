@@ -333,7 +333,7 @@ def ingest(
                     (label, f"{wanted - made} OCR value(s) have no image crop")
                 )
         archived = archive(path, archive_root, year, fp)
-        db.set_archived(conn, doc_id, str(archived.relative_to(lay.data)))
+        db.set_archived(conn, doc_id, archived.relative_to(lay.data).as_posix())
         labels = [f"{f.form} {f.tax_year} ({f.issuer})" for f in forms]
         for source in dict.fromkeys(r.source for r in rows):
             n = sum(1 for r in rows if r.source == source)
