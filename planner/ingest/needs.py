@@ -6,13 +6,19 @@ document that supplies it. ``needed()`` diffs that list against the ledger
 (form boxes, YTD facts), the profile and the typed answers, and reports each
 item as actual (a form or an answer), estimate (year-to-date rows), missing,
 or don't-have. Only facts no dropped document supplied are ever asked.
+
+Each item names the document that supplies it (``Need.doc``, a key of ``DOCS``
+with its exact download path) and the plan outputs it unlocks (``unlocks``,
+from ``OUTPUTS``). ``group_by_document`` folds a list of items into one entry
+per document, so one download closes several at once; items no document
+supplies group last as typed answers.
 """
 
 from __future__ import annotations
 
 import math
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -28,6 +34,7 @@ PROFILE = "profile"
 PRIOR = "prior"  # the year before the plan year (the filed return)
 YEAR = "year"
 
+TYPED = "Typed answers"  # the group of items no document supplies
 MANUAL_VALUES = "values"
 MANUAL_DONT_HAVE = "dont_have"
 ACCOUNT = "account:"  # dynamic keys: account:<number>, account:<number>:death
@@ -60,6 +67,29 @@ class Need:
         ]
         | None
     ) = None
+    doc: str = ""  # key of DOCS: the document that supplies it ("" = typed)
+    unlocks: tuple[str, ...] = ()  # plan outputs (OUTPUTS) this item feeds
+
+    def __post_init__(self) -> None:
+        if self.doc and self.doc not in DOCS:
+            raise ValueError(f"{self.key}: unknown document {self.doc!r}")
+        if not set(self.unlocks) <= set(OUTPUTS):
+            raise ValueError(f"{self.key}: unknown outputs {self.unlocks}")
+
+    @property
+    def where(self) -> str:
+        """One line: the document's download path, then where in it to look."""
+        if not self.doc:
+            return self.source
+        path = DOCS[self.doc].path
+        return f"{path}; look for: {self.source}" if self.source else path
+
+
+@dataclass(frozen=True)
+class Doc:
+    key: str
+    name: str
+    path: str  # the exact clicks (or place) to get it
 
 
 @dataclass(frozen=True)
@@ -83,11 +113,104 @@ class NeedsReport:
         return not self.by_state("missing")
 
 
-_VG = "Vanguard: My Accounts > Tax center > download the year's forms"
-_SSA = "ssa.gov/myaccount > Your Social Security Statement (PDF)"
-_RET = "last year's filed return (the preparer's PDF or tax software export)"
+# Every output a missing item can hold back: the dashboard's planners, the
+# draft return and the forms and schedules built from them.
+OUTPUTS = (
+    "Glide path",
+    "Spending band",
+    "MAGI headroom",
+    "Levers",
+    "Roth conversion",
+    "Withdrawal plan",
+    "Estimated tax",
+    "Cash buffer",
+    "Draft 1040",
+    "NC D-400 draft",
+    "Schedule D",
+    "Schedule C",
+    "Form 8889",
+    "ACA credit",
+    "Expected forms",
+    "Year rollover",
+)
+
+# The documents the Needed panel sends you to, each with the exact download
+# path. The Vanguard clicks follow the page names the CSV templates cite
+# (templates/csv/*.yaml); the rest are the issuers' own document pages.
+DOCS: dict[str, Doc] = {
+    d.key: d
+    for d in (
+        Doc(
+            "vg_tax",
+            "Vanguard tax forms (1099-INT, 1099-DIV, 1099-B)",
+            "Vanguard > My Accounts > Tax center > download the forms for the tax year (PDF)",
+        ),
+        Doc(
+            "vg_realized",
+            "Vanguard realized gains export",
+            "Vanguard > Cost basis > Realized gains/losses > Export CSV",
+        ),
+        Doc(
+            "f1099r",
+            "Form 1099-R from each IRA custodian",
+            "Vanguard > My Accounts > Tax center > the 1099-R in the forms list; "
+            "another custodian: its tax documents page",
+        ),
+        Doc(
+            "f5498",
+            "Form 5498 from each IRA custodian",
+            "Vanguard > My Accounts > Tax center > the 5498 in the forms list "
+            "(arrives in May); another custodian: its tax documents page",
+        ),
+        Doc(
+            "f5498sa",
+            "Form 5498-SA from your HSA custodian",
+            "your HSA custodian's website > tax documents > Form 5498-SA "
+            "(arrives in May)",
+        ),
+        Doc(
+            "w2",
+            "Form W-2 from each employer",
+            "your employer's payroll or HR portal > tax documents",
+        ),
+        Doc(
+            "ssa_statement",
+            "Social Security Statement",
+            "ssa.gov/myaccount > Your Social Security Statement (PDF)",
+        ),
+        Doc("ssa_1099", "Form SSA-1099", "ssa.gov/myaccount > replacement documents"),
+        Doc(
+            "filed_return",
+            "Last year's filed return",
+            "your preparer's portal or tax software > Print or Export > PDF of "
+            "last year's filed return",
+        ),
+        Doc(
+            "f1095a",
+            "Form 1095-A",
+            "HealthCare.gov (or your state's marketplace) > your application > "
+            "tax forms",
+        ),
+        Doc(
+            "f1098",
+            "Form 1098 (two years in a row)",
+            "your loan servicer's website > documents or tax forms",
+        ),
+        Doc(
+            "insurer",
+            "Marketplace or insurer billing statement",
+            "HealthCare.gov (or your insurer's website) > your account > "
+            "billing or invoices",
+        ),
+        Doc(
+            "bank_csv",
+            "Bank transaction export (CSV)",
+            "your bank's website > the account > download transactions (CSV)",
+        ),
+    )
+}
 _NONE = "no document supplies this; type it"
-_1040_ID = _RET + ", the filing-status check boxes and address line; or type it"
+_1040_ID = "the filing-status check boxes and address line; or type it"
 
 NEEDS: tuple[Need, ...] = (
     Need(
@@ -97,6 +220,13 @@ NEEDS: tuple[Need, ...] = (
         _NONE,
         "date",
         PROFILE,
+        unlocks=(
+            "Glide path",
+            "Spending band",
+            "Roth conversion",
+            "Form 8889",
+            "Expected forms",
+        ),
     ),
     Need(
         "filing_status",
@@ -107,6 +237,14 @@ NEEDS: tuple[Need, ...] = (
         PROFILE,
         boxes=(("1040", "filing_status"),),
         choices=FILING,
+        doc="filed_return",
+        unlocks=(
+            "MAGI headroom",
+            "Roth conversion",
+            "Levers",
+            "Draft 1040",
+            "Form 8889",
+        ),
     ),
     Need(
         "state",
@@ -116,18 +254,21 @@ NEEDS: tuple[Need, ...] = (
         "str",
         PROFILE,
         boxes=(("1040", "state"),),
+        doc="filed_return",
+        unlocks=("MAGI headroom", "Levers", "Draft 1040", "Expected forms"),
     ),
     Need(
         "county",
         "County",
         "the ACA benchmark (SLCSP) premium",
-        "the ZIP on last year's filed return when it lies in one county; "
-        "otherwise type it",
+        "the ZIP in the address block when it lies in one county; otherwise type it",
         "str",
         PROFILE,
         derive_text=lambda config, conn, year, values: _county_from_return(
             config, conn, year, values
         ),
+        doc="filed_return",
+        unlocks=("ACA credit", "MAGI headroom"),
     ),
     Need(
         "spending_floor",
@@ -136,6 +277,7 @@ NEEDS: tuple[Need, ...] = (
         _NONE,
         "money",
         PROFILE,
+        unlocks=("Spending band",),
     ),
     Need(
         "spending_ceiling",
@@ -144,6 +286,7 @@ NEEDS: tuple[Need, ...] = (
         _NONE,
         "money",
         PROFILE,
+        unlocks=("Spending band",),
     ),
     Need(
         "cash_target",
@@ -152,24 +295,29 @@ NEEDS: tuple[Need, ...] = (
         _NONE,
         "money",
         PROFILE,
+        unlocks=("Cash buffer", "Glide path", "Withdrawal plan"),
     ),
     Need(
         "mortgage_monthly",
         "Mortgage P&I and escrow per month ($)",
         "the month-by-month cash line",
-        "the mortgage statement; two years of Form 1098 give the principal and "
-        "interest, and escrow is typed",
+        "two years of Form 1098 give the principal and interest; escrow is "
+        "typed (the mortgage statement shows it)",
         "money",
         PROFILE,
         derive=lambda conn, year: _mortgage_pi(conn, year),
+        doc="f1098",
+        unlocks=("Glide path", "Cash buffer"),
     ),
     Need(
         "premium_monthly",
         "Health premium per month ($, net of the advance credit)",
         "the month-by-month cash line",
-        "the marketplace invoice",
+        "the amount due each month, net of the advance credit",
         "money",
         PROFILE,
+        doc="insurer",
+        unlocks=("Glide path", "Cash buffer", "Levers"),
     ),
     Need(
         "withdrawal_rate",
@@ -178,6 +326,7 @@ NEEDS: tuple[Need, ...] = (
         _NONE,
         "fraction",
         PROFILE,
+        unlocks=("Spending band",),
     ),
     Need(
         "inflation",
@@ -186,6 +335,7 @@ NEEDS: tuple[Need, ...] = (
         _NONE,
         "fraction",
         PROFILE,
+        unlocks=("Spending band", "Glide path"),
     ),
     Need(
         "return_floor",
@@ -194,9 +344,16 @@ NEEDS: tuple[Need, ...] = (
         _NONE,
         "fraction",
         PROFILE,
+        unlocks=("Spending band", "Glide path"),
     ),
     Need(
-        "return_track", "Planning real return", "glide path", _NONE, "fraction", PROFILE
+        "return_track",
+        "Planning real return",
+        "glide path",
+        _NONE,
+        "fraction",
+        PROFILE,
+        unlocks=("Spending band", "Glide path"),
     ),
     Need(
         "ss_claim_age",
@@ -205,6 +362,7 @@ NEEDS: tuple[Need, ...] = (
         _NONE,
         "int",
         PROFILE,
+        unlocks=("Glide path", "Expected forms"),
     ),
     Need(
         "conversion_margin",
@@ -213,6 +371,7 @@ NEEDS: tuple[Need, ...] = (
         _NONE,
         "money",
         PROFILE,
+        unlocks=("Roth conversion",),
     ),
     Need(
         "conversion_cap",
@@ -221,6 +380,7 @@ NEEDS: tuple[Need, ...] = (
         _NONE,
         "money",
         PROFILE,
+        unlocks=("Roth conversion",),
     ),
     Need(
         "conversion_objective",
@@ -236,16 +396,19 @@ NEEDS: tuple[Need, ...] = (
             "medicaid_under",
             "medicaid_over",
         ),
+        unlocks=("Roth conversion", "Levers"),
     ),
     Need(
         "roth_basis_contributions",
         "Roth IRA contributions, lifetime total ($)",
         "the part of the Roth balance that is spendable at any age",
-        "the Roth custodian's contribution history (Vanguard: Balances & holdings > "
-        "the Roth account > Contributions), or the sum of every Form 5498 box 10",
+        "the sum of every year's box 10, or the Roth custodian's contribution "
+        "history (Vanguard: Balances & holdings > the Roth account > Contributions)",
         "money",
         PROFILE,
         estimate=(("5498", "10"),),
+        doc="f5498",
+        unlocks=("Withdrawal plan", "Year rollover"),
     ),
     Need(
         "hsa_coverage",
@@ -256,85 +419,102 @@ NEEDS: tuple[Need, ...] = (
         "enum",
         PROFILE,
         choices=("none", "self", "family"),
+        unlocks=("Form 8889", "Levers", "Expected forms"),
     ),
     Need(
         "workplace_plan",
         "Covered by a retirement plan at work this year (yes or no)",
         "whether a traditional IRA contribution is deductible in full",
-        "W-2 box 13 'Retirement plan' (checked = yes); a SEP or solo 401(k) of "
+        "box 13 'Retirement plan' (checked = yes); a SEP or solo 401(k) of "
         "your own also counts",
         "enum",
         PROFILE,
         choices=("yes", "no"),
+        doc="w2",
+        unlocks=("Levers",),
     ),
     Need(
         "ss_estimate_62",
         "SS monthly estimate at 62",
         "claim-age comparison",
-        _SSA,
+        "the retirement estimate at age 62",
         "money",
         PROFILE,
         boxes=(("SSA", "monthly_62"),),
+        doc="ssa_statement",
+        unlocks=("Glide path",),
     ),
     Need(
         "ss_estimate_67",
         "SS monthly estimate at 67",
         "claim-age comparison",
-        _SSA,
+        "the retirement estimate at age 67",
         "money",
         PROFILE,
         boxes=(("SSA", "monthly_67"),),
+        doc="ssa_statement",
+        unlocks=("Glide path",),
     ),
     Need(
         "ss_estimate_70",
         "SS monthly estimate at 70",
         "claim-age comparison",
-        _SSA,
+        "the retirement estimate at age 70",
         "money",
         PROFILE,
         boxes=(("SSA", "monthly_70"),),
+        doc="ssa_statement",
+        unlocks=("Glide path",),
     ),
     Need(
         "prior_agi",
         "Prior-year AGI (1040 line 11)",
         "safe harbor and the delta report",
-        _RET,
+        "Form 1040 line 11",
         "money",
         PRIOR,
         boxes=(("1040", "11"),),
         estimate=(("CARRY-EST", "agi"),),
+        doc="filed_return",
+        unlocks=("Estimated tax", "Year rollover"),
     ),
     Need(
         "prior_total_tax",
         "Prior-year total tax (1040 line 24)",
         "the 100%/110% safe harbor",
-        _RET,
+        "Form 1040 line 24",
         "money",
         PRIOR,
         boxes=(("1040", "24"),),
         estimate=(("CARRY-EST", "total_tax"),),
+        doc="filed_return",
+        unlocks=("Estimated tax", "Year rollover"),
     ),
     Need(
         "prior_nc_tax",
         "Prior-year NC income tax (D-400 line 15)",
         "the NC safe harbor",
-        _RET,
+        "Form D-400 line 15",
         "money",
         PRIOR,
         boxes=(("NC-D400", "15"),),
         estimate=(("CARRY-EST", "nc_tax"),),
+        doc="filed_return",
+        unlocks=("Estimated tax", "Year rollover"),
     ),
     Need(
         "prior_capital_loss_carryforward",
         "Capital loss carried into this year ($)",
         "offsets this year's gains before any is taxed",
-        "last year's return: the Capital Loss Carryover Worksheet in the Schedule D "
+        "the Capital Loss Carryover Worksheet in the Schedule D "
         "instructions (0 when Schedule D line 16 was not a loss); planner "
         "rollover carries it",
         "money",
         PRIOR,
         boxes=(("CARRY", "st"), ("CARRY", "lt")),
         estimate=(("CARRY-EST", "st"), ("CARRY-EST", "lt")),
+        doc="filed_return",
+        unlocks=("Levers", "Withdrawal plan", "Year rollover"),
     ),
     Need(
         "fed_withheld",
@@ -343,6 +523,8 @@ NEEDS: tuple[Need, ...] = (
         "W-2 box 2, 1099-R box 4 (zero when nothing withholds)",
         "money",
         boxes=(("W-2", "2"), ("1099-R", "4")),
+        doc="w2",
+        unlocks=("Estimated tax",),
     ),
     Need(
         "nc_withheld",
@@ -351,6 +533,8 @@ NEEDS: tuple[Need, ...] = (
         "W-2 box 17, 1099-R box 14 (zero when nothing withholds)",
         "money",
         boxes=(("W-2", "17"), ("1099-R", "14")),
+        doc="w2",
+        unlocks=("Estimated tax", "NC D-400 draft"),
     ),
     Need(
         "nc_additions",
@@ -358,6 +542,7 @@ NEEDS: tuple[Need, ...] = (
         "added to federal AGI on D-400 line 7",
         "D-400 Schedule S Part A (most returns have none; type 0 when none)",
         "money",
+        unlocks=("NC D-400 draft",),
     ),
     Need(
         "nc_other_deductions",
@@ -367,6 +552,7 @@ NEEDS: tuple[Need, ...] = (
         "D-400 Schedule S Part B; the planner fills lines 18 and 19 itself "
         "(type 0 when none)",
         "money",
+        unlocks=("NC D-400 draft",),
     ),
     Need(
         "nc_use_tax",
@@ -375,14 +561,17 @@ NEEDS: tuple[Need, ...] = (
         "your purchase records, or the use tax table in the D-400 instructions "
         "(the draft uses the table until you type it)",
         "money",
+        unlocks=("NC D-400 draft",),
     ),
     Need(
         "wages",
         "Wages",
         "ordinary income",
-        "W-2 box 1 from the employer; type 0 if none",
+        "box 1; type 0 if none",
         "money",
         boxes=(("W-2", "1"),),
+        doc="w2",
+        unlocks=("MAGI headroom", "Levers", "Draft 1040", "Expected forms"),
     ),
     Need(
         "se_income",
@@ -393,24 +582,36 @@ NEEDS: tuple[Need, ...] = (
         "money",
         boxes=(("SCH-C", "31"),),
         estimate=(("1099-NEC", "1"), ("1099-K", "1a")),
+        doc="bank_csv",
+        unlocks=(
+            "MAGI headroom",
+            "Levers",
+            "Draft 1040",
+            "Schedule C",
+            "Expected forms",
+        ),
     ),
     Need(
         "interest",
         "Taxable interest",
         "ordinary income",
-        "1099-INT boxes 1 and 3 (" + _VG + ")",
+        "1099-INT boxes 1 and 3",
         "money",
         boxes=(("1099-INT", "1"), ("1099-INT", "3")),
         estimate=(("YTD", "interest"),),
+        doc="vg_tax",
+        unlocks=("MAGI headroom", "Glide path", "Draft 1040", "NC D-400 draft"),
     ),
     Need(
         "ordinary_dividends",
         "Ordinary dividends",
         "ordinary income and MAGI",
-        "1099-DIV box 1a (" + _VG + ")",
+        "1099-DIV box 1a",
         "money",
         boxes=(("1099-DIV", "1a"),),
         estimate=(("YTD", "dividends"),),
+        doc="vg_tax",
+        unlocks=("MAGI headroom", "Draft 1040", "Expected forms"),
     ),
     Need(
         "qualified_dividends",
@@ -419,26 +620,32 @@ NEEDS: tuple[Need, ...] = (
         "1099-DIV box 1b",
         "money",
         boxes=(("1099-DIV", "1b"),),
+        doc="vg_tax",
+        unlocks=("MAGI headroom", "Draft 1040"),
     ),
     Need(
         "short_term_gains",
         "Short-term gain or loss",
         "ordinary income",
-        "the realized-lots CSV or 1099-B (" + _VG + "); Schedule D line 7 once "
-        "the year ends (planner gains)",
+        "the realized gains/losses CSV (or the 1099-B in the Vanguard tax "
+        "forms); Schedule D line 7 once the year ends (planner gains)",
         "money",
         boxes=(("SCH-D", "7"),),
         estimate=(("YTD", "st_gain"),),
+        doc="vg_realized",
+        unlocks=("MAGI headroom", "Levers", "Draft 1040", "Schedule D"),
     ),
     Need(
         "long_term_gains",
         "Long-term gain or loss",
         "0% LTCG room",
-        "the realized-lots CSV or 1099-B, plus 1099-DIV box 2a; Schedule D line "
-        "15 once the year ends",
+        "the realized gains/losses CSV (or the 1099-B in the Vanguard tax "
+        "forms), plus 1099-DIV box 2a; Schedule D line 15 once the year ends",
         "money",
         boxes=(("SCH-D", "15"),),
         estimate=(("YTD", "lt_gain"), ("YTD", "capital_gain_distributions")),
+        doc="vg_realized",
+        unlocks=("MAGI headroom", "Levers", "Draft 1040", "Schedule D"),
     ),
     Need(
         "st_loss_carryover",
@@ -451,6 +658,8 @@ NEEDS: tuple[Need, ...] = (
         PRIOR,
         boxes=(("CARRY", "st"),),
         estimate=(("CARRY-EST", "st"),),
+        doc="filed_return",
+        unlocks=("Schedule D",),
     ),
     Need(
         "lt_loss_carryover",
@@ -462,39 +671,48 @@ NEEDS: tuple[Need, ...] = (
         PRIOR,
         boxes=(("CARRY", "lt"),),
         estimate=(("CARRY-EST", "lt"),),
+        doc="filed_return",
+        unlocks=("Schedule D",),
     ),
     Need(
         "ira_distributions",
         "Taxable IRA distributions",
         "ordinary income",
-        "1099-R box 2a from each IRA custodian",
+        "box 2a from each IRA custodian",
         "money",
         boxes=(("1099-R", "2a"),),
+        doc="f1099r",
+        unlocks=("MAGI headroom", "Levers", "Draft 1040"),
     ),
     Need(
         "social_security",
         "Social Security benefits",
         "up to 85% taxable; all of it counts in ACA MAGI",
-        "SSA-1099 box 5 (ssa.gov/myaccount > replacement documents); type 0 "
-        "before you claim",
+        "box 5; type 0 before you claim",
         "money",
         boxes=(("SSA-1099", "5"),),
+        doc="ssa_1099",
+        unlocks=("MAGI headroom", "Draft 1040"),
     ),
     Need(
         "roth_conversion",
         "Roth conversion this year",
         "the conversion ledger",
-        "5498 box 3 (arrives in May) or your conversion confirmation",
+        "box 3 (arrives in May) or your conversion confirmation",
         "money",
         boxes=(("5498", "3"),),
+        doc="f5498",
+        unlocks=("Roth conversion", "Levers", "Draft 1040"),
     ),
     Need(
         "traditional_ira_contribution",
         "Traditional IRA contribution",
         "the IRA deduction",
-        "5498 box 1 or the custodian's confirmation",
+        "box 1 or the custodian's confirmation",
         "money",
         boxes=(("5498", "1"),),
+        doc="f5498",
+        unlocks=("Levers", "MAGI headroom"),
     ),
     Need(
         "hsa_contribution",
@@ -504,23 +722,28 @@ NEEDS: tuple[Need, ...] = (
         "what you have put in yourself so far",
         "money",
         boxes=(("8889", "13"),),
+        unlocks=("Levers", "Draft 1040", "Year rollover"),
     ),
     Need(
         "hsa_contributions",
         "HSA contributions for the year, from every source",
         "Form 8889: what went in against the limit",
-        "5498-SA box 2 plus box 3 (box 2 also counts money put in this year for "
+        "box 2 plus box 3 (box 2 also counts money put in this year for "
         "last year: take that part out)",
         "money",
         boxes=(("5498-SA", "2"), ("5498-SA", "3")),
+        doc="f5498sa",
+        unlocks=("Form 8889",),
     ),
     Need(
         "hsa_employer_contributions",
         "Employer and payroll HSA contributions",
         "Form 8889 line 9: already excluded from wages, never deducted again",
-        "W-2 box 12 code W",
+        "box 12 code W",
         "money",
         boxes=(("W-2", "12W"),),
+        doc="w2",
+        unlocks=("Form 8889", "Levers"),
     ),
     Need(
         "hsa_months",
@@ -529,6 +752,7 @@ NEEDS: tuple[Need, ...] = (
         "your plan's start and end dates; 12 if covered all year or on December 1 "
         "(the last-month rule, with a 13-month testing period)",
         "int",
+        unlocks=("Form 8889",),
     ),
     Need(
         "hsa_qualified_expenses",
@@ -536,23 +760,61 @@ NEEDS: tuple[Need, ...] = (
         "Form 8889 line 15: HSA money not spent on medical care is taxed",
         "your HSA's claims history or receipts for each 1099-SA distribution",
         "money",
+        unlocks=("Form 8889",),
     ),
     Need(
         "se_health_premiums",
         "Health premiums paid (self-employed)",
         "the SE health deduction and ACA reconciliation",
-        "the marketplace or insurer billing statement",
+        "the premiums paid, month by month",
         "money",
+        doc="insurer",
+        unlocks=("Levers", "Draft 1040"),
     ),
     Need(
         "slcsp_monthly",
         "Benchmark silver (SLCSP) premium, monthly",
         "the ACA credit",
-        "1095-A column B (January) or healthcare.gov's tax tool",
+        "column B (January), or healthcare.gov's tax tool",
         "money",
         boxes=(("1095-A", "slcsp_01"),),
+        doc="f1095a",
+        unlocks=("ACA credit", "MAGI headroom"),
     ),
 )
+
+
+@dataclass
+class Group:
+    """The items one document closes, with the outputs they unlock together.
+    ``doc`` is None for the items no document supplies (typed answers)."""
+
+    doc: Doc | None
+    items: list[Status] = field(default_factory=list)
+
+    @property
+    def title(self) -> str:
+        return self.doc.name if self.doc else TYPED
+
+    @property
+    def unlocks(self) -> tuple[str, ...]:
+        """Every output the group's items feed, each once, in the order
+        OUTPUTS lists them."""
+        held = {u for st in self.items for u in st.need.unlocks}
+        return tuple(o for o in OUTPUTS if o in held)
+
+
+def group_by_document(items: Iterable[Status]) -> list[Group]:
+    """One group per document, in the order each is first needed; the items
+    no document supplies come last. Item order within a group is kept."""
+    by_doc: dict[str, Group] = {}
+    typed = Group(None)
+    for st in items:
+        if st.need.doc:
+            by_doc.setdefault(st.need.doc, Group(DOCS[st.need.doc])).items.append(st)
+        else:
+            typed.items.append(st)
+    return [*by_doc.values(), *([typed] if typed.items else [])]
 
 
 def manual_path(lay: Layout, year: int) -> Path:
@@ -606,6 +868,7 @@ def account_need(number: str, death: bool = False) -> Need:
             "the inheritance paperwork or the custodian's beneficiary letter",
             "date",
             PROFILE,
+            unlocks=("Withdrawal plan", "Glide path"),
         )
     return Need(
         f"{ACCOUNT}{number}",
@@ -616,6 +879,7 @@ def account_need(number: str, death: bool = False) -> Need:
         "enum",
         PROFILE,
         choices=portfolio.TYPES,
+        unlocks=("Withdrawal plan", "Roth conversion", "Glide path"),
     )
 
 

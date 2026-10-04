@@ -1,8 +1,9 @@
 """Everything the dashboard shows, gathered in one pass: the year plan's
-sections, the Needed panel (each missing item with the document that supplies
-it), forms still to come, the draft return, values awaiting confirm and the
-alerts. Every panel carries a tag saying whether its figures are actual, an
-estimate or unavailable; nothing is filled in to look complete."""
+sections, the Needed panel (missing items grouped by the document that supplies
+them, with its download path and the outputs each group unlocks), forms still to
+come, the draft return, values awaiting confirm and the alerts. Every panel
+carries a tag saying whether its figures are actual, an estimate or unavailable;
+nothing is filled in to look complete."""
 
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from planner.engine.household import MissingInputError
 from planner.engine.selfcheck import format_years
 from planner.engine.tax import engine_version, published_years
 from planner.ingest import confirm, ocr
-from planner.ingest.needs import Status, needed
+from planner.ingest.needs import Group, Status, group_by_document, needed
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import rollover
@@ -114,6 +115,11 @@ class Page:
         """The year after the plan year, when the engine does not publish it."""
         nxt = self.year + 1
         return nxt if self.years and nxt not in self.years else None
+
+    @property
+    def needed_groups(self) -> list[Group]:
+        """The missing items folded by the document that supplies them."""
+        return group_by_document(self.needed)
 
     @property
     def needed_count(self) -> int:

@@ -16,9 +16,9 @@ no account, no cloud, no AI at runtime.
 3. Double-click `planner.cmd`. The dashboard opens in your browser.
 4. Drop every tax document you have on the page: W-2s, 1099s, brokerage CSV exports,
    last year's return, and statements (PDF, CSV or a phone photo).
-5. Work the **Needed** panel. It lists each figure the plan still lacks, why it matters
-   and which document has it. Upload that document, or type the figure, or mark it as
-   one you don't have. Repeat until the panel says *nothing needed*.
+5. Work the **Needed** panel. It groups what the plan still lacks by document: each group
+   shows the exact download path, the outputs that document unlocks, and every figure it
+   closes. Upload that document, or type the figure, or mark it as one you don't have. Repeat until the panel says *nothing needed*.
 
 The rest of the page is the plan: projected income against each cliff, the Roth
 conversion size, estimated tax due dates, wash-sale warnings, the levers with a what-if,

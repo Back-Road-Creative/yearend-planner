@@ -150,3 +150,42 @@ def test_page_renders_a_pending_ocr_document_with_a_text_box(
         assert "Distribution code" in text and "12,000.00" in text
     assert '<td class="num">6</td>' in static
     assert 'name="edit_7" value="6"' in live  # the live page lets the word be retyped
+
+
+@pytest.mark.engine
+def test_needed_grouped_by_document(planner_home: Path) -> None:
+    from html import escape
+
+    from planner.ingest.needs import DOCS
+
+    home = Layout(planner_home)
+    home.ensure()
+    pg = page.gather(home, 2026, AS_OF)
+    groups = {g.doc.key: g for g in pg.needed_groups if g.doc is not None}
+    vg = groups["vg_tax"]
+    # several Vanguard items close with one download
+    assert {s.need.key for s in vg.items} >= {
+        "interest",
+        "ordinary_dividends",
+        "qualified_dividends",
+    }
+    assert len(vg.unlocks) >= 2
+    static = render.write_static(home, pg).read_text(encoding="utf-8")
+    live = render.html(pg, token="t0k3n")  # noqa: S106
+    for text in (static, live):
+        # the download path and its outputs appear once for the whole group
+        assert text.count(escape(DOCS["vg_tax"].path)) == 1
+        assert text.count(f'id="doc-{vg.doc.key if vg.doc else ""}"') == 1
+        for key in ("interest", "ordinary_dividends", "qualified_dividends"):
+            assert f"planner enter --year 2026 {key}" in text or (
+                f'name="key" value="{key}"' in text
+            )
+        assert (
+            "Vanguard &gt; Cost basis &gt; Realized gains/losses &gt; Export CSV"
+            in text
+        )
+        assert "unlocks:" in text
+        assert "Typed answers" in text  # items no document supplies
+    # the same item is never listed twice
+    listed = [s.need.key for g in pg.needed_groups for s in g.items]
+    assert sorted(listed) == sorted(s.need.key for s in pg.needed)
