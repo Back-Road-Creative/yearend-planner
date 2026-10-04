@@ -411,6 +411,8 @@ def ingest() -> None:
         typer.echo(f"duplicate {name} (already in the ledger; archived)")
     for name, reason in report.unmatched:
         typer.echo(f"UNMATCHED {name}: {reason}")
+    for name, note in report.notes:
+        typer.echo(f"note      {name}: {note}")
     for year, n in sorted(report.derived.items()):
         typer.echo(f"derived   {year}: {n} YTD facts from rows")
     typer.echo(

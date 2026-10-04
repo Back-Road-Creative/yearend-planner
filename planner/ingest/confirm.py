@@ -47,8 +47,9 @@ def accept(
         for key in {(f.form, f.tax_year, f.issuer) for f in pend}:
             conn.execute(
                 "UPDATE facts SET status = 'superseded' WHERE form = ? AND "
-                "tax_year = ? AND issuer = ? AND status = 'accepted'",
-                key,
+                "tax_year = ? AND issuer = ? AND status = 'accepted' "
+                "AND document_id != ?",
+                (*key, doc_id),
             )
         conn.execute(
             "UPDATE facts SET status = 'accepted' WHERE document_id = ? "
@@ -75,18 +76,33 @@ def _words(box: str, value: float | str) -> str:
 
 
 def reject(lay: Layout, conn: sqlite3.Connection, doc_id: int) -> str:
-    """Drop one document's pending facts and forget the document, so a better
-    scan (or the same file) can be dropped again; the file returns to
-    ``data/inbox/UNMATCHED/`` with the reason."""
+    """Drop one document's pending facts. A document with nothing accepted (a
+    scan or photo) is forgotten as well, so a better scan (or the same file)
+    can be dropped again; the file returns to ``data/inbox/UNMATCHED/`` with
+    the reason. A document that also holds accepted facts (a PDF whose text
+    pages were read straight from the file) keeps them, itself and its archive
+    copy: forgetting it would take those values out of the ledger and leave
+    the earlier copies it superseded retired. The values of its scanned pages
+    can be typed with ``planner enter``. Returns where the file now is."""
     pend = [f for f in pending(conn) if f.document_id == doc_id]
     if not pend:
         raise KeyError(f"document {doc_id} has no values awaiting confirm")
     row = conn.execute(
         "SELECT file_name, archived_as FROM documents WHERE id = ?", (doc_id,)
     ).fetchone()
+    kept = conn.execute(
+        "SELECT COUNT(*) FROM facts WHERE document_id = ? AND status != 'pending'",
+        (doc_id,),
+    ).fetchone()[0]
     with conn:
-        conn.execute("DELETE FROM facts WHERE document_id = ?", (doc_id,))
-        conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        conn.execute(
+            "DELETE FROM facts WHERE document_id = ? AND status = 'pending'",
+            (doc_id,),
+        )
+        if not kept:
+            conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+    if kept:
+        return str(row["archived_as"])
     dest = lay.data / "inbox" / "UNMATCHED"
     dest.mkdir(parents=True, exist_ok=True)
     target = dest / str(row["file_name"])

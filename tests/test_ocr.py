@@ -13,7 +13,7 @@ from planner.ingest.confirm import accept, pending, reject
 from planner.ledger import db
 from planner.paths import Layout
 from tests.pdfgen import make_pdf
-from tests.test_ingest import DIV_2025
+from tests.test_ingest import DIV_2025, INT_2025
 
 runner = CliRunner()
 INT_LINES = [
@@ -177,3 +177,130 @@ def test_a_text_box_read_by_ocr_waits_and_is_corrected_with_text(lay: Layout) ->
     assert [f.value for f in db.facts_for(conn, 2025, "1099-R") if f.box == "1"] == [
         11000.0
     ]
+
+
+def mixed_pdf(lay: Layout, name: str = "mixed.pdf") -> Path:
+    """Page 1 has a text layer; page 2 is blank, as a scanned page is."""
+    return make_pdf(lay.data / "inbox" / name, [DIV_2025, []])
+
+
+def scan_of_page_two(path: Path) -> list[str]:
+    return ["", "\n".join(INT_2025)]
+
+
+def test_mixed_pdf_ocrs_scanned_pages(lay: Layout) -> None:
+    mixed_pdf(lay)
+    rep = ingest(lay, ocr=scan_of_page_two)
+    assert [i.file_name for i in rep.pending] == ["mixed.pdf"] and rep.imported == []
+    assert rep.unmatched == [] and rep.notes == []
+    conn = ledger(lay)
+    # page 1 came from the text layer and counts; page 2 waits for confirm
+    assert {f.box for f in db.facts_for(conn, 2025, "1099-DIV")} >= {"1a", "1b"}
+    assert db.facts_for(conn, 2025, "1099-INT") == []
+    waiting = pending(conn)
+    assert {(f.form, f.page) for f in waiting} == {("1099-INT", 2)}
+    accept(conn, waiting[0].document_id)
+    assert db.facts_for(conn, 2025, "1099-INT")
+    assert db.facts_for(conn, 2025, "1099-DIV")  # accepting did not retire page 1
+
+
+def test_mixed_pdf_without_an_engine_imports_text_pages_and_says_so(
+    lay: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(ocr, "available", lambda: False)
+    mixed_pdf(lay)
+    rep = ingest(lay)
+    assert [i.file_name for i in rep.imported] == ["mixed.pdf"]
+    ((name, note),) = rep.notes
+    assert name == "mixed.pdf" and "page 2" in note and "not installed" in note
+
+
+def test_mixed_pdf_without_an_engine_keeps_the_no_template_reason(
+    lay: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(ocr, "available", lambda: False)
+    old_year = [line.replace("2025", "2019") for line in DIV_2025]
+    make_pdf(lay.data / "inbox" / "old.pdf", [old_year, []])
+    rep = ingest(lay)
+    assert rep.imported == []
+    ((name, why),) = rep.unmatched
+    assert name == "old.pdf"
+    assert "page 1: 1099-DIV 2019 has no template" in why
+    assert "page 2 has no text layer" in why
+
+
+def test_mixed_pdf_whose_scan_reads_nothing_is_noted(lay: Layout) -> None:
+    mixed_pdf(lay)
+    rep = ingest(lay, ocr=lambda path: ["", ""])
+    assert [i.file_name for i in rep.imported] == ["mixed.pdf"]
+    ((_, note),) = rep.notes
+    assert "page 2" in note and "read nothing" in note
+
+
+def test_mixed_pdf_scanned_page_disagreeing_with_the_text_page_is_unmatched(
+    lay: Layout,
+) -> None:
+    mixed_pdf(lay)
+    other = [line.replace("9,800.00", "9,900.00") for line in DIV_2025]
+    rep = ingest(lay, ocr=lambda path: ["", "\n".join(other)])
+    ((_, why),) = rep.unmatched
+    assert "page 1 says 9800.0 but page 2 says 9900.0" in why
+
+
+def test_mixed_pdf_scanned_page_that_matches_no_form_is_unmatched_with_why(
+    lay: Layout,
+) -> None:
+    make_pdf(lay.data / "inbox" / "cover.pdf", [["Cover letter, no form"], []])
+    rep = ingest(lay, ocr=lambda path: ["", "page two scan"])
+    ((_, why),) = rep.unmatched
+    assert "no form template matched" in why
+
+
+def test_mixed_pdf_matching_no_form_says_ocr_read_nothing(lay: Layout) -> None:
+    make_pdf(lay.data / "inbox" / "cover.pdf", [["Cover letter, no form"], []])
+    rep = ingest(lay, ocr=lambda path: ["", ""])
+    ((_, why),) = rep.unmatched
+    assert "no form template matched" in why
+    assert "page 2" in why and "OCR read nothing" in why
+
+
+def test_engine_reads_only_the_scanned_pages(
+    lay: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    read: list[object] = []
+
+    def fake_read(image: object) -> str:
+        read.append(image)
+        return "\n".join(INT_2025)
+
+    monkeypatch.setattr(ocr, "available", lambda: True)
+    monkeypatch.setattr(ocr, "_read", fake_read)
+    make_pdf(lay.data / "inbox" / "three.pdf", [DIV_2025, [], DIV_2025])
+    rep = ingest(lay, ocr=ocr.page_texts)
+    assert [i.file_name for i in rep.pending] == ["three.pdf"]
+    assert len(read) == 1  # the two text pages were not rendered or read
+    assert {(f.form, f.page) for f in pending(ledger(lay))} == {("1099-INT", 2)}
+
+
+def test_reject_on_a_mixed_pdf_keeps_the_text_page_values(lay: Layout) -> None:
+    """A mixed PDF holds accepted text-page facts beside its pending scan facts;
+    rejecting the scan must not take the text pages (or the document) with it."""
+    make_pdf(lay.data / "inbox" / "first.pdf", [DIV_2025])
+    ingest(lay)
+    corrected = [line.replace("9,800.00", "9,900.00") for line in DIV_2025]
+    make_pdf(lay.data / "inbox" / "mixed.pdf", [corrected, []])
+    ingest(lay, ocr=scan_of_page_two)
+    conn = ledger(lay)
+    before = {f.box: f.value for f in db.facts_for(conn, 2025, "1099-DIV")}
+    assert before["1a"] == 9900.0  # the corrected page replaced the first copy
+    ((doc,),) = {(f.document_id,) for f in pending(conn)}
+    where = reject(lay, conn, doc)
+    assert pending(conn) == []
+    after = {f.box: f.value for f in db.facts_for(conn, 2025, "1099-DIV")}
+    assert after == before  # the text-page values still count
+    assert db.facts_for(conn, 2025, "1099-INT") == []  # the rejected scan does not
+    assert conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 2
+    assert (lay.data / where).is_file() and where.startswith("archive/")
+    assert not (lay.data / "inbox" / "UNMATCHED" / "mixed.pdf").exists()
+    rep = ingest(lay, ocr=scan_of_page_two)  # same file again: still a duplicate
+    assert rep.pending == [] and rep.imported == []

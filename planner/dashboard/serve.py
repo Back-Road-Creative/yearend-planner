@@ -74,6 +74,7 @@ class App:
             f"{len(rep.pending)} awaiting confirm, {len(rep.duplicates)} already "
             f"in the ledger, {len(rep.unmatched)} not read"
             + "".join(f"\n{name}: {why}" for name, why in rep.unmatched)
+            + "".join(f"\n{name}: {note}" for name, note in rep.notes)
         )
 
     def enter(self, key: str, value: str) -> str:
@@ -98,7 +99,7 @@ class App:
                 return f"accepted {len(facts)} value(s) from document {doc}"
             if action == "reject":
                 where = confirm.reject(self.lay, conn, int(doc))
-                return f"rejected document {doc}; the file is back at {where}"
+                return f"rejected document {doc}; the file is at {where}"
             return f"unknown action {action!r}"
         except (KeyError, ValueError) as exc:
             return f"not done: {exc}"
