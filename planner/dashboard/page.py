@@ -23,7 +23,7 @@ from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import rollover
 from planner.plan import year as year_plan
-from planner.plan.inputs import Overrides
+from planner.plan.inputs import FILING, Overrides, scope_gaps
 from planner.taxprep import close, draft, expected, schedule_c
 
 ACTUAL, ESTIMATE, UNAVAILABLE = "actual", "estimate", "unavailable"
@@ -61,7 +61,7 @@ ORDER = (
 
 @dataclass(frozen=True)
 class Alert:
-    kind: str  # unmatched | wash | pending | stale | gap | thresholds | blocked
+    kind: str  # scope | unmatched | wash | pending | stale | gap | thresholds | blocked
     text: str
 
 
@@ -106,6 +106,7 @@ class Page:
     draft: draft.Draft | None = None
     draft_blocked: str = ""
     pending: list[Pending] = field(default_factory=list)
+    scope: list[str] = field(default_factory=list)  # Not handled: the household
     alerts: list[Alert] = field(default_factory=list)
     limits: limits_.Limits | None = None
     stale_days: int | None = None  # set once STALE_DAYS have passed
@@ -153,6 +154,11 @@ class Page:
     def needed_count(self) -> int:
         return len(self.needed) + len(self.late_forms) + (1 if self.loose_rows else 0)
 
+    @property
+    def set_aside(self) -> int:
+        """Inputs marked don't have and late forms waived: off the list, not on hand."""
+        return len(self.dont_have) + len(self.waived_forms)
+
     def panel(self, name: str) -> Panel:
         return next(p for p in self.panels if p.name == name)
 
@@ -198,7 +204,7 @@ def last_import(lay: Layout) -> str | None:
 
 
 def _alerts(lay: Layout, page: Page, today: date) -> list[Alert]:
-    out: list[Alert] = []
+    out = [Alert("scope", text) for text in page.scope]  # first: it frames the rest
     due = rollover.due(lay, today)
     if due is not None:
         out.append(
@@ -331,6 +337,9 @@ def gather(
     except MissingInputError as exc:
         page.draft_blocked = str(exc)
     page.pending = _pending(lay)
+    status = next((s for s in rep.items if s.need.key == "filing_status"), None)
+    if status is not None and status.value in FILING:
+        page.scope = scope_gaps(FILING[str(status.value)])
     page.closings = [
         c for c in (close.latest(lay, y) for y in (year - 1, year)) if c is not None
     ]

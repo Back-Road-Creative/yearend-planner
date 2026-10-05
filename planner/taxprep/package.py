@@ -251,6 +251,7 @@ def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
         pack.notes.append(
             f"{len(inv.outstanding)} expected form(s) still to come; see forms.csv"
         )
+    pack.notes[:0] = [x for x in d.notes if x.startswith("Not handled:")]
     if d.not_ready:
         pack.notes.insert(0, d.not_ready)
     checks = [x for x in d.notes if x.startswith("CHECK")]

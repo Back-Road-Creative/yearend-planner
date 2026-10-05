@@ -148,6 +148,32 @@ def _lot(symbol: str, basis: float, value: float, term: str = "short") -> portfo
     return portfolio.Lot("acct", symbol, "2026-01-02", term, 1.0, basis, value)
 
 
+def test_cash_on_hand_replaces_sale_proceeds_not_gain() -> None:
+    """A planned 2,000 gain from a 10,000 sale of an 8,000-basis lot: 2,000 of
+    cash replaces 2,000 of the proceeds, so only a fifth of the gain is avoided."""
+    one = [_lot("SYNA", 8_000.0, 10_000.0, "long")]
+    assert withdraw.gain_avoided(one, 2_000.0, "long", 2_000.0) == (400.0, 2_000.0, 0.0)
+    # enough cash for the whole sale avoids the whole gain and spends the proceeds
+    assert withdraw.gain_avoided(one, 2_000.0, "long", 50_000.0) == (
+        2_000.0,
+        10_000.0,
+        0.0,
+    )
+    # the lots not sold are those the sale would draw first (most gain per dollar)
+    two = [
+        _lot("SYNB", 9_000.0, 10_000.0, "long"),
+        _lot("SYNA", 5_000.0, 10_000.0, "long"),
+    ]
+    assert withdraw.gain_avoided(two, 6_000.0, "long", 12_000.0) == (
+        5_200.0,
+        12_000.0,
+        0.0,
+    )
+    # a gain no lot supplies has no known proceeds: nothing avoided, named back
+    assert withdraw.gain_avoided([], 2_000.0, "long", 5_000.0) == (0.0, 0.0, 2_000.0)
+    assert withdraw.gain_avoided(one, 2_000.0, "long", 0.0) == (0.0, 0.0, 0.0)
+
+
 def test_proceeds_for_a_planned_loss_use_the_most_loss_per_dollar_first() -> None:
     # A loses 1.0 per dollar of value, B 0.1: drawing a 1,000 loss from A takes
     # 1,000 of value, from B 10,000. The plan may rely only on the smaller cash.
