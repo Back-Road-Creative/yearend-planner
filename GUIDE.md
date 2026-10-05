@@ -1085,3 +1085,21 @@ because the sync client would copy your ledger to the cloud. `planner.cmd`
 checks its own folder first with `findstr` and prints the same warning before
 it downloads or runs anything, so a double-click in a synced folder explains
 itself in the window it keeps open.
+
+## Scope guard: one person (Phase 10, unit 0b)
+
+The household the engine prices has one member: no spouse and no dependents. For the
+filing statuses whose answer turns on a second person, `planner.plan.inputs.NOT_HANDLED`
+holds one line each, and `inputs.build` puts it in `Inputs.scope` and the notes:
+
+- Married filing jointly: the spouse's income, age, deductions and credits are left out,
+  so every figure is this person's share, not the joint return.
+- Married filing separately: the spouse's choice to itemize (which binds this return), a
+  community-property split and the spouse's figures are left out.
+- Head of household: no qualifying person is entered, so dependents' credits and the
+  larger household for the ACA credit and benefits are left out.
+
+The line leads the dashboard's alerts (kind `scope`), reaches the draft return's notes,
+`planner magi` and the tax pack's notes. A single filer has none. The tag stays until the
+household model (unit 3a) adds the spouse and dependents.
+
