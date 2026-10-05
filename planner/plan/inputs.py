@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
+from planner import coverage
 from planner.engine.household import Household, MissingInputError
 from planner.ingest.derive import CountyError, resolve_county
 from planner.ingest.needs import _needed
@@ -31,35 +32,6 @@ FILING = {
     "head_of_household": "HEAD_OF_HOUSEHOLD",
 }
 REQUIRED = ("birth_date", "filing_status", "state")
-# The planner models one person and no dependents. A status whose answer turns
-# on a second person is priced as that one person and tagged, never passed off
-# as a full plan (master plan unit 0b; lifted when unit 3a models the household).
-NOT_HANDLED = {
-    "JOINT": (
-        "Not handled: married filing jointly is priced for one person; the "
-        "spouse's income, age, deductions and credits are left out, so every "
-        "figure here is this person's share only, not the joint return"
-    ),
-    "SEPARATE": (
-        "Not handled: married filing separately is priced from this person's "
-        "figures alone; the spouse's choice to itemize (which binds this "
-        "return), a community-property split and the spouse's figures are left out"
-    ),
-    "HEAD_OF_HOUSEHOLD": (
-        "Not handled: head of household is priced with no qualifying person; "
-        "dependents' credits (child tax credit, earned income credit with "
-        "children, dependent care) and the larger household for the ACA credit "
-        "and benefits are left out"
-    ),
-}
-
-
-def scope_gaps(filing_status: str) -> list[str]:
-    """The Not handled lines for an engine filing status (empty for SINGLE)."""
-    gap = NOT_HANDLED.get(filing_status)
-    return [gap] if gap else []
-
-
 # Needed-panel key -> Household field, dollars rounded to whole dollars.
 MONEY = {
     "wages": "wages",
@@ -179,6 +151,7 @@ class Inputs:
     notes: list[str] = field(default_factory=list)
     overrides: Overrides = field(default_factory=Overrides)
     scope: list[str] = field(default_factory=list)  # Not handled lines (also notes)
+    coverage: list[coverage.Gap] = field(default_factory=list)  # every gap (2a)
 
     def state(self, key: str) -> str:
         """KNOWN, ESTIMATE, UNKNOWN or NOT_APPLICABLE (an item never asked)."""
@@ -273,8 +246,9 @@ def build(
         if value.get(key) is not None:
             fields[name] = int(value[key])
     out.tax_age = tax_age(str(value["birth_date"]), year)
-    out.scope = scope_gaps(fields["filing_status"])
-    out.notes.extend(out.scope)
+    out.coverage = coverage.gate(lay, fields["state"], fields["filing_status"])
+    out.scope = [g.reason for g in out.coverage if g.area == "household"]
+    out.notes.extend(g.reason for g in out.coverage)
     ordinary = value.get("ordinary_dividends")
     qualified = value.get("qualified_dividends")
     if ordinary is not None and qualified is None:

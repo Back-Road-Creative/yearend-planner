@@ -1099,7 +1099,7 @@ itself in the window it keeps open.
 ## Scope guard: one person (Phase 10, unit 0b)
 
 The household the engine prices has one member: no spouse and no dependents. For the
-filing statuses whose answer turns on a second person, `planner.plan.inputs.NOT_HANDLED`
+filing statuses whose answer turns on a second person, `planner.coverage.HOUSEHOLD`
 holds one line each, and `inputs.build` puts it in `Inputs.scope` and the notes:
 
 - Married filing jointly: the spouse's income, age, deductions and credits are left out,
@@ -1112,4 +1112,25 @@ holds one line each, and `inputs.build` puts it in `Inputs.scope` and the notes:
 The line leads the dashboard's alerts (kind `scope`), reaches the draft return's notes,
 `planner magi` and the tax pack's notes. A single filer has none. The tag stays until the
 household model (unit 3a) adds the spouse and dependents.
+
+## Coverage gate (Phase 10, unit 2a)
+
+`planner.coverage.gate` runs right after intake, before any plan or draft, and lists
+every fact the planner cannot answer correctly. Each gap has a reason (starting
+`Not handled:`), a Needed line saying what to do, and the sections it touches:
+
+- **Household**: the one-person lines above. Touches every priced panel and the draft.
+- **State**: a state other than NC. The plan's state income tax is the engine's
+  estimate; the state return is not drafted (have a preparer draft it). Touches only
+  the state return, so the federal draft stays ready.
+- **Document**: each file in `data/inbox/UNMATCHED/`. Anything on it is left out, so it
+  touches every priced panel and the draft until its figures are typed with
+  `planner enter` or the file is moved out because it holds no tax figures.
+
+Every panel and every drafted form carries a coverage tag: **not handled** when a gap
+touches it, else **verified** when its row in `config/capabilities.yaml` is verified,
+else **estimated**. The dashboard lists the gaps at the top of Needed (each counts as
+one open item); `planner draft` prints the tag beside each form heading and a gap that
+touches the draft makes it NOT READY for a preparer; the tax pack writes
+`coverage.csv`, a row per drafted form (tag, why, what to do) and a row per gap.
 

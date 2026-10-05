@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from planner import coverage
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import esttax
@@ -31,6 +32,7 @@ FILES = {
     "basis.csv": "cost basis of the open lots, and each Roth conversion",
     "estimated-payments.csv": "federal and NC estimated payments, with origin",
     "forms.csv": "the expected forms, which arrived, and their source files",
+    "coverage.csv": "each form verified, estimated or not handled, and each gap",
     "originals.zip": "the archived original documents for the year",
 }
 F8949 = (
@@ -87,7 +89,10 @@ def html_page(d: draft.Draft) -> str:
         lines = [ln for ln in d.lines if ln.form == form]
         if not lines:
             continue
-        parts.append(f"<h2>{esc(draft.HEADINGS.get(form, form))}</h2><table>")
+        parts.append(
+            f"<h2>{esc(draft.HEADINGS.get(form, form))} <small>[{esc(d.tag(form))}]"
+            "</small></h2><table>"
+        )
         for ln in lines:
             places = 2 if round(ln.value, 2) == ln.value else 4
             parts.append(
@@ -119,6 +124,25 @@ def _originals(lay: Layout, year: int, target: Path) -> int:
         for p in files:
             zf.write(p, p.relative_to(folder).as_posix())
     return len(files)
+
+
+def _coverage(d: draft.Draft) -> list[tuple[object, ...]]:
+    """A row per drafted form with its tag and why, then a row per gap."""
+    touching = [g for g in d.coverage if "draft" in g.touches]
+    rows: list[tuple[object, ...]] = []
+    for form in (*draft.ORDER, "Carryover"):
+        if not any(ln.form == form for ln in d.lines):
+            continue
+        row = draft.FORM_CAPABILITY.get(form, "draft_return")
+        why = "; ".join(g.reason for g in touching) or (
+            f"capability {row}: {d.statuses.get(row, 'no row')}"
+        )
+        needed = "; ".join(g.needed for g in touching)
+        rows.append((draft.HEADINGS.get(form, form), d.tag(form), why, needed))
+    rows.extend(
+        (f"gap: {g.area}", coverage.NOT_HANDLED, g.reason, g.needed) for g in d.coverage
+    )
+    return rows
 
 
 def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
@@ -243,6 +267,7 @@ def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
             for e in inv.items
         ],
     )
+    _csv(folder / "coverage.csv", ("section", "tag", "why", "needed"), _coverage(d))
     n = _originals(lay, year, folder / "originals.zip")
     pack.written = [name for name in FILES if (folder / name).exists()]
     if not n:

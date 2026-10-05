@@ -38,7 +38,9 @@ priced as that one person and tagged **Not handled** first in the alerts, in the
 return's notes, in `planner magi` and in the tax pack, because a spouse or a qualifying
 person changes the answer and neither is entered. Treat those figures as one person's
 share, not the household's return. The state return drafted is NC's D-400; another state
-gets the engine's estimate and a note that no return is drafted.
+gets the engine's estimate and a **Not handled** line saying to have a preparer draft it.
+A document no template reads is named the same way. Each panel and drafted form is tagged
+verified, estimated or not handled, and the tax pack's `coverage.csv` lists why.
 
 ## Commands
 

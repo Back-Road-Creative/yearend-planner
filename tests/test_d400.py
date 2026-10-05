@@ -109,7 +109,7 @@ def test_no_d400_outside_nc(planner_home: Path) -> None:
     enter(lay, 2025, "state", "SC")
     d = draft.build(lay, 2025)
     assert not [ln for ln in d.lines if ln.form in ("D-400", "Sch S")]
-    assert any("no state return drafted for SC" in n for n in d.notes)
+    assert any("the SC return is not drafted" in n for n in d.notes)
 
 
 @pytest.mark.parametrize("year", sorted(d400.RATE))
