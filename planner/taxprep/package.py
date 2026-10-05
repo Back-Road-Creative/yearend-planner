@@ -81,6 +81,8 @@ def html_page(d: draft.Draft) -> str:
         f"<p>policyengine-us {esc(d.engine_version)}. A draft to check against the "
         "forms, not a filing.</p>",
     ]
+    if d.not_ready:
+        parts.append(f"<p><strong>{esc(d.not_ready)}</strong></p>")
     for form in (*draft.ORDER, "Carryover"):
         lines = [ln for ln in d.lines if ln.form == form]
         if not lines:
@@ -250,6 +252,8 @@ def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
             f"{len(inv.outstanding)} expected form(s) still to come; see forms.csv"
         )
     pack.notes[:0] = [x for x in d.notes if x.startswith("Not handled:")]
+    if d.not_ready:
+        pack.notes.insert(0, d.not_ready)
     checks = [x for x in d.notes if x.startswith("CHECK")]
     if checks:
         pack.notes.append(f"{len(checks)} CHECK line(s) in the draft to resolve first")
