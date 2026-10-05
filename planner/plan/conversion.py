@@ -173,9 +173,8 @@ def size(
         "bracket_12": _largest(
             rows, lambda rw: rw["taxable_income"] <= th["bracket_12pct_top"] - margin
         ),
-        # strictly under: the engine pays no credit on exactly 400.00%
-        # (ENGINE_400_BRACKET in tests/test_tax.py), so a row on the line is not "under"
-        "aca_400": _largest(rows, lambda rw: rw["aca_magi"] < cliff),
+        # on the line keeps the credit: income must not EXCEED 400% (IRC 36B(c)(1)(A))
+        "aca_400": _largest(rows, lambda rw: rw["aca_magi"] <= cliff),
         "medicaid_under": _largest(
             rows,
             lambda rw: (

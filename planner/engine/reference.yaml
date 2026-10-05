@@ -133,13 +133,11 @@ cases:
       taxable_income: 46499
       fed_income_tax_after_credits: 5329
       aca_ptc: 3365.14
-  # 62,600: exactly 400.00%. IRC 36B(c)(1)(A) ("does not exceed 400 percent") and Form
-  # 8962 line 5 (whole-percent truncation, line 5 = 400) keep the credit:
-  # 9,600 - 0.0996 x 62,600 = 3,365.04. policyengine-us 2.21.0 ends it at a ratio of
-  # 4.00 (parameters/gov/aca/ptc_income_eligibility.yaml) and returns 0, so aca_ptc is
-  # NOT a filed line here: the engine's figure is not the truth and must not be held as
-  # one. The statutory value is the strict xfail in tests/test_tax.py::test_aca_400_cliff;
-  # the engine's figure is still in the candidate regression baseline. Tax: row 46,500-46,550,
+  # 62,600: exactly 400.00%. IRC 36B(c)(1)(A) ("does not exceed 400 percent") and i8962
+  # Worksheet 2 (401 only when income is MORE than 4 x the guideline) keep the credit:
+  # 9,600 - 0.0996 x 62,600 = 3,365.04. policyengine-us 2.21.0 alone returns 0 here
+  # (its 4.00 bracket in parameters/gov/aca/ptc_income_eligibility.yaml); the planner
+  # corrects the edge (planner.engine.tax.ACA_PTC_LINE). Tax: row 46,500-46,550,
   # 1,240 + 12% x 34,125 = 5,335.
   fpl_400_at_2026:
     year: 2026
@@ -153,6 +151,7 @@ cases:
       agi: 62600
       taxable_income: 46500
       fed_income_tax_after_credits: 5335
+      aca_ptc: 3365.04
   # 62,800: 401.28% of 15,650, over the cliff by every reading -> credit 0.
   # Tax: row 46,700-46,750, 1,240 + 12% x 34,325 = 5,359.
   fpl_400_over_2026:

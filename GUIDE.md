@@ -66,13 +66,14 @@ partial row that cites none, or one whose test does not exist). The poverty-line
 on both sides of each line: 138% (Medicaid) and 400% (premium tax credit), with the credit
 worked by hand from the Rev. Proc. 2025-25 table; they ship in `reference.yaml`, so
 `planner update` holds a release whose engine moves any of them. One known engine
-deviation: at 400.00% to 400.99% of the poverty line the engine pays no credit, but the
-statute ("does not exceed 400 percent", IRC 36B(c)(1)(A)) and Form 8962 line 5 (which
-truncates to a whole percent) still allow it, 3,365.04 for the single $800-a-month
-benchmark case at $62,600. That case is a strict expected-failure test, not a filed line
-in `reference.yaml`, and the premium tax credit row in `config/capabilities.yaml` stays
-`partial` until the engine is fixed. The planner stays clear of the line: it sizes
-conversions to strictly under the line (and under it by your margin on top), so no plan depends on the deviation.
+deviation, corrected by the planner: the engine rounds income over the poverty line down
+to a whole percent and ends the premium tax credit at 400.00%. The statute keeps the
+credit while income "does not exceed 400 percent" (IRC 36B(c)(1)(A)), and Form 8962's
+instructions (Worksheet 2) enter 401 only when income is more than 4 times the poverty
+line, in dollars. So the planner pays the credit at exactly 400.00% (3,365.04 for the
+single $800-a-month benchmark case at $62,600, a filed line in `reference.yaml`) and
+none a cent over it, in every figure, sweep and the draft Form 8962 (line 5 = 401). The
+conversion sizer may size onto the line, never past it (less your margin).
 
 ## Intake (Phase 2a)
 
