@@ -18,7 +18,7 @@ no account, no cloud, no AI at runtime.
    last year's return, and statements (PDF, CSV or a phone photo).
 5. Work the **Needed** panel. It groups what the plan still lacks by document: each group
    shows the exact download path, the outputs that document unlocks, and every figure it
-   closes. Upload that document, or type the figure, or mark it as one you don't have. Repeat until the panel says *nothing needed*.
+   closes. Upload that document, or type the figure, or mark it as one you don't have. Repeat until the panel says *nothing needed*. (If you marked items as ones you don't have, it says how many were set aside and that the plan is not ready: the figures resting on them are estimates.)
 
 The rest of the page is the plan: projected income against each cliff, the Roth
 conversion size, estimated tax due dates, wash-sale warnings, the levers with a what-if,
