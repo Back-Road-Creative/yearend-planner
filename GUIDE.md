@@ -191,7 +191,10 @@ assumptions, SS estimates) go to `data/profile/assumptions.yaml`, which is creat
 `config/assumptions.example.yaml` on first use; year items go to
 `data/manual/<year>.yaml`. `planner dont-have <item> --year 2026` takes an item off the
 list and the plan shows it as unavailable; `--undo` puts it back. The loop is done when `planner needed` prints
-`nothing needed`; `--all` shows the covered items with their source.
+`nothing needed`; `--all` shows the covered items with their source. A list emptied by
+setting items aside (`dont-have`, or a waived late form) prints `nothing left to answer,
+N set aside: not ready` instead, and the page says the same: the figures that rest on
+those items are estimates, not ready to act on or hand to a preparer.
 
 Every kind of item in the Needed panel can be closed on the live page. Every
 don't-have and every waiver can be undone there; a row you categorised is changed

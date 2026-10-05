@@ -479,7 +479,11 @@ def test_needed_reaches_zero_from_page_only(live: tuple[serve.App, int]) -> None
     done = gather()
     assert done.needed_count == 0 and done.loose_rows == 0
     text = call(port, "GET", "/?token=tok")[2]
-    assert "Nothing more is needed" in text and "Set aside (" in text
+    # every open item was set aside, not answered: the page must not read "ready"
+    assert "Nothing more is needed" not in text and "every input is on hand" not in text
+    aside = len(pg.needed) + len(pg.late_forms)
+    assert f"No open questions, but {aside} set aside: not ready." in text
+    assert "Set aside (" in text
     assert 'action="/undo-dont-have?token=tok"' in text
     assert 'action="/undo-waive?token=tok"' in text
 
