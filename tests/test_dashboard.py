@@ -92,6 +92,27 @@ def test_cold_start_page_renders_and_names_what_is_needed(planner_home: Path) ->
 
 
 @pytest.mark.engine
+def test_page_alerts_a_household_the_planner_does_not_model(planner_home: Path) -> None:
+    from planner.ingest.needs import enter
+
+    home = Layout(planner_home)
+    home.ensure()
+    for key, text in (
+        ("birth_date", "1971-06-15"),
+        ("filing_status", "head_of_household"),
+        ("state", "NC"),
+    ):
+        enter(home, 2026, key, text)
+    pg = page.gather(home, 2026, AS_OF)
+    (alert,) = [a for a in pg.alerts if a.kind == "scope"]
+    assert alert.text.startswith("Not handled:")
+    assert pg.alerts[0] == alert  # first, above every other alert
+    assert "Not handled:" in render.html(pg)
+    enter(home, 2026, "filing_status", "single")
+    assert not [a for a in page.gather(home, 2026, AS_OF).alerts if a.kind == "scope"]
+
+
+@pytest.mark.engine
 def test_cli_dashboard(lots: Layout) -> None:  # noqa: F811
     r = runner.invoke(app, ["dashboard", "--year", "2026", "--as-of", "2026-07-10"])
     assert r.exit_code == 0, r.output
