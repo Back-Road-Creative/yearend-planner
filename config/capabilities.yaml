@@ -76,6 +76,7 @@ backup_restore: verified  # tests/test_backup.py; AES-256 or plain zip + sha256 
 input_validation: verified  # tests/test_validation.py; typed answers bounded and refused with what is expected; CLI years/amounts/ports ranged
 stale_banner: verified  # tests/test_validation.py; >90 days since last import -> banner atop the page, plan still runs
 coverage_gate: verified  # tests/test_coverage.py; household, state and unread-document gaps found after intake, each with a Needed line; panels and drafted forms tagged verified/estimated/not handled from the gaps and these rows; coverage.csv in the tax pack
+readiness_answers: verified  # tests/test_coverage.py, tests/test_serve.py; ready to plan / to act / for a preparer, each with its reasons; a set-aside fact or waived form never readies acting or the preparer (F14)
 limits_notice: verified  # tests/test_notice.py, tests/test_dashboard.py, tests/test_package.py; planner.NOTICE (not tax, legal or investment advice; a preparer reviews) heads the page, draft.txt, draft.html, the taxpack summary, README and GUIDE
 ci_scans: verified  # tests/test_privacy.py::test_ci_audits_dependencies_scans_secrets_and_holds_a_coverage_floor; pip-audit on uv.lock, gitleaks full history (checksum-pinned), --cov-fail-under floor, Dependabot uv + actions
 release: verified  # tests/test_privacy.py + .github/workflows/release.yml; tag -> suite, build, windows_proof, draft release with .sha256

@@ -1628,6 +1628,8 @@ def dashboard(
         if pg.set_aside
         else "nothing needed, no alerts"
     )
+    for answer in pg.readiness:
+        typer.echo(answer.line)
 
 
 TASK_NAME = "Year-End Planner"
