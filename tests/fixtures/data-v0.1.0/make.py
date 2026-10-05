@@ -7,7 +7,11 @@ Run from a checkout of the v0.1.0 tag (its planner and its tests helpers):
 
 Every figure is synthetic: the tests' example bank, broker and household.
 The ledger is written out as SQL text (``ledger/planner.sql``) so a reviewer
-can read it; the test loads it back into a database.
+can read it; the test loads it back into a database. The two archived PDFs
+are left out: a PDF's cross-reference table is 10-digit offsets, which the
+release's figure scan reads as account numbers. tests/pdfgen.py writes no
+date, so the test rebuilds them byte for byte (the ledger's fingerprints prove
+it).
 """
 
 from __future__ import annotations
@@ -71,6 +75,8 @@ def main(out: Path) -> None:
     with sqlite3.connect(data / "ledger" / "planner.db") as conn:
         dump = "\n".join(conn.iterdump()) + "\n"
     (out / "ledger" / "planner.sql").write_text(dump, encoding="utf-8")
+    for pdf in (out / "archive").rglob("*.pdf"):
+        pdf.unlink()
 
 
 if __name__ == "__main__":

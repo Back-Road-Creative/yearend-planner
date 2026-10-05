@@ -13,17 +13,24 @@ import pytest
 from typer.testing import CliRunner
 
 from planner.cli import app
+from planner.ingest import fingerprint
 from planner.ledger import db
+from tests.pdfgen import make_pdf
+from tests.test_ingest import DIV_2025, INT_2025
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "data-v0.1.0"
 RUN = ["run", "--quiet", "--no-update-check", "--year", "2025", "--as-of", "2026-02-10"]
 runner = CliRunner()
+# archived by v0.1.0 and rebuilt here, not tracked (make.py says why)
+PDFS = {"int.pdf": INT_2025, "div.pdf": DIV_2025}
 
 
 def _restore(home: Path) -> Path:
     """The v0.1.0 data/ copied into ``home``; returns the ledger path."""
     data = home / "data"
     shutil.copytree(FIXTURE, data, ignore=shutil.ignore_patterns("make.py", "*.sql"))
+    for name, lines in PDFS.items():
+        make_pdf(data / "archive" / "2025" / name, [lines])
     ledger = data / "ledger" / "planner.db"
     with sqlite3.connect(ledger) as conn:
         conn.executescript((FIXTURE / "ledger" / "planner.sql").read_text("utf-8"))
@@ -111,3 +118,17 @@ def test_an_older_ledger_is_copied_aside_then_brought_up(tmp_path: Path) -> None
 
 def test_every_schema_step_since_the_first_release_is_registered() -> None:
     assert sorted(db.MIGRATIONS) == list(range(3, db.SCHEMA_VERSION))
+
+
+def test_the_rebuilt_pdfs_are_the_files_v010_archived(tmp_path: Path) -> None:
+    ledger = _restore(tmp_path)
+    with sqlite3.connect(ledger) as conn:
+        kept = dict(
+            conn.execute(
+                "SELECT archived_as, fingerprint FROM documents WHERE kind = 'pdf'"
+            ).fetchall()
+        )
+    conn.close()
+    assert sorted(kept) == [f"archive/2025/{name}" for name in sorted(PDFS)]
+    for rel, fp in kept.items():
+        assert fingerprint(tmp_path / "data" / rel) == fp
