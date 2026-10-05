@@ -18,7 +18,7 @@ import dataclasses
 import math
 from dataclasses import dataclass, field
 
-from planner import coverage
+from planner import NOTICE, coverage
 from planner.engine import tax
 from planner.engine.household import Household
 from planner.ingest.needs import need_values, schedule_b_required
@@ -1260,7 +1260,8 @@ def render(d: Draft) -> str:
         "a filing.",
     ]
     if d.not_ready:
-        out.append(d.not_ready)
+        out.append(d.not_ready)  # the blocker first, then the standing notice
+    out.append(NOTICE)
     for form in (*ORDER, "Carryover"):
         lines = [ln for ln in d.lines if ln.form == form]
         if not lines:

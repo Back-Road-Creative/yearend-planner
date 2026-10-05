@@ -10,6 +10,7 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
+from planner import NOTICE
 from planner.cli import app
 from planner.dashboard import page, render
 from planner.ingest.needs import profile_path
@@ -60,6 +61,7 @@ def test_static_page_escapes_and_carries_no_forms(lots: Layout) -> None:  # noqa
     for panel in pg.panels:
         assert f'id="{panel.name}"' in text
     assert "http://" not in text and "https://" not in text  # no external assets
+    assert NOTICE in text  # the limits notice heads every page
 
 
 @pytest.mark.engine

@@ -2,6 +2,8 @@
 
 How each part works, phase by phase. The one-page start is the [README](README.md).
 
+**Not tax, legal or investment advice. Every figure is an estimate from the documents and answers you give it; have a tax preparer review the return before you file.** The same notice heads the page, the draft return and the tax pack.
+
 ## Engine (Phase 1)
 
 `planner compute <household.yaml>` prints every figure for one household-year as JSON:
@@ -1048,6 +1050,14 @@ steps on a clean Windows runner:
 
 Publishing the draft is a person's decision. The update check reads published
 releases only.
+
+Every push and pull request also runs the `scan` job in `ci.yml` (Phase 10,
+unit 2f): `pip-audit` checks every locked dependency in `uv.lock` against the
+known-vulnerability databases, and `gitleaks` scans the whole git history for
+keys and tokens (the binary is pinned by checksum and findings are redacted).
+The Linux test run measures coverage of `planner/` and fails below the floor in
+`ci.yml`. Dependabot proposes weekly updates for the lockfile and the CI
+actions.
 
 The release can only contain files git tracks. `scripts/build_release.py`
 stages its contents from `git ls-files`, so a developer's own `data/`, `out/`

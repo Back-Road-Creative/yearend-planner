@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from planner import NOTICE
 from planner.cli import app
 from planner.engine.household import MissingInputError
 from planner.ingest import ingest
@@ -74,6 +75,9 @@ def test_taxpack_writes_every_file(lay: Layout) -> None:
     page = (folder / "draft.html").read_text(encoding="utf-8")
     assert page.startswith("<!doctype html>") and "NC Form D-400" in page
     assert "<script" not in page
+    # the limits notice heads the draft, its printable page and the pack summary
+    assert NOTICE in draft.render(d) and NOTICE in page
+    assert package.render(pack).splitlines()[1] == f"  {NOTICE}"
 
     lots = _rows(folder / "form-8949.csv")
     assert len(lots) == 3  # the IRA's own sale is not reported
