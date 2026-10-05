@@ -160,6 +160,8 @@ class Page:
 def _tag(section: year_plan.Section, projected: bool) -> str:
     if not section.ok:
         return UNAVAILABLE
+    if section.rests_on:
+        return ESTIMATE
     return ESTIMATE if projected and section.name in PROJECTIONS else ACTUAL
 
 

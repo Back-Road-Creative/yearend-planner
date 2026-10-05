@@ -68,6 +68,7 @@ class CapGains:
     lines: dict[str, float] = field(default_factory=dict)
     sources: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    unknown: list[str] = field(default_factory=list)  # sales left out (not zero)
 
     def totals(self, box: str) -> tuple[float, float, float, float]:
         """(proceeds, basis, adjustment, gain) over one 8949 box."""
@@ -167,6 +168,8 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> CapGains:
     for row in rows:
         if row.amount_cents is None or row.basis_cents is None or not row.date:
             cg.notes.append(f"{row.file_name} line {row.line}: no proceeds or basis")
+            what = "cost basis" if row.basis_cents is None else "proceeds or date"
+            cg.unknown.append(f"{what}: {row.file_name} line {row.line}")
             continue
         kind = accounts.get(row.account, {}).get("type")
         if kind in NOT_REPORTED:

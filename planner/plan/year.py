@@ -18,13 +18,14 @@ from planner.plan import (
     conversion,
     esttax,
     glidepath,
+    inputs,
     levers,
     magi,
     spending,
     washsale,
     withdraw,
 )
-from planner.plan.inputs import OverrideError, Overrides
+from planner.plan.inputs import UNKNOWN, OverrideError, Overrides
 from planner.taxprep import expected
 
 SECTIONS = (
@@ -60,6 +61,8 @@ class Section:
     lines: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     tables: list[Table] = field(default_factory=list)
+    # unknown inputs the figures leave out (not zero): never shown as actual
+    rests_on: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -106,10 +109,7 @@ def _magi(lay: Layout, year: int, _today: date, ov: Overrides) -> Section:
         lines.append(
             f"{ln.name:40} {state} by {abs(ln.room):>12,.2f}  ({ln.direction})"
         )
-    notes = list(pj.inputs.notes)
-    if pj.inputs.unknown:
-        notes.append("unknown, left out (not zero): " + ", ".join(pj.inputs.unknown))
-    return Section("magi", True, lines, notes)
+    return Section("magi", True, lines, list(pj.inputs.notes))
 
 
 SPILL = "WARNING: qualified dividends / long-term gains pushed into 15%"
@@ -440,6 +440,33 @@ BUILDERS = {
 }
 
 
+# Sections priced from the household: each rests on the unknown tax inputs,
+# plus the unknown items it reads itself.
+PRICED = {
+    "magi": (),
+    "conversion": (),
+    "levers": (),
+    "glide": glidepath.MONTHLY,
+    "cash": glidepath.MONTHLY,
+    "esttax": esttax.WITHHELD,
+}
+RESTS_ON = "rests on unknown (left out, not zero): "
+
+
+def _rests_on(lay: Layout, year: int, ov: Overrides, plan: YearPlan) -> None:
+    try:
+        inp = inputs.build(lay, year, ov)
+    except (MissingInputError, OverrideError):
+        return  # the priced sections already say what they need
+    for s in plan.sections:
+        if not s.ok or s.name not in PRICED:
+            continue
+        own = [k for k in PRICED[s.name] if inp.state(k) == UNKNOWN]
+        s.rests_on = inp.tax_unknown + own
+        if s.rests_on:
+            s.notes.append(RESTS_ON + ", ".join(s.rests_on))
+
+
 def assemble(
     lay: Layout,
     year: int,
@@ -485,6 +512,7 @@ def assemble(
             plan.sections.append(builders[name](lay, year, today, ov))
         except (MissingInputError, OverrideError) as exc:
             plan.sections.append(Section(name, False, [f"needs: {exc}"]))
+    _rests_on(lay, year, ov, plan)
     return plan
 
 

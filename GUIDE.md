@@ -300,7 +300,10 @@ benefits are typed, NC's scheduled rate step (3.99% to 3.49% in 2027; the
 conversion lever names what waiting would save on the NC side), and from
 2027, with the Medicaid objective, the 80-hour monthly work requirement
 against the thinnest month in the `se_hours` log (`1:85, 2:60`).
-Unknown inputs are named and left out, never treated as zero; unknown
+Every value is in one of four states: known (a typed or documented zero
+included), an estimate (a year-to-date figure standing in), unknown, or not
+applicable (an item another answer makes moot, so it is never asked). Unknown
+inputs are named and left out, never treated as zero; unknown
 qualified dividends are priced as ordinary and flagged. Tax-exempt interest
 (1099-INT box 8, 1099-DIV box 12, or a typed answer) is one of those inputs:
 it is not income, but ACA MAGI adds it back, so the room to the 250% and 400%
@@ -405,7 +408,14 @@ estimated payments are marked "if required" and name the agencies whose
 `planner esttax` result owes them, resting on this year's tax after withholding). The same `--as-of`
 and override options as the planners it composes. A planner whose required
 input is still unknown reports what it needs and the rest of the page still
-renders; nothing is estimated in its place. The page is also written to
+renders; nothing is estimated in its place. A section priced from the
+household (MAGI, conversion, levers, glide path, cash, estimated tax) that
+rests on an unknown input says so ("rests on unknown (left out, not zero): …")
+and the dashboard tags it an estimate even after the year is over; an unknown
+mortgage or premium leaves the cash line running high, and unknown withholding
+makes the estimated-tax amounts the most that could be due. A draft return
+that rests on an unknown (an income item, or a sale with no cost basis) opens
+with "NOT READY for a preparer", and so do its tax-pack page and notes. The page is also written to
 `out/plan-<year>.md` (personal, gitignored; `--no-write` skips it).
 
 From a terminal `planner plan` first asks the few typed fields, and each has an
