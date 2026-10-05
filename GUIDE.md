@@ -60,9 +60,15 @@ are never touched.
 
 Reference cases (hand-worked, $1 tolerance) are in `tests/test_tax.py` and, shipped with
 every release, in `planner/engine/reference.yaml`; the engine's
-coverage of each rule the planner relies on is recorded in `config/capabilities.yaml`.
-Every row there names the test that proves it (`tests/test_config.py` fails a verified or
-partial row that cites none, or one whose test does not exist). The poverty-line cases sit
+coverage of each rule the planner relies on is recorded in `config/capabilities.yaml`,
+one record per capability: its historical `status`, its `evidence` (unreviewed,
+implemented, independently validated, end-to-end accepted, partial, out of scope), the
+`tests` that prove it, a `note` on what they leave out, a narrower `scope` where one
+applies, and the independent `expected` source an evidence level above implemented must
+name. `tests/test_config.py` fails a verified or partial record that lists no test, a
+listed test that does not exist, and an unknown field or level. The release build
+stamps each record's `proven` commit into the shipped copy once the suite has passed
+there; the repository copy never carries one. The poverty-line cases sit
 on both sides of each line: 138% (Medicaid) and 400% (premium tax credit), with the credit
 worked by hand from the Rev. Proc. 2025-25 table; they ship in `reference.yaml`, so
 `planner update` holds a release whose engine moves any of them. One known engine

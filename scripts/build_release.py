@@ -17,6 +17,7 @@ stage that holds a private folder or a database before anything is zipped.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import shutil
 import subprocess
@@ -158,6 +159,23 @@ def stage_tree() -> Path:
     return STAGE
 
 
+def stamp_proven(stage: Path) -> None:
+    """Stamp each capability record in the staged config with the commit the
+    release run proved (PROVEN_COMMIT, set by release.yml once the suite has
+    passed). A local build has none and stamps nothing."""
+    sha = os.environ.get("PROVEN_COMMIT", "").strip()
+    if not sha:
+        return
+    path = stage / "config" / "capabilities.yaml"
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    out = []
+    for line in lines:
+        out.append(line)
+        if line.startswith("  evidence: "):
+            out.append(f"  proven: {sha}\n")
+    path.write_text("".join(out), encoding="utf-8")
+
+
 def audit(stage: Path) -> None:
     """Refuse a stage holding a private folder or a database, before zipping."""
     for path in sorted(p for p in stage.rglob("*") if p.is_file()):
@@ -183,6 +201,7 @@ def main() -> int:
     if found:
         raise SystemExit("release refused: ID-shaped figures\n" + "\n".join(found))
     stage = stage_tree()
+    stamp_proven(stage)
     audit(stage)
     out = zip_stage(stage)
     # published beside the zip: the update check verifies the download with it

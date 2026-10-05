@@ -29,6 +29,9 @@ jobs:
           PYTHONUTF8: "1"
       - name: Build release zip
         run: uv run --no-project python scripts/build_release.py
+        env:
+          # the suite above passed at this commit: stamped into each capability record
+          PROVEN_COMMIT: ${{ github.sha }}
       - name: Prove the zip
         shell: pwsh
         run: |
