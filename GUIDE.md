@@ -154,8 +154,8 @@ replace it). `planner confirm --set 7=G` corrects a text box read from a scan.
 Until the 1099s arrive, `planner ingest` folds the imported rows into year-to-date
 facts under form `YTD` (issuer = the CSV source): short- and long-term proceeds, basis
 and gain from realized rows, dividends, interest and capital-gain distributions from
-income rows (or from Dividend/Interest transactions when no income export covers the
-year), deposits and withdrawals from bank rows. Every ingest recomputes them and
+income rows (or from an account's Dividend/Interest transactions when no income export
+covers that account for the year; an export never hides another account's), deposits and withdrawals from bank rows. Every ingest recomputes them and
 supersedes the last run; `planner derive --year 2025` reruns one year by hand.
 `planner facts --year 2025 --form YTD` shows them beside the forms, box for box
 (the realized boxes use the 1099-B names), so the estimate and the statement can be
