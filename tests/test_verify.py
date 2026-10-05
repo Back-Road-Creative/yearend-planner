@@ -107,6 +107,27 @@ def test_drifts_name_what_moved_beyond_five_dollars() -> None:
     ]
 
 
+def test_a_yes_no_flip_with_unchanged_dollars_is_drift() -> None:
+    base = {"a.agi": 100.0, "a.medicaid_eligible": 1.0, "a.itemizes": 0.0}
+    got = {"a.agi": 100.0, "a.medicaid_eligible": 0.0, "a.itemizes": 0.0}
+    found = verify.drifts(base, got)
+    assert [d.key for d in found] == ["a.medicaid_eligible"]
+    assert verify.describe_drift(found[0]) == (
+        "a.medicaid_eligible: baseline yes, candidate no"
+    )
+    assert verify.drifts({"a.se_health_converged": 1.0}, {"a.se_health_converged": 0.0})
+
+
+def test_a_share_of_poverty_moves_by_points_not_dollars() -> None:
+    base = {"a.aca_fpl_pct": 399.95, "b.medicaid_fpl_pct": 250.0, "a.agi": 100.0}
+    got = {"a.aca_fpl_pct": 400.1, "b.medicaid_fpl_pct": 250.05, "a.agi": 104.0}
+    found = verify.drifts(base, got)
+    assert [d.key for d in found] == ["a.aca_fpl_pct"]
+    assert verify.describe_drift(found[0]) == (
+        "a.aca_fpl_pct: baseline 399.95%, candidate 400.10% (+0.15 points)"
+    )
+
+
 @pytest.fixture
 def stub_engine(monkeypatch: pytest.MonkeyPatch) -> dict[str, float]:
     """A fixed engine: its version and its regression output."""
@@ -221,6 +242,11 @@ def test_the_real_engine_reproduces_its_own_regression(tmp_path: Path) -> None:
     cases = verify.reference_cases()
     assert all(k.split(".")[0] in cases for k in first)
     assert first["single_wages_2025.agi"] == pytest.approx(50000, abs=1)
+    # the yes/no figures are compared too; how many settlement rounds ran is not
+    assert first["single_wages_2025.itemizes"] in (0.0, 1.0)
+    assert "single_wages_2025.se_health_converged" in first
+    assert "single_wages_2025.se_health_rounds" not in first
+    assert "single_wages_2025.year" not in first
     note = verify.ensure_baseline(tmp_path, date(2026, 10, 3))
     assert f"{len(first)} values from {len(cases)} reference cases" in note
     assert "reference cases: " in note
