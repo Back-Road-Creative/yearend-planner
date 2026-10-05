@@ -156,8 +156,8 @@ replace it). `planner confirm --set 7=G` corrects a text box read from a scan.
 Until the 1099s arrive, `planner ingest` folds the imported rows into year-to-date
 facts under form `YTD` (issuer = the CSV source): short- and long-term proceeds, basis
 and gain from realized rows, dividends, interest and capital-gain distributions from
-income rows (or from Dividend/Interest transactions when no income export covers the
-year), deposits and withdrawals from bank rows. Every ingest recomputes them and
+income rows (or from an account's Dividend/Interest transactions when no income export
+covers that account for the year; an export never hides another account's), deposits and withdrawals from bank rows. Every ingest recomputes them and
 supersedes the last run; `planner derive --year 2025` reruns one year by hand.
 `planner facts --year 2025 --form YTD` shows them beside the forms, box for box
 (the realized boxes use the 1099-B names), so the estimate and the statement can be
@@ -193,7 +193,10 @@ assumptions, SS estimates) go to `data/profile/assumptions.yaml`, which is creat
 `config/assumptions.example.yaml` on first use; year items go to
 `data/manual/<year>.yaml`. `planner dont-have <item> --year 2026` takes an item off the
 list and the plan shows it as unavailable; `--undo` puts it back. The loop is done when `planner needed` prints
-`nothing needed`; `--all` shows the covered items with their source.
+`nothing needed`; `--all` shows the covered items with their source. A list emptied by
+setting items aside (`dont-have`, or a waived late form) prints `nothing left to answer,
+N set aside: not ready` instead, and the page says the same: the figures that rest on
+those items are estimates, not ready to act on or hand to a preparer.
 
 Every kind of item in the Needed panel can be closed on the live page. Every
 don't-have and every waiver can be undone there; a row you categorised is changed
@@ -467,7 +470,10 @@ against doing nothing; friction is never folded into the number.
   (only enough loss to net the gain to 0; a lot can be sold in part, lots
   clear of a wash-sale window first), a loss harvest of the rest, spending
   cash or Roth basis (contributions and seasoned conversions) instead of a
-  planned sale (no MAGI: the gain is never realized), deferring a planned
+  planned sale (no MAGI; the cash replaces sale proceeds, not gain, so the
+  gain avoided is the gain in the lots the sale would have drawn first, up to
+  the cash on hand; a planned gain no taxable lot supplies avoids nothing and
+  is named), deferring a planned
   sale (`--st`, `--lt`; it moves the same gain as spending basis, so it is
   priced alone, not stacked), an HSA contribution, the SE health insurance deduction, a
   deductible traditional IRA contribution, last year's capital-loss
@@ -505,7 +511,11 @@ source. The plan page shows the top three of each menu.
 
 `planner whatif --year 2026 --apply traditional_ira,hsa --set hsa=1000`
 recomputes the full year with the chosen moves and prints it before and after,
-with every watched line. `planner thresholds --year 2026` prints the sourced
+with every watched line. It refuses what the menu would never stack: two moves
+that move the same dollars (apply one), a key listed twice, a `--set` size at or
+under 0, and a size past what the move can move (a lowering move's sized amount;
+for a conversion the IRA balance, for a gain harvest the long-term gain held, for
+an inherited-IRA withdrawal its balance). `planner thresholds --year 2026` prints the sourced
 limits and checks the ones the engine also carries; a mismatch (the engine's
 2026 IRA limit is still 7,000 against Notice 2025-67's 7,500) means the engine
 prices with its own value until policyengine-us updates. Engine runs are
@@ -909,10 +919,12 @@ year and next from the installed policyengine-us. It needs no network.
   is reported, never a failure; a known variance (say, the self-employed health
   insurance deduction) does not stop updates. The first engine recorded is the baseline.
   A candidate release runs `planner selfcheck --regression` inside `python-candidate/`
-  with its own Python, and every figure must land within $5 of the baseline or the
-  release is held. A release that prints no regression figures is held too. A later
-  engine that is within $5 is recorded beside the baseline; one that is not is named on
-  each run. Delete `data/engine-baseline.json` only to start a new baseline from the
+  with its own Python, and every figure must land within its limit of the baseline or
+  the release is held: $5 on a dollar figure, 0.1 points on a share of the poverty
+  line, and no change at all in a yes/no (Medicaid eligible, itemizes, whether the
+  SE health deduction settled), so an eligibility flip with the same dollars is caught.
+  A release that prints no regression figures is held too. A later engine within the
+  limits is recorded beside the baseline; one that is not is named on each run. Delete `data/engine-baseline.json` only to start a new baseline from the
   engine you run now.
 - **Held.** A release that fails its selfcheck or its regression is never swapped in. The
   dashboard shows "engine update held" with the reason, and the same release

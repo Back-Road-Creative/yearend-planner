@@ -102,6 +102,49 @@ def test_derive_year_is_pure_and_bank_signs(lay: Layout) -> None:
     assert derive_year(rows, 2024) == []
 
 
+def _row(kind: str, account: str, type_: str, cents: int, n: int) -> db.LedgerRow:
+    return db.LedgerRow(
+        source=f"broker_{kind}",
+        kind=kind,
+        row_key=f"{kind}-{account}-{n}",
+        account=account,
+        date="2025-06-30",
+        tax_year=2025,
+        type=type_,
+        description="SYNTHETIC FUND",
+        symbol="SYNX",
+        quantity=None,
+        price_cents=None,
+        amount_cents=cents,
+        basis_cents=None,
+        acquired=None,
+        term=None,
+        line=n,
+        raw="",
+    )
+
+
+def test_income_export_covers_only_its_own_account() -> None:
+    """Account 11111111 has an income export, 22222222 only a transaction
+    download: the export stands in for 11111111's transactions and no other's."""
+    rows = [
+        _row("income", "11111111", "Dividend", 50_000, 1),
+        _row("transaction", "11111111", "Dividend", 50_000, 2),  # the same payment
+        _row("transaction", "22222222", "Dividend", 30_000, 3),
+        _row("transaction", "22222222", "Interest", 1_000, 4),
+    ]
+    got = {(f.issuer, f.box): f.value for f in derive_year(rows, 2025)}
+    assert got == {
+        ("broker_income", "dividends"): 500.0,
+        ("broker_transaction", "dividends"): 300.0,
+        ("broker_transaction", "interest"): 10.0,
+    }
+    # an export that names no account cannot say which it covers: it covers all
+    blank = [_row("income", "", "Dividend", 50_000, 1), *rows[1:]]
+    keys = {(f.issuer, f.box) for f in derive_year(blank, 2025)}
+    assert keys == {("broker_income", "dividends")}
+
+
 def test_cli_derive_and_facts(lay: Layout) -> None:
     drop(lay, "realized.csv", REALIZED)
     r = runner.invoke(app, ["ingest"])

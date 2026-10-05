@@ -186,7 +186,13 @@ def test_loop_ends_when_nothing_is_missing(lay: Layout) -> None:
     rep = needed(lay, 2026)
     assert rep.done
     r = runner.invoke(app, ["needed", "--year", "2026"])
-    assert r.output.strip() == "nothing needed"
+    # an empty list reached by setting everything aside is not "nothing needed"
+    aside = len(rep.by_state("dont_have"))  # every item still asked was set aside
+    assert aside > 0
+    assert r.output.strip() == (
+        f"nothing left to answer, {aside} set aside: not ready "
+        "(the figures that rest on them are estimates)"
+    )
 
 
 def test_filed_1040_answers_filing_status_and_state(lay: Layout) -> None:
