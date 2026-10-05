@@ -33,6 +33,11 @@ qbi_deduction:
   status: verified
   evidence: implemented
   tests: ["tests/test_tax.py::test_self_employment_30k"]
+household_people:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_household_people.py"]
+  note: "engine level (unit 3a-1): a joint return's spouse (own wages, SE income, IRA, conversion, Social Security) and dependents (age, full-time student, disabled) are people of the tax unit; hand-worked 2026 joint cases from Rev. Proc. 2025-32 (32,200 standard deduction, Table 1, 2,200 child credit) and the 500 other-dependent credit (IRC 24(h)(4)); every person figure read is the unit's sum, the swept input and Medicaid eligibility the head's; separate returns are 3b"
 nc_income_tax:
   status: verified
   evidence: implemented
