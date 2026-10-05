@@ -315,6 +315,11 @@ underpayment_penalty:
   evidence: implemented
   tests: ["tests/test_underpayment.py", "tests/test_schedule_ai.py", "tests/test_state_penalty.py"]
   note: "the federal Form 2210 penalty on the regular method (unit 3g-1, 2025 Form 2210 Part III and its penalty worksheet, pinned to the instructions' Example 3 and Table 2): a quarter of line 9 due on each date, withholding a quarter on each, weekend and holiday dates moved, payments to the earliest shortfall first, the IRC 6621 rate of each calendar quarter (unpublished quarters at the last published rate, named) over 365 or 366 days, to April 15; payments made plus the plan's later installments; on the esttax command, the plan page and the cash line's balance due. The annualized method (unit 3g-2, 2025 Form 2210 Schedule AI lines 1-27): each typed income line through March, May and August (income_by_period; untyped lines taken as even) annualized and priced by the engine, a planned year-end item in the last period only, lines 20-27 with the unused regular installment carried; the lower penalty of the two methods. The states' own (unit 3g-3, 2025 forms): NC D-422, CA 5805, NY IT-2105.9, GA 500 UET and VA 760C daily interest on each shortfall, earliest first; MI-2210 the same at its daily factors plus its 10%/25% penalty; PA REV-1630 by period with no cure; OH IT/SD 2210 and NJ-2210 Option 1 cumulative shortfall times the printed multipliers; IL-2210 2% within 30 days, 10% after; unpublished dates at the last rate, named; another taxing state on the federal method, marked Estimated. Not handled, named: withholding on its actual dates (box D), waivers, the January 31 filing exception, a prior-year overpayment applied, the states' annualized methods, NJ Option 2 and MI's first-year exception"
+feasibility_check:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_feasible.py"]
+  note: "one check behind conversion sizing, the lever menu and whatif: cash on hand above cash_target (shown, conversion candidates cut to fit), shares given past the lots held, gain harvest past the gain left, IRA + Roth past the shared limit (refused)"
 goals_model:
   status: verified
   evidence: implemented
