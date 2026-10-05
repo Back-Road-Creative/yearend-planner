@@ -7,7 +7,9 @@ confirmed. Unknown is never zero: a missing item is left out and named in
 worse case) and said so. Overrides are the few planning numbers no document
 can supply: the Q4 dividend estimate, planned sales, a planned conversion (typed,
 or ``conversion_target="auto"`` to adopt the recommended one), a planned HSA
-contribution and a typed total income for the year.
+contribution and a typed total income for the year, put on the line the owner
+names. Each income stream's year-to-date figure is carried to December 31 by
+its typed forecast (``planner.plan.forecast``).
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from planner.ingest.derive import CountyError, resolve_county
 from planner.ingest.needs import _needed
 from planner.ledger import db
 from planner.paths import Layout
+from planner.plan import forecast
 from planner.taxprep import capgains, hsa
 
 FILING = {
@@ -74,6 +77,15 @@ TOTAL_INCOME_LINES = (
     "ira_distributions",
     "roth_conversion",
 )
+# The lines a typed total_income can be put on: the residual is ordinary income
+# of the owner's own naming, never wages by default when wages are known.
+TOTAL_INCOME_TO = (
+    "wages",
+    "se_income",
+    "interest",
+    "non_qualified_dividends",
+    "ira_distributions",
+)
 # Short- and long-term gains reach Form 1040 line 7 as one net figure, and a net
 # loss counts only up to this much a year (half for married filing separately):
 # IRC 1211(b); Schedule D instructions, line 21.
@@ -104,7 +116,8 @@ class Overrides:
 
     ``total_income`` is the year's total income before the planned items above
     (the owner's own full-year figure, for when the YTD ledger lags): wages
-    become the total less the other income lines the ledger counts.
+    become the total less the other income lines the ledger counts; with
+    ``total_income_line`` that residual goes on the named line instead.
     ``conversion_target`` is ``manual`` (the typed ``planned_conversion``) or
     ``auto`` (the plan adopts the recommended conversion; typing one as well
     is refused)."""
@@ -116,8 +129,14 @@ class Overrides:
     planned_hsa: float | None = None
     total_income: float | None = None
     conversion_target: str = "manual"
+    total_income_line: str = "wages"
 
     def __post_init__(self) -> None:
+        if self.total_income_line not in TOTAL_INCOME_TO:
+            raise OverrideError(
+                f"total_income_line must be one of {', '.join(TOTAL_INCOME_TO)}, "
+                f"got {self.total_income_line!r}"
+            )
         if self.conversion_target not in CONVERSION_TARGETS:
             raise OverrideError(
                 f"conversion_target must be {' or '.join(CONVERSION_TARGETS)}, "
@@ -132,6 +151,8 @@ class Overrides:
             out.append(f"planned_hsa {self.planned_hsa:,.0f}")
         if self.total_income is not None:
             out.append(f"total_income {self.total_income:,.0f}")
+            if self.total_income_line != "wages":
+                out.append(f"total_income_line {self.total_income_line}")
         if self.conversion_target == "auto":
             out.append("conversion_target auto")
         return out
@@ -149,6 +170,8 @@ class Inputs:
     tax_age: int | None = None
     notes: list[str] = field(default_factory=list)
     overrides: Overrides = field(default_factory=Overrides)
+    forecast: list[forecast.Stream] = field(default_factory=list)
+    ranges: dict[str, tuple[float, float]] = field(default_factory=dict)
 
     def state(self, key: str) -> str:
         """KNOWN, ESTIMATE, UNKNOWN or NOT_APPLICABLE (an item never asked)."""
@@ -209,6 +232,7 @@ def build(
         hsa.store(conn, lay, year)  # and typed HSA answers reach Form 8889
         report = _needed(conn, lay, year)
         recorded = _recorded_conversions(conn, year)
+        through = forecast.ytd_through(conn, year)
     finally:
         conn.close()
     value: dict[str, Any] = {}
@@ -222,6 +246,7 @@ def build(
                 out.estimates.append(key)
         elif not key.startswith("account:"):
             out.unknown.append(key)
+    _forecast(lay, year, report, value, out, through)
     tips = value.get("qualified_tips")
     if not (tips and float(tips) > 0) and "tipped_occupation_code" in out.unknown:
         out.unknown.remove("tipped_occupation_code")  # moot without tips
@@ -261,6 +286,14 @@ def build(
         fields["roth_conversion"] = int(round(recorded))
         out.origins["roth_conversion"] = "conversions recorded this year"
     if ov.total_income is not None:
+        line = ov.total_income_line
+        if line in {s.key for s in out.forecast} or (
+            line == "non_qualified_dividends"
+            and "ordinary_dividends" in {s.key for s in out.forecast}
+        ):
+            raise OverrideError(
+                f"total_income_line {line} has its own forecast; drop one of them"
+            )
         net = int(fields.get("short_term_gains", 0)) + int(
             fields.get("long_term_gains", 0)
         )
@@ -269,27 +302,36 @@ def build(
             if fields["filing_status"] == "SEPARATE"
             else CAPITAL_LOSS_LIMIT
         )
-        others = sum(int(fields.get(k, 0)) for k in TOTAL_INCOME_LINES) + max(
+        lines = ("wages", *TOTAL_INCOME_LINES)
+        others = sum(int(fields.get(k, 0)) for k in lines if k != line) + max(
             net, -limit
         )
-        wages = int(round(ov.total_income)) - others
-        if wages < 0:
+        rest = int(round(ov.total_income)) - others
+        if rest < 0:
             raise OverrideError(
                 f"total_income {ov.total_income:,.0f} is below the other income "
                 f"already counted ({others:,.0f}); type a total of at least that"
             )
-        fields["wages"] = wages
-        out.origins["wages"] = "total_income override (total less the other income)"
-        if "wages" in out.unknown:
-            out.unknown.remove("wages")
-        if "wages" in out.estimates:
-            out.estimates.remove("wages")
+        fields[line] = rest
+        key = "ordinary_dividends" if line == "non_qualified_dividends" else line
+        out.origins[key] = "total_income override (total less the other income)"
+        if key in out.unknown:
+            out.unknown.remove(key)
+        if key in out.estimates:
+            out.estimates.remove(key)
         out.notes.append(
-            f"total_income {ov.total_income:,.0f} typed: wages {wages:,} = the total "
+            f"total_income {ov.total_income:,.0f} typed: {line} {rest:,} = the total "
             f"less {others:,} of other income counted (Social Security excluded); "
             "planned items are added on top"
         )
     # overrides
+    if ov.q4_dividend_estimate and any(
+        s.key == "ordinary_dividends" for s in out.forecast
+    ):
+        raise OverrideError(
+            "q4_dividend_estimate and a dividend forecast would count the same "
+            "dividends twice; drop the q4_dividend_estimate"
+        )
     if ov.q4_dividend_estimate:
         target = (
             "qualified_dividends"
@@ -313,3 +355,57 @@ def build(
         fields["hsa_contribution"] = int(round(ov.planned_hsa))
     out.household = Household(**fields)
     return out
+
+
+def _forecast(
+    lay: Layout,
+    year: int,
+    report: Any,
+    value: dict[str, Any],
+    out: Inputs,
+    through: dict[str, str],
+) -> None:
+    """Carry each income stream to December 31 (planner.plan.forecast)."""
+    typed = forecast.load(lay, year)
+    states = {st.need.key: st for st in report.items}
+    joint = value.get("filing_status") == "married_joint"
+    for key in forecast.STREAMS:
+        st = states.get(key)
+        state = st.state if st and st.state in ("actual", "estimate") else None
+        t = typed.get(key)
+        if t is not None and t.owner == "spouse" and not joint:
+            raise OverrideError(
+                f"{key}: a spouse's income is on this return only when filing "
+                "married_joint; change the forecast's owner or the filing status"
+            )
+        try:
+            if t is not None:
+                t.check(key, year)
+            s, origin, note = forecast.resolve(
+                key,
+                state,
+                value.get(key),
+                out.origins.get(key, ""),
+                t,
+                through.get(key),
+                year,
+            )
+        except forecast.ForecastError as exc:
+            raise OverrideError(str(exc)) from exc
+        if note:
+            out.notes.append(note)
+        if s is None:
+            continue
+        out.forecast.append(s)
+        value[key] = s.full_year
+        out.origins[key] = origin
+        if key in out.unknown:
+            out.unknown.remove(key)
+        if key not in out.estimates:
+            out.estimates.append(key)
+        if s.low is not None and s.high is not None:
+            out.ranges[key] = (s.low, s.high)
+            out.notes.append(
+                f"{key} full year {s.full_year:,.0f} (low {s.low:,.0f}, "
+                f"high {s.high:,.0f})"
+            )
