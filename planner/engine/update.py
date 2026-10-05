@@ -173,8 +173,8 @@ def regression_drift(
     printed: dict[str, float], baseline: dict[str, float], pinned: str
 ) -> None:
     """Raise :class:`UpdateError` when the candidate's regression output is
-    missing, or differs from the pinned engine's baseline by more than
-    :data:`verify.BASELINE_TOLERANCE` dollars on any figure. The first line is
+    missing, or differs from the pinned engine's baseline past
+    :data:`verify.LIMITS` on any figure. The first line is
     the reason shown on the dashboard; the rest lists every figure."""
     if not printed:
         raise UpdateError(
@@ -185,11 +185,10 @@ def regression_drift(
     moved = verify.drifts(baseline, printed)
     if not moved:
         return
-    limit = f"${verify.BASELINE_TOLERANCE:,.2f}"
     head = (
         f"candidate regression is off the engine baseline (policyengine-us "
-        f"{pinned}) by more than {limit} on {len(moved)} of {len(baseline)} "
-        f"figures; first {verify.describe_drift(moved[0])}"
+        f"{pinned}) past its limit ({verify.LIMITS}) on {len(moved)} of "
+        f"{len(baseline)} figures; first {verify.describe_drift(moved[0])}"
     )
     rest = [f"  {verify.describe_drift(d)}" for d in moved[:20]]
     more = [f"  ... and {len(moved) - 20} more"] if len(moved) > 20 else []

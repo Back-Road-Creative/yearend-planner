@@ -154,6 +154,11 @@ class Page:
     def needed_count(self) -> int:
         return len(self.needed) + len(self.late_forms) + (1 if self.loose_rows else 0)
 
+    @property
+    def set_aside(self) -> int:
+        """Inputs marked don't have and late forms waived: off the list, not on hand."""
+        return len(self.dont_have) + len(self.waived_forms)
+
     def panel(self, name: str) -> Panel:
         return next(p for p in self.panels if p.name == name)
 

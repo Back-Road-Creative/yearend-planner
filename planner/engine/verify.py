@@ -15,8 +15,7 @@ engine regression:
   ``data/engine-baseline.json`` (keyed by engine version) and prints its delta
   from the filed lines;
 * ``planner update`` runs the same command inside the candidate and refuses a
-  release whose output is more than :data:`BASELINE_TOLERANCE` dollars off the
-  baseline on any figure.
+  release whose output is off the baseline past :data:`LIMITS` on any figure.
 """
 
 from __future__ import annotations
@@ -37,8 +36,18 @@ from planner.engine.tax import compute, engine_version
 REFERENCE = Path(__file__).with_name("reference.yaml")
 BASELINE_FILE = "engine-baseline.json"
 # Plan policy (Phase 1, "baseline-record"): a later engine must reproduce the
-# pinned engine's output on every reference figure to within five dollars.
+# pinned engine's output on every reference figure: dollars to within five, a
+# share of the poverty line to within a tenth of a point, a yes/no exactly.
 BASELINE_TOLERANCE = 5.0
+PERCENT_TOLERANCE = 0.1
+FLAGS = frozenset({"medicaid_eligible", "se_health_converged", "itemizes"})
+PERCENTS = frozenset({"aca_fpl_pct", "medicaid_fpl_pct"})
+# counts that describe how the figure was reached, not the figure: never compared
+UNCOMPARED = frozenset({"year", "se_health_rounds"})
+LIMITS = (
+    f"${BASELINE_TOLERANCE:,.2f} on a dollar figure, {PERCENT_TOLERANCE} points on "
+    "a share of the poverty line, any change in a yes/no"
+)
 REGRESSION_LABEL = "regression "
 RETURNS = ("private", "returns")
 
@@ -142,8 +151,8 @@ def regression_values(path: Path = REFERENCE) -> dict[str, float]:
             compute(int(case["year"]), Household.from_mapping(case["household"]))
         )
         for field, value in result.items():
-            if isinstance(value, float):
-                out[f"{name}.{field}"] = value
+            if field not in UNCOMPARED and isinstance(value, (int, float)):
+                out[f"{name}.{field}"] = float(value)
     return out
 
 
@@ -172,19 +181,44 @@ def drifts(
     values: Mapping[str, float],
     tolerance: float = BASELINE_TOLERANCE,
 ) -> list[Drift]:
-    """Baseline figures the new output lacks or moves by more than ``tolerance``
-    dollars. Figures only the new output has (a case added later) are not drift."""
+    """Baseline figures the new output lacks or moves past their limit: a yes/no
+    must match, a share of the poverty line stay within :data:`PERCENT_TOLERANCE`
+    points, a dollar figure within ``tolerance``. Figures only the new output has
+    (a case added later) are not drift."""
     out: list[Drift] = []
     for key, was in baseline.items():
-        now = values.get(key)
-        if now is None or round(abs(now - was), 2) > tolerance:
+        now, field = values.get(key), _field(key)
+        limit = (
+            0.0
+            if field in FLAGS
+            else PERCENT_TOLERANCE
+            if field in PERCENTS
+            else tolerance
+        )
+        if now is None or round(abs(now - was), 2) > limit:
             out.append(Drift(key, was, now))
     return out
 
 
+def _field(key: str) -> str:
+    return key.rsplit(".", 1)[-1]
+
+
+def _yes(value: float) -> str:
+    return "yes" if value else "no"
+
+
 def describe_drift(d: Drift) -> str:
+    field = _field(d.key)
     if d.candidate is None:
         return f"{d.key}: baseline {d.baseline:,.2f}, not in the candidate's output"
+    if field in FLAGS:
+        return f"{d.key}: baseline {_yes(d.baseline)}, candidate {_yes(d.candidate)}"
+    if field in PERCENTS:
+        return (
+            f"{d.key}: baseline {d.baseline:.2f}%, candidate {d.candidate:.2f}% "
+            f"({d.candidate - d.baseline:+.2f} points)"
+        )
     return (
         f"{d.key}: baseline {d.baseline:,.2f}, candidate {d.candidate:,.2f} "
         f"({d.candidate - d.baseline:+,.2f})"
@@ -296,8 +330,8 @@ def ensure_baseline(root: Path, today: date | None = None) -> str:
 
     The first engine recorded is the baseline; the message then gives its delta
     from the filed lines. A later version is recorded beside it and named, on
-    every run, while it is off the baseline by more than
-    :data:`BASELINE_TOLERANCE`. Returns "" when nothing needs saying."""
+    every run, while it is off the baseline past :data:`LIMITS`. Returns "" when
+    nothing needs saying."""
     record, added = _record(root, today)
     version, pinned = engine_version(), str(record["pinned"])
     values: dict[str, float] = record["engines"][version]["values"]
@@ -307,8 +341,8 @@ def ensure_baseline(root: Path, today: date | None = None) -> str:
             return ""
         shown = "; ".join(describe_drift(d) for d in moved[:3])
         return (
-            f"policyengine-us {version} is off the engine baseline ({pinned}) by "
-            f"more than ${BASELINE_TOLERANCE:,.2f} on {len(moved)} figures: {shown}"
+            f"policyengine-us {version} is off the engine baseline ({pinned}) past "
+            f"its limit ({LIMITS}) on {len(moved)} figures: {shown}"
         )
     if not added:
         return ""

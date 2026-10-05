@@ -130,6 +130,28 @@ def test_whatif_recomputes_the_year(lots: Layout) -> None:  # noqa: F811
 
 
 @pytest.mark.engine
+def test_whatif_refuses_what_menu_would_never_stack(lots: Layout) -> None:  # noqa: F811
+    """Overlapping levers, a key twice, a size at or under zero or past what the
+    lever can move are refused, not priced as a saving that cannot happen."""
+    lay_ = answered(lots)
+    ov = Overrides(planned_lt_sales=8_000.0)
+    with pytest.raises(ValueError, match="spend_basis and defer_sales move the same"):
+        levers.whatif(lay_, 2026, ["defer_sales", "spend_basis"], as_of=AS_OF, ov=ov)
+    with pytest.raises(ValueError, match="hsa is listed twice"):
+        levers.whatif(lay_, 2026, ["hsa", "hsa"], as_of=AS_OF)
+    for bad in (0.0, -500.0, float("nan")):
+        with pytest.raises(ValueError, match="--set hsa=.*more than 0"):
+            levers.whatif(lay_, 2026, ["hsa"], {"hsa": bad}, AS_OF)
+    with pytest.raises(
+        ValueError, match=r"--set defer_sales=9,000 is more than .*8,000"
+    ):
+        levers.whatif(lay_, 2026, ["defer_sales"], {"defer_sales": 9_000.0}, AS_OF, ov)
+    # a smaller size is still allowed
+    w = levers.whatif(lay_, 2026, ["defer_sales"], {"defer_sales": 2_000.0}, AS_OF, ov)
+    assert [lv.amount for lv in w.applied] == [2_000.0]
+
+
+@pytest.mark.engine
 def test_room_when_income_is_low(lots: Layout) -> None:  # noqa: F811
     m = levers.menu(answered(lots, se_income="30,000"), 2026, AS_OF)
     # Medicaid tests monthly income when you apply: never the year-end target
@@ -278,6 +300,23 @@ def test_spend_basis_zero_magi(lots: Layout) -> None:  # noqa: F811
     idle = next(lv for lv in found if lv.key == "spend_basis")
     assert not idle.available and idle.why.startswith("no planned sale")
     assert "200,000 of cash" in idle.why and "spend with no MAGI" in idle.why
+
+
+@pytest.mark.engine
+def test_spend_basis_avoids_only_the_gain_in_the_proceeds_replaced(
+    lots: Layout,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """2,000 of cash against a planned 20,000 long-term gain drawn from the 2019
+    lot (260,000 of gain in 560,000 of value) avoids 2,000 x 260/560 of gain."""
+    monkeypatch.setattr(levers, "zero_magi_funds", lambda st: (2_000.0, 0.0))
+    ov = Overrides(planned_lt_sales=20_000.0)
+    _, found, _ = levers.catalog(lots, 2026, AS_OF, ov)
+    spend = next(lv for lv in found if lv.key == "spend_basis")
+    avoided = round(2_000 * 260 / 560, 2)
+    assert spend.amount == avoided
+    assert spend.delta == (("long_term_gains", -round(avoided)),)
+    assert "2,000 of sale proceeds" in spend.why
 
 
 @pytest.mark.engine
