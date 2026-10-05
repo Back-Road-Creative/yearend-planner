@@ -348,6 +348,10 @@ tax it adds, the ACA credit it costs, a warning when qualified dividends spill
 into 15%, and the cash needed from outside the IRA. The profile's
 `conversion_margin` is kept below each line, `conversion_cap` is the hard cap
 and `conversion_objective` picks the recommendation; the rest stay on the page.
+The tax a candidate adds must come out of cash on hand above `cash_target`: a
+candidate that would dip into the reserve is cut to the largest amount whose tax
+fits, with a note naming both numbers, or dropped when nothing fits (Phase 10,
+2d). With no account typed `cash` the check is skipped and the page says so.
 Record the one you make with `planner convert`.
 
 ## Planners: spending and the glide path (Phase 4b)
@@ -611,7 +615,14 @@ with every watched line. It refuses what the menu would never stack: two moves
 that move the same dollars (apply one), a key listed twice, a `--set` size at or
 under 0, and a size past what the move can move (a lowering move's sized amount;
 for a conversion the IRA balance, for a gain harvest the long-term gain held, for
-an inherited-IRA withdrawal its balance). `planner thresholds --year 2026` prints the sourced
+an inherited-IRA withdrawal its balance). One feasibility check (Phase 10, 2d)
+backs the menu, `whatif` and conversion sizing: moves that give more shares
+held over a year than the taxable account holds, a gain harvest past the gain
+left once the gifts are made, or traditional and Roth contributions past the one
+IRA limit they share are refused by `whatif` and priced alone on the menu. A
+set that takes more cash by its deadline (contributions paid in, tax added)
+than is on hand above `cash_target` is shown, not refused: `whatif` prints a
+`cash:` line and the menu a note. `planner thresholds --year 2026` prints the sourced
 limits and checks the ones the engine also carries; a mismatch (the engine's
 2026 IRA limit is still 7,000 against Notice 2025-67's 7,500) means the engine
 prices with its own value until policyengine-us updates. Engine runs are

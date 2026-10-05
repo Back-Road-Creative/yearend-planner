@@ -20,6 +20,7 @@ from planner.engine.tax import compute, compute_sweep, r, thresholds
 from planner.ingest.needs import load_profile
 from planner.ledger import portfolio
 from planner.paths import Layout
+from planner.plan import feasible
 from planner.plan.inputs import OverrideError, Overrides
 from planner.plan.magi import CLIFF_FPL, MEDICAID_FPL, Projection, project
 
@@ -189,7 +190,36 @@ def size(
         ),
         "cap": rows[-1],
     }
+    funds = feasible.funds(st, profile)
+    if (unchecked := feasible.unchecked(funds)) is not None:
+        sizing.notes.append(unchecked)
+
+    def short(rw: dict[str, float]) -> str | None:
+        tax = (
+            rw["income_tax"]
+            - base_row["income_tax"]
+            + rw["state_income_tax"]
+            - base_row["state_income_tax"]
+            - (rw["aca_ptc"] - base_row["aca_ptc"])
+        )
+        return feasible.cash_reason(funds, 0.0, tax)
+
     for name, row in picks.items():
+        why = short(row) if row is not None and row[VARIABLE] > already else None
+        if row is not None and why is not None:
+            # the tax comes out of cash on hand: never into the reserve (F05)
+            smaller = None
+            if name != "medicaid_over":  # less would not land over the line
+                fits = [rw for rw in rows if rw[VARIABLE] <= row[VARIABLE]]
+                smaller = _largest(fits, lambda rw: short(rw) is None)
+            if smaller is None or smaller[VARIABLE] <= already:
+                sizing.notes.append(f"{name}: {why}")
+                continue
+            sizing.notes.append(
+                f"{name}: cut to {smaller[VARIABLE]:,.0f} from {row[VARIABLE]:,.0f}: "
+                f"the full amount {why}"
+            )
+            row = smaller
         if row is None or row[VARIABLE] < already:
             sizing.notes.append(f"{name}: no amount in range meets it")
             continue
