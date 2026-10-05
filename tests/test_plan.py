@@ -96,6 +96,31 @@ def test_inputs_refuse_without_the_profile_basics(planner_home: Path) -> None:
         inputs.build(lay, 2026)
 
 
+@pytest.mark.parametrize(
+    ("typed", "words"),
+    [
+        ("married_joint", "spouse"),
+        ("married_separate", "spouse"),
+        ("head_of_household", "qualifying person"),
+    ],
+)
+def test_a_household_of_more_than_one_is_tagged_not_handled(
+    lay: Layout, typed: str, words: str
+) -> None:
+    """Only one person is modelled: a status whose answer turns on a spouse or
+    a dependent says so on every output instead of passing for a full plan."""
+    enter(lay, 2026, "filing_status", typed)
+    inp = inputs.build(lay, 2026)
+    (gap,) = inp.scope
+    assert gap.startswith("Not handled:") and words in gap
+    assert gap in inp.notes
+
+
+def test_a_single_filer_has_no_scope_gap(lay: Layout) -> None:
+    inp = inputs.build(lay, 2026)
+    assert inp.scope == [] and not any(n.startswith("Not handled") for n in inp.notes)
+
+
 @pytest.mark.engine
 def test_projection_is_the_engine_on_the_fixture_household(lay: Layout) -> None:
     pj = magi.project(lay, 2026)

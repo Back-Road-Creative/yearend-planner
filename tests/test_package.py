@@ -149,6 +149,13 @@ def test_taxpack_rerun_replaces_and_cli_lists(lay: Layout) -> None:
     assert [p["agency"] for p in pays] == ["fed", "nc"]
 
 
+def test_taxpack_notes_a_joint_return_it_does_not_model(lay: Layout) -> None:
+    enter(lay, 2025, "filing_status", "married_joint")
+    pack = package.build(lay, 2025)
+    (gap,) = [n for n in pack.notes if n.startswith("Not handled:")]
+    assert "spouse" in gap and f"note: {gap}" in package.render(pack)
+
+
 def test_taxpack_blocked_writes_nothing(planner_home: Path) -> None:
     lay = Layout(planner_home)
     lay.ensure()

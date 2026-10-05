@@ -249,6 +249,7 @@ def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
         pack.notes.append(
             f"{len(inv.outstanding)} expected form(s) still to come; see forms.csv"
         )
+    pack.notes[:0] = [x for x in d.notes if x.startswith("Not handled:")]
     checks = [x for x in d.notes if x.startswith("CHECK")]
     if checks:
         pack.notes.append(f"{len(checks)} CHECK line(s) in the draft to resolve first")

@@ -30,6 +30,16 @@ anywhere. One planner writes at a time: a second window, or a scheduled run whil
 dashboard is open, stops with "another planner is running". To move to a new computer,
 copy the folder or run `planner backup`.
 
+## Who it handles
+
+The planner models **one person with no dependents**. A single filer gets the full plan
+and draft. Married filing jointly, married filing separately and head of household are
+priced as that one person and tagged **Not handled** first in the alerts, in the draft
+return's notes, in `planner magi` and in the tax pack, because a spouse or a qualifying
+person changes the answer and neither is entered. Treat those figures as one person's
+share, not the household's return. The state return drafted is NC's D-400; another state
+gets the engine's estimate and a note that no return is drafted.
+
 ## Commands
 
 `planner.cmd` with no arguments is `planner run`. Each command's `--help` has details.
