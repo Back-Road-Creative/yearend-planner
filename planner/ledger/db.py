@@ -13,6 +13,7 @@ all-time high of the portfolio, persisted so a drawdown is measured from it).
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -148,17 +149,64 @@ class LedgerOutOfDate(RuntimeError):
     """The ledger's schema is not the one this planner reads."""
 
 
-def connect(path: Path) -> sqlite3.Connection:
-    """Open (creating if needed) the ledger; schema is applied idempotently."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.executescript(SCHEMA)
+class LedgerTooNew(LedgerOutOfDate):
+    """The ledger was written by a newer planner; this one must not touch it."""
+
+
+def _to_4(conn: sqlite3.Connection) -> None:
     if "value_text" not in {
         r["name"] for r in conn.execute("PRAGMA table_info(facts)")
     }:
-        conn.execute("ALTER TABLE facts ADD COLUMN value_text TEXT")  # schema 3 -> 4
+        conn.execute("ALTER TABLE facts ADD COLUMN value_text TEXT")
+
+
+# Each step brings a ledger from schema n to n + 1, after the tables a later
+# schema adds are created. v0.1.0 shipped schema 4; a new schema adds its step
+# here and tests/test_upgrade.py opens the old release's data/ through it.
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {3: _to_4}
+
+
+def _version(conn: sqlite3.Connection) -> int | None:
+    try:
+        row = conn.execute("SELECT version FROM schema_version").fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return None if row is None else int(row[0])
+
+
+def _too_new(found: int) -> LedgerTooNew:
+    return LedgerTooNew(
+        f"the ledger was written by a newer planner (schema {found}; this one "
+        f"reads {SCHEMA_VERSION}). Use that release, or restore a backup this "
+        "release made; nothing was changed"
+    )
+
+
+def connect(path: Path) -> sqlite3.Connection:
+    """Open (creating if needed) the ledger, bringing an older one up to date.
+
+    A ledger from an older schema is first copied to ``planner.db.schemaN.bak``
+    beside it, then taken through :data:`MIGRATIONS`. One from a newer planner
+    is refused with :class:`LedgerTooNew` and left byte for byte as it was."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existed = path.is_file()
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    found = _version(conn) if existed else None
+    if found is not None and found > SCHEMA_VERSION:
+        conn.close()
+        raise _too_new(found)
+    if found is not None and found < SCHEMA_VERSION:
+        backup = path.with_name(f"{path.name}.schema{found}.bak")
+        if not backup.exists():
+            with sqlite3.connect(backup) as copy:
+                conn.backup(copy)
+            copy.close()
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.executescript(SCHEMA)
+    for step in range(found if found is not None else SCHEMA_VERSION, SCHEMA_VERSION):
+        if step in MIGRATIONS:
+            MIGRATIONS[step](conn)
     if conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 0:
         conn.execute("INSERT INTO schema_version VALUES (?)", (SCHEMA_VERSION,))
     conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
@@ -171,16 +219,17 @@ def connect_readonly(path: Path) -> sqlite3.Connection | None:
 
     Never creates the file, applies the schema or commits, so it takes no write
     lock and runs beside a writer. A ledger from an older schema is refused
-    with :class:`LedgerOutOfDate`; any writing command brings it up to date."""
+    with :class:`LedgerOutOfDate`; any writing command brings it up to date.
+    One from a newer planner is refused with :class:`LedgerTooNew`."""
     if not path.is_file():
         return None
     conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
-    try:
-        row = conn.execute("SELECT version FROM schema_version").fetchone()
-    except sqlite3.OperationalError:
-        row = None
-    if row is None or row[0] != SCHEMA_VERSION:
+    found = _version(conn)
+    if found is not None and found > SCHEMA_VERSION:
+        conn.close()
+        raise _too_new(found)
+    if found != SCHEMA_VERSION:
         conn.close()
         raise LedgerOutOfDate(
             "the ledger was written by an older planner; run a writing command "
