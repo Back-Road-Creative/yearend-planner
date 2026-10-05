@@ -49,10 +49,10 @@ aca_magi_tax_exempt_interest:
   tests: ["tests/test_plan.py::test_aca_magi_adds_exempt_interest"]
   note: "1099-INT box 8 and 1099-DIV box 12 reach the plan household, the MAGI lines, conversion sizes and levers"
 aca_premium_tax_credit:
-  status: partial
-  evidence: partial
-  tests: ["tests/test_tax.py::test_fpl_boundaries", "tests/test_tax.py::test_aca_400_cliff", "tests/test_tax.py::test_aca_400_engine_deviation_is_pinned"]
-  note: "credit hand-worked from Rev. Proc. 2025-25 at 138%, 150%, just under 400% and over it; the credit's FPL is the prior year's (Form 8962 line 4); KNOWN DEVIATION: at 400.00% to 400.99% the engine pays 0 where IRC 36B(c)(1)(A) and Form 8962 line 5 allow 3,365.04 (policyengine ptc_income_eligibility switches off at a ratio of 4.00); strict xfail in test_aca_400_cliff"
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_tax.py::test_fpl_boundaries", "tests/test_tax.py::test_aca_400_cliff", "tests/test_tax.py::test_aca_400_line_is_cut_in_dollars_in_a_sweep", "tests/test_draft.py::test_form_8962_line_5_is_401_past_four_times_the_guideline"]
+  note: "credit hand-worked from Rev. Proc. 2025-25 at 138%, 150%, just under 400%, exactly 400.00% and over it; the credit's FPL is the prior year's (Form 8962 line 4); the 400% line is cut in dollars per IRC 36B(c)(1)(A) and i8962 Worksheet 2 (the engine's own 4.00 edge is corrected: planner.engine.tax.ACA_PTC_LINE), in sweeps and the draft Form 8962 line 5 = 401"
 aca_slcsp_county:
   status: verified
   evidence: implemented
