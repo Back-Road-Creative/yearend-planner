@@ -30,7 +30,7 @@ from planner.engine.tax import CONFIG_PARAMS, TaxResult, compute, engine_value, 
 from planner.ingest.needs import load_profile, need_values
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.plan import calendar, conversion, washsale
+from planner.plan import calendar, conversion, washsale, withdraw
 from planner.plan.inputs import Inputs, OverrideError, Overrides, build
 from planner.plan.magi import Line, Watch, lines, watch_for
 
@@ -70,6 +70,7 @@ class Lever:
     delta: tuple[tuple[str, int], ...] = ()  # Household field -> dollars added
     priced: bool = True  # False: moves no income (a Roth contribution)
     overlaps: tuple[str, ...] = ()  # levers moving the same dollars: not stacked
+    cap: float | None = None  # the most --set may size it to; None: its amount
 
     @property
     def available(self) -> bool:
@@ -582,13 +583,25 @@ def _spend_basis(c: _Ctx) -> Lever:
         )
     if cash + basis <= 0:
         return _none(key, LOWER, label, due, "no cash and no Roth basis to spend")
-    left, delta = cash + basis, []
+    lots = withdraw.sellable(c.st)
+    left, spent, delta, avoided, unmatched = cash + basis, 0.0, [], 0.0, 0.0
     for k, v in planned:
-        use = min(v, left)
-        left -= use
-        if use > 0:
-            delta.append((k, -int(round(use))))
-    amount = r(-sum(v for _, v in delta))
+        term = "short" if k == "short_term_gains" else "long"
+        gain, use, none = withdraw.gain_avoided(lots, v, term, left)
+        left, spent, unmatched = left - use, spent + use, unmatched + none
+        avoided += gain
+        if gain > 0:
+            delta.append((k, -int(round(gain))))
+    amount = r(avoided)
+    if amount <= 0:
+        return _none(
+            key,
+            LOWER,
+            label,
+            due,
+            f"no taxable lot supplies the planned gain; {funds} spend with no MAGI",
+        )
+    short = f"; {unmatched:,.0f} of it no lot supplies" if unmatched else ""
     return Lever(
         key,
         LOWER,
@@ -596,8 +609,9 @@ def _spend_basis(c: _Ctx) -> Lever:
         amount,
         due,
         AUTOMATIC,
-        f"spend from {funds} instead of selling: {amount:,.0f} of planned gain is "
-        "never realized (no MAGI)",
+        f"spend from {funds} in place of {spent:,.0f} of sale proceeds: the lots "
+        f"left unsold hold {amount:,.0f} of the planned gain, never realized (no "
+        f"MAGI){short}",
         "the cash or Roth basis is gone for later; Roth contributions come out "
         "first and tax-free, conversions only once seasoned (5 years)",
         tuple(delta),
@@ -774,7 +788,7 @@ def _conversion(c: _Ctx) -> Lever:
         amount, why = _roomed(c, balance)
         if amount <= 0:
             return _none(key, ROOM, label, due, why)
-        return _conversion_lever(c, amount, why)
+        return _conversion_lever(c, amount, why, balance)
     # sized from the resolved household: an adopted (auto) conversion is part of
     # ``already``, so only what is left beyond it is proposed
     sz = conversion.size(c.lay, c.year, replace(c.ov, conversion_target="manual"))
@@ -784,10 +798,12 @@ def _conversion(c: _Ctx) -> Lever:
     amount = r(rec.amount - sz.already)
     if amount <= 0:
         return _none(key, ROOM, label, due, f"objective {rec.name}: already met")
-    return _conversion_lever(c, amount, f"objective {rec.name}: {rec.note}")
+    return _conversion_lever(
+        c, amount, f"objective {rec.name}: {rec.note}", balance - sz.already
+    )
 
 
-def _conversion_lever(c: _Ctx, amount: float, why: str) -> Lever:
+def _conversion_lever(c: _Ctx, amount: float, why: str, cap: float) -> Lever:
     effects = (
         "taxed now as ordinary income; each conversion starts its own 5-year clock "
         "before it can be spent penalty-free"
@@ -809,6 +825,7 @@ def _conversion_lever(c: _Ctx, amount: float, why: str) -> Lever:
         why,
         effects,
         (("roth_conversion", int(round(amount))),),
+        cap=r(cap),  # past the room is the owner's call, past the balance is not
     )
 
 
@@ -837,6 +854,7 @@ def _gain_harvest(c: _Ctx) -> Lever:
         "sell and buy back at once (no wash rule for gains): basis steps up; NC "
         "still taxes the gain; ACA MAGI rises",
         (("long_term_gains", int(round(amount))),),
+        cap=gains,
     )
 
 
@@ -864,6 +882,7 @@ def _inherited(c: _Ctx) -> Lever:
         "ordinary income; the 10-year window (and yearly RMDs if the owner had "
         "started them) still applies",
         (("ira_distributions", int(round(amount))),),
+        cap=r(balance),
     )
 
 
@@ -1080,15 +1099,36 @@ def whatif(
     """The full year recomputed with ``keys`` applied, before and after."""
     ctx, levers, _ = catalog(lay, year, as_of, ov)
     by_key = {lv.key: lv for lv in levers}
-    chosen = []
+    chosen: list[Lever] = []
     for key in keys:
         if key not in by_key:
             raise ValueError(f"unknown lever {key}; one of {', '.join(by_key)}")
+        if any(lv.key == key for lv in chosen):
+            raise ValueError(f"{key} is listed twice in --apply")
         lv = by_key[key]
         if not lv.available:
             raise ValueError(f"{key} is not available: {lv.why}")
         if amounts and key in amounts:
-            lv = lv.resized(amounts[key])
+            want, top = amounts[key], lv.amount if lv.cap is None else lv.cap
+            if not (math.isfinite(want) and want > 0):
+                raise ValueError(
+                    f"--set {key}={want:,.0f}: the size must be more than 0"
+                )
+            if want > top:
+                raise ValueError(
+                    f"--set {key}={want:,.0f} is more than it can move "
+                    f"({top:,.0f}: {lv.why})"
+                )
+            lv = lv.resized(want)
+        clash = next(
+            (o for o in chosen if lv.key in o.overlaps or o.key in lv.overlaps), None
+        )
+        if clash is not None:
+            first, second = (lv, clash) if clash.key in lv.overlaps else (clash, lv)
+            raise ValueError(
+                f"{first.key} and {second.key} move the same dollars: apply one "
+                "(menu prices them alone)"
+            )
         chosen.append(lv)
     for key in amounts or {}:
         if key not in keys:
