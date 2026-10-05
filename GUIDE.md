@@ -455,7 +455,10 @@ against doing nothing; friction is never folded into the number.
   (only enough loss to net the gain to 0; a lot can be sold in part, lots
   clear of a wash-sale window first), a loss harvest of the rest, spending
   cash or Roth basis (contributions and seasoned conversions) instead of a
-  planned sale (no MAGI: the gain is never realized), deferring a planned
+  planned sale (no MAGI; the cash replaces sale proceeds, not gain, so the
+  gain avoided is the gain in the lots the sale would have drawn first, up to
+  the cash on hand; a planned gain no taxable lot supplies avoids nothing and
+  is named), deferring a planned
   sale (`--st`, `--lt`; it moves the same gain as spending basis, so it is
   priced alone, not stacked), an HSA contribution, the SE health insurance deduction, a
   deductible traditional IRA contribution, last year's capital-loss
@@ -493,7 +496,11 @@ source. The plan page shows the top three of each menu.
 
 `planner whatif --year 2026 --apply traditional_ira,hsa --set hsa=1000`
 recomputes the full year with the chosen moves and prints it before and after,
-with every watched line. `planner thresholds --year 2026` prints the sourced
+with every watched line. It refuses what the menu would never stack: two moves
+that move the same dollars (apply one), a key listed twice, a `--set` size at or
+under 0, and a size past what the move can move (a lowering move's sized amount;
+for a conversion the IRA balance, for a gain harvest the long-term gain held, for
+an inherited-IRA withdrawal its balance). `planner thresholds --year 2026` prints the sourced
 limits and checks the ones the engine also carries; a mismatch (the engine's
 2026 IRA limit is still 7,000 against Notice 2025-67's 7,500) means the engine
 prices with its own value until policyengine-us updates. Engine runs are
