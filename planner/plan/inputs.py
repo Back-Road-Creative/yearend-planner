@@ -18,7 +18,7 @@ from datetime import date
 from typing import Any
 
 from planner import coverage
-from planner.engine.household import Household, MissingInputError
+from planner.engine.household import Dependent, Household, MissingInputError, Person
 from planner.ingest.derive import CountyError, resolve_county
 from planner.ingest.needs import _needed
 from planner.ledger import db
@@ -148,6 +148,7 @@ class Inputs:
     # Age for the tax tests that count a filer as one year older on the day
     # before the birthday (65 and over: the standard deduction, Schedule 1-A).
     tax_age: int | None = None
+    spouse_tax_age: int | None = None  # the same, for a joint return's spouse
     notes: list[str] = field(default_factory=list)
     overrides: Overrides = field(default_factory=Overrides)
     scope: list[str] = field(default_factory=list)  # Not handled lines (also notes)
@@ -246,7 +247,25 @@ def build(
         if value.get(key) is not None:
             fields[name] = int(value[key])
     out.tax_age = tax_age(str(value["birth_date"]), year)
-    out.coverage = coverage.gate(lay, fields["state"], fields["filing_status"])
+    if fields["filing_status"] == "JOINT" and value.get("spouse_birth_date"):
+        spouse = str(value["spouse_birth_date"])
+        fields["spouse"] = Person(age=age_at_year_end(spouse, year))
+        out.spouse_tax_age = tax_age(spouse, year)
+    fields["dependents"] = tuple(
+        Dependent(
+            age=age_at_year_end(str(d["birth_date"]), year),
+            full_time_student=bool(d.get("student")),
+            disabled=bool(d.get("disabled")),
+        )
+        for d in value.get("dependents") or ()
+    )
+    out.coverage = coverage.gate(
+        lay,
+        fields["state"],
+        fields["filing_status"],
+        spouse="spouse" in fields,
+        dependents=len(fields["dependents"]),
+    )
     out.scope = [g.reason for g in out.coverage if g.area == "household"]
     out.notes.extend(g.reason for g in out.coverage)
     ordinary = value.get("ordinary_dividends")

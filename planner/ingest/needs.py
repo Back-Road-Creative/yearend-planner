@@ -17,6 +17,7 @@ supplies group last as typed answers.
 from __future__ import annotations
 
 import math
+import re
 import sqlite3
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -53,7 +54,7 @@ class Need:
     label: str
     why: str
     source: str  # the document that supplies it, with where to get it
-    kind: str  # date | int | money | fraction | enum | monthly | str
+    kind: str  # date | int | money | fraction | enum | monthly | dependents | str
     scope: str = YEAR
     boxes: tuple[tuple[str, str], ...] = ()  # (form, box) ledger lookups, summed
     estimate: tuple[tuple[str, str], ...] = ()  # YTD facts that stand in meanwhile
@@ -278,6 +279,32 @@ NEEDS: tuple[Need, ...] = (
         ),
         doc="filed_return",
         unlocks=("ACA credit", "MAGI headroom"),
+    ),
+    Need(
+        "spouse_birth_date",
+        "Spouse's birth date",
+        "a joint return is the couple's: the spouse's age sets the extra standard "
+        "deduction at 65 and the senior deduction",
+        _NONE,
+        "date",
+        PROFILE,
+        asked=lambda s: s.get("filing_status") == "married_joint",
+        unlocks=("MAGI headroom", "Roth conversion", "Levers", "Draft 1040"),
+    ),
+    Need(
+        "dependents",
+        "Dependents (birth dates; mark student or disabled; or none)",
+        "the child tax credit, the credit for other dependents, head of household "
+        "and the household size for the ACA credit; update the student marks each "
+        "year",
+        "each dependent's birth date, with student (full-time this year) or "
+        "disabled after it: 2018-03-02, 2006-07-01 student; or none",
+        "dependents",
+        PROFILE,
+        asked=lambda s: (
+            s.get("filing_status") in ("married_joint", "head_of_household")
+        ),
+        unlocks=("MAGI headroom", "Roth conversion", "Levers", "Draft 1040"),
     ),
     Need(
         "spending_floor",
@@ -1045,6 +1072,8 @@ INT_RANGE = {
 }
 MONEY_MAX = 100_000_000
 TEXT_MAX = 200
+DEPENDENT_MARKS = ("student", "disabled")  # full-time student; permanently disabled
+DEPENDENTS_MAX = 20
 
 
 def _number(need: Need, s: str, what: str) -> float:
@@ -1082,20 +1111,47 @@ def _monthly(need: Need, s: str) -> dict[int, float]:
     return out
 
 
+def _date(key: str, s: str) -> str:
+    from datetime import date
+
+    try:
+        d = date.fromisoformat(s)
+    except ValueError:
+        raise ValueError(f"{key}: a date as YYYY-MM-DD, got {s!r}") from None
+    if not date(1900, 1, 1) <= d <= date.today():
+        raise ValueError(f"{key}: between 1900-01-01 and today, got {s}")
+    return d.isoformat()
+
+
+def _dependents(key: str, s: str) -> list[dict[str, Any]]:
+    """``2018-03-02, 2006-07-01 student; 1950-01-09 disabled`` or ``none``."""
+    if s.lower() == "none":
+        return []
+    out = []
+    for entry in (e.split() for e in re.split(r"[,;]", s) if e.strip()):
+        marks = {m.lower() for m in entry[1:]}
+        if unknown := sorted(marks - set(DEPENDENT_MARKS)):
+            raise ValueError(
+                f"{key}: unknown mark {unknown[0]!r} (after a birth date: "
+                f"{' or '.join(DEPENDENT_MARKS)})"
+            )
+        out.append(
+            {"birth_date": _date(key, entry[0])}
+            | {m: m in marks for m in DEPENDENT_MARKS}
+        )
+    if len(out) > DEPENDENTS_MAX:
+        raise ValueError(f"{key}: at most {DEPENDENTS_MAX} dependents")
+    return out
+
+
 def parse_value(need: Need, text: str) -> Any:
     """Typed, validated; a bad answer is an error naming what is expected,
     never a guess."""
     s = text.strip()
     if need.kind == "date":
-        from datetime import date
-
-        try:
-            d = date.fromisoformat(s)
-        except ValueError:
-            raise ValueError(f"{need.key}: a date as YYYY-MM-DD, got {s!r}") from None
-        if not date(1900, 1, 1) <= d <= date.today():
-            raise ValueError(f"{need.key}: between 1900-01-01 and today, got {s}")
-        return d.isoformat()
+        return _date(need.key, s)
+    if need.kind == "dependents":
+        return _dependents(need.key, s)
     if need.kind == "money":
         value = int(round(_number(need, s, "a dollar amount")))
         if value < 0 and need.key not in SIGNED:

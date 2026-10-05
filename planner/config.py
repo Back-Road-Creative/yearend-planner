@@ -14,6 +14,8 @@ ASSUMPTION_FIELDS = (
     "filing_status",
     "state",
     "county",
+    "spouse_birth_date",
+    "dependents",
     "spending_floor",
     "spending_ceiling",
     "withdrawal_rate",

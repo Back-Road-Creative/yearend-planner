@@ -28,9 +28,10 @@ PRICED = (
     "draft",
 )
 
-# The planner models one person and no dependents. A status whose answer turns
-# on a second person is priced as that one person and tagged, never passed off
-# as a full plan (master plan unit 0b; lifted when unit 3a models the household).
+# A status whose answer turns on a second person, until the profile names that
+# person (unit 3a-2: the spouse's birth date, the dependents), is priced as the
+# one person and tagged, never passed off as a full plan (master plan unit 0b).
+# Separate returns stay tagged until unit 3b.
 HOUSEHOLD = {
     "JOINT": (
         "Not handled: married filing jointly is priced for one person; the "
@@ -49,6 +50,24 @@ HOUSEHOLD = {
         "and benefits are left out"
     ),
 }
+
+
+HOUSEHOLD_NEEDED = {
+    "JOINT": "type the spouse's birth date (planner enter spouse_birth_date "
+    "YYYY-MM-DD) and the dependents (planner enter dependents ..., or none)",
+    "SEPARATE": "have a preparer price the household, or plan as single until "
+    "separate returns arrive (unit 3b)",
+    "HEAD_OF_HOUSEHOLD": "name the qualifying person (planner enter dependents "
+    "YYYY-MM-DD [student|disabled], ...)",
+}
+# Once the people are named, what is still per person (units 2c and 3a-3).
+PEOPLE = (
+    "Not handled: every income figure is priced as the first person's until each "
+    "document names its owner, so the per-person lines (Schedule SE and its "
+    "Social Security wage base, the IRA and HSA limits) are that person's; the "
+    "draft does not yet lay out the spouse or the dependents table"
+)
+PEOPLE_TOUCH = ("draft", "esttax")
 
 
 @dataclass(frozen=True)
@@ -81,18 +100,40 @@ def _documents(lay: Layout) -> list[Gap]:
     return out
 
 
-def gate(lay: Layout, state: str | None, filing_status: str | None) -> list[Gap]:
+def gate(
+    lay: Layout,
+    state: str | None,
+    filing_status: str | None,
+    *,
+    spouse: bool = False,
+    dependents: int = 0,
+) -> list[Gap]:
     """Every gap for this household, in a fixed order: household, state, documents.
-    ``filing_status`` is the engine's (SINGLE, JOINT, ...); None when not yet known."""
+    ``filing_status`` is the engine's (SINGLE, JOINT, ...); None when not yet known.
+    ``spouse`` and ``dependents`` are the people the profile names."""
     out = []
-    if filing_status in HOUSEHOLD:
+    unnamed = (
+        filing_status == "SEPARATE"
+        or (filing_status == "JOINT" and not spouse)
+        or (filing_status == "HEAD_OF_HOUSEHOLD" and not dependents)
+    )
+    if unnamed and filing_status:
         out.append(
             Gap(
                 "household",
                 HOUSEHOLD[filing_status],
-                "have a preparer price the household, or plan as single until the "
-                "household model (unit 3a) arrives",
+                HOUSEHOLD_NEEDED[filing_status],
                 PRICED,
+            )
+        )
+    elif spouse or dependents:
+        out.append(
+            Gap(
+                "household",
+                PEOPLE,
+                "have a preparer check the per-person lines and lay out the spouse "
+                "and the dependents on the return",
+                PEOPLE_TOUCH,
             )
         )
     if state and state not in DRAFTED_STATES:

@@ -314,6 +314,10 @@ def build(lay: Layout, year: int) -> Draft:
     hh = dataclasses.replace(
         inp.household, age=inp.tax_age if inp.tax_age is not None else inp.household.age
     )
+    if hh.spouse is not None and inp.spouse_tax_age is not None:
+        hh = dataclasses.replace(
+            hh, spouse=dataclasses.replace(hh.spouse, age=inp.spouse_tax_age)
+        )
     if h.lines:
         other = dict(hh.other)
         if h.lines.get("16"):

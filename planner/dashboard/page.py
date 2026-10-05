@@ -384,6 +384,8 @@ def gather(
         lay,
         str(state) if state else None,
         FILING.get(str(status)) if status else None,
+        spouse=status == "married_joint" and bool(answer.get("spouse_birth_date")),
+        dependents=len(answer.get("dependents") or ()),
     )
     page.scope = [g.reason for g in page.coverage if g.area != "document"]
     rows = coverage.statuses(lay)
