@@ -265,6 +265,7 @@ def _month_table(g: glidepath.Glide, target: float) -> Table:
         [
             "month",
             "SE",
+            "other in",
             "div",
             "in",
             "sales",
@@ -282,6 +283,7 @@ def _month_table(g: glidepath.Glide, target: float) -> Table:
             [
                 f"{m.year}-{m.month:02d}{'*' if m.actual else ''}",
                 f"{m.se:,.2f}",
+                f"{m.other_in:,.2f}",
                 f"{m.dividends:,.2f}",
                 f"{m.cash_in:,.2f}",
                 f"{m.planned_in:,.2f}",

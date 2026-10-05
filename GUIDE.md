@@ -335,8 +335,12 @@ statement figure for that age, else the nearest lower one), the
 accessible-bucket check (taxable plus cash plus Roth basis against the floor
 through `ira_access_age`), three stress rows (a 30% drop in year one, 5%
 inflation, floor returns), and the month-by-month cash line for this year and
-next: SE deposits and dividends from the ledger's rows for the months already
-run and their run-rate after, living cost at the band, `mortgage_monthly`,
+next: SE deposits (bank deposits categorised `receipts`), wages paid in
+(`pay`), other deposits and dividends from the ledger's rows for the months
+already run, and the run-rate of receipts and pay after. A deposit categorised
+`transfer`, `refund` or `loan` is not counted as income; one with no category
+counts once in the `other` column, and a note names it so you can give it one
+(`planner categorize`). Living cost at the band, `mortgage_monthly`,
 `premium_monthly`, estimated payments from `planner esttax` (payments already
 made, in the month they were paid; each later installment at what its safe-harbor
 figure still lacks, so a missed quarter is made up at the next due date; next
@@ -352,6 +356,11 @@ supply counts nothing and is named in the notes. A planned conversion moves no
 cash itself; its tax is in the estimated payments and the `tax due` month, and
 a note gives the tax it adds. None of this needs `--cash-in`. The cash bucket
 is carried month by month and the first month under `cash_target` is named.
+It starts from the cash accounts' balance on their `balance_date`: that
+month's flows after the date run forward from it, later months add their net,
+and earlier months are worked back from it, so a deposit the balance already
+holds is not counted twice. A balance with no date (or dated outside the year)
+starts the line on January 1, and a note says so.
 
 The glide path also runs the comfort-floor line: the same spending rule at
 `return_floor` every year, printed beside the on-track line in the `comfort
@@ -539,7 +548,8 @@ first rule wins), and `--row bank:T-3 --as supplies` sets one row, which beats
 any rule. Categories are the Schedule C lines (receipts, returns, advertising,
 car, commissions, contract_labor, insurance, interest, legal_professional,
 office, rent_equipment, rent_property, repairs, supplies, taxes_licenses,
-travel, meals, utilities, wages, other) plus `personal` and `transfer`, which
+travel, meals, utilities, wages, other) plus `personal`, `transfer`, `pay`
+(wages paid to you), `refund` and `loan`, which
 are left out. Rules and row choices are kept in `data/profile/categories.yaml`
 and apply to every later export.
 
