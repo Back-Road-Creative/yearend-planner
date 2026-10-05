@@ -7,6 +7,8 @@ still missing, shows every tax move left this year, and at filing time hands you
 complete package for your preparer. It is deterministic and runs on your computer only:
 no account, no cloud, no AI at runtime.
 
+**Not tax, legal or investment advice. Every figure is an estimate from the documents and answers you give it; have a tax preparer review the return before you file.**
+
 ## Use
 
 1. Download `yearend-planner-<version>-win64.zip`. Right-click it, choose Properties,
