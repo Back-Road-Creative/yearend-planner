@@ -286,11 +286,11 @@ def test_spill_only_when_conversion_adds_15pct(lay: Layout) -> None:
     assert [c.name for c in sz.candidates if c.qualified_spill] == []
 
 
-def test_aca_400_candidate_stays_strictly_under_the_line_at_margin_zero(
+def test_aca_400_candidate_may_sit_on_the_line_at_margin_zero(
     lay: Layout,
 ) -> None:
-    """With no margin a sweep row can land exactly on 400% (62,600). The engine pays
-    no credit on that row, so it must not be picked as "stay under the cliff"."""
+    """With no margin a sweep row can land exactly on 400% (62,600). Income that does
+    not exceed 400% keeps the credit (IRC 36B(c)(1)(A)), so that row is "under"."""
     enter(lay, 2026, "conversion_cap", "58,600")
     enter(lay, 2026, "slcsp_monthly", "800")
     # recurring MAGI is 4,000 (interest + dividends), so a 58,600 conversion is
@@ -298,13 +298,9 @@ def test_aca_400_candidate_stays_strictly_under_the_line_at_margin_zero(
     sz = conversion.size(lay, 2026, step=2930)
     assert sz.margin == 0
     aca = {c.name: c for c in sz.candidates}["aca_400"]
-    assert aca.aca_magi == 4000 + 55_670  # one step short of the line
-    assert aca.aca_magi < 62600
+    assert aca.aca_magi == 62600  # on the line, not one step short of it
     assert aca.ptc_delta > -sz.base.result.aca_ptc  # the credit is kept
     assert aca.aca_ptc > 0
-    # the row on the line is in the sweep and is the cap candidate, priced at zero
-    cap = {c.name: c for c in sz.candidates}["cap"]
-    assert cap.aca_magi == 62600 and cap.aca_ptc == 0
 
 
 @pytest.mark.engine

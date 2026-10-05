@@ -467,20 +467,14 @@ def test_medicaid_138_boundary(
 
 
 # IRC 36B(c)(1)(A) allows the credit when household income "does not exceed 400
-# percent" of the poverty line, and Form 8962 line 5 truncates the ratio to a whole
-# percent (i8962 Worksheet 2; planner.taxprep.draft floors it the same way), so
-# exactly 400.00% is line 5 = 400: eligible. Hand-worked at MAGI 62,600:
-# 9,600 - 0.0996 x 62,600 = 9,600 - 6,234.96 = 3,365.04. policyengine-us 2.21.0
-# ends eligibility at a ratio >= 4.00 for 2026 (policyengine_us/parameters/gov/aca/
-# ptc_income_eligibility.yaml, the 4.00 bracket switches to false from 2026-01-01),
-# so it returns 0 at exactly 400.00% and on up to 400.99%, where line 5 is still
-# 400. That is the engine's deviation; the planner is conservative about it
-# (it sizes conversions to strictly under the line, never onto it).
-ENGINE_400_BRACKET = (
-    "policyengine-us ends ACA PTC eligibility at a ratio >= 4.00 for 2026 "
-    "(parameters/gov/aca/ptc_income_eligibility.yaml); IRC 36B(c)(1)(A) and Form "
-    "8962 line 5 (whole-percent truncation) still allow the credit at 400.00%"
-)
+# percent" of the poverty line, and i8962 Worksheet 2 enters 401 on line 5 only when
+# income is MORE than 4 x the guideline: in dollars, not after line 5's whole-percent
+# truncation. So exactly 400.00% keeps the credit and a cent over loses it. Hand-worked
+# at MAGI 62,600: 9,600 - 0.0996 x 62,600 = 9,600 - 6,234.96 = 3,365.04.
+# policyengine-us 2.21.0 ends eligibility at a ratio >= 4.00 for 2026 (parameters/
+# gov/aca/ptc_income_eligibility.yaml) on a ratio it floors to whole percents, so on
+# its own it pays 0 at exactly 400.00%; planner.engine.tax corrects both edges
+# (tax.ACA_PTC_LINE).
 
 
 @pytest.mark.parametrize(
@@ -488,16 +482,13 @@ ENGINE_400_BRACKET = (
     [
         # 399.99% of 15,650: 9.96% x 62,599 = 6,234.86; 9,600 - 6,234.86
         (62_599, 399.99, 3_365.14),
-        # exactly 400.00%: the statute and Form 8962 line 5 keep the credit,
-        # 9,600 - 0.0996 x 62,600 = 3,365.04. The engine returns 0 (see above), so
-        # this is a strict xfail: when an engine release fixes the bracket it turns
-        # into an error that says to drop the marker.
-        pytest.param(
-            62_600,
-            400.00,
-            3_365.04,
-            marks=pytest.mark.xfail(strict=True, reason=ENGINE_400_BRACKET),
-        ),
+        # exactly 400.00%: the statute and i8962 keep the credit
+        (62_600, 400.00, 3_365.04),
+        # 400.01%: a dollar more than 4 x 15,650, so line 5 = 401 (i8962 Worksheet 2)
+        (62_601, 400.01, 0.0),
+        # 400.96%: the engine floors this to 4.00, inside its own eligible bracket
+        # once the edge moves; still more than 4 x the guideline, so no credit
+        (62_750, 400.96, 0.0),
         # 401.28%: line 5 = 401, over the line under every reading
         (62_800, 401.28, 0.0),
     ],
@@ -522,16 +513,28 @@ def test_the_credit_uses_the_prior_year_guideline_of_the_households_state(
     assert this_year.aca_fpg > FPL_2025  # above the 48-state guideline
 
 
-def test_aca_400_engine_deviation_is_pinned() -> None:
-    """The engine's zero at exactly 400.00% is a known deviation, not the rule: the
-    statutory 3,365.04 is the strict xfail in ``test_aca_400_cliff``. This pins what
-    the planner relies on meanwhile: the percentage is measured correctly, and the
-    credit is not paid on the line, and the conversion sizer picks only rows strictly
-    under the line (``test_plan.py``, margin 0 with a row on 62,600), so no plan
-    depends on the deviation."""
-    r, _ = _fpl(2026, 62_600)
-    assert r.aca_fpl_pct == pytest.approx(400.00, abs=0.01)
-    assert r.aca_ptc == 0  # the deviation; see ENGINE_400_BRACKET
+def test_aca_400_line_is_cut_in_dollars_in_a_sweep() -> None:
+    """The sweep reads the credit the same way compute() does: the row on 62,600 keeps
+    it and the row a dollar over loses it. Made-up wages."""
+    h = Household(**BASE, wages=62_590, slcsp_monthly=800)
+    rows = compute_sweep(2026, h, "employment_income", 62_590, 62_610, 10)
+    by = {round(rw["employment_income"]): rw["aca_ptc"] for rw in rows}
+    assert by[62_600] == pytest.approx(3_365.04, abs=D)
+    assert by[62_610] == 0
+
+
+@pytest.mark.parametrize(
+    "wages,eligible,ptc", [(62_600, 1.0, 3_365.04), (62_750, 0.0, 0.0)]
+)
+def test_values_carry_the_dollar_line_for_the_draft(
+    wages: int, eligible: float, ptc: float
+) -> None:
+    """The draft return reads the credit and its eligibility from values(): both
+    follow the dollar line, not the engine's whole-percent floor. Made-up wages."""
+    h = Household(**BASE, wages=wages, slcsp_monthly=800)
+    v = values(2026, h, ("aca_ptc", "is_aca_ptc_eligible"))
+    assert v["is_aca_ptc_eligible"] == eligible
+    assert v["aca_ptc"] == pytest.approx(ptc, abs=D)
 
 
 def test_fpl_boundaries() -> None:
