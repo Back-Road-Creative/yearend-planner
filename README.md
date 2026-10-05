@@ -76,7 +76,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `sweep` | Sweep one input across a range in a single engine run; one JSON row per step. |
 | `taxpack` | Everything a preparer asks for in out/tax-<year>/: the draft return (text and printable HTML), Form 8949 CSV, Schedule C, carryforward and basis, estimated payments, the form inventory, and the originals ZIP. |
 | `thresholds` | The sourced limits in config/thresholds.yaml for a year, checked against the engine's own parameters. |
-| `update` | Swap in a newer release after its own selfcheck passes and its regression matches the engine baseline within $5; --rollback undoes it; --check looks for one on the update feed now (the automatic check runs at most weekly); --allow-major installs a release that jumps a major version of the planner or policyengine-us. |
+| `update` | Swap in a newer release after its own selfcheck passes and its regression matches the engine baseline ($5 on dollars, 0.1 points on a share of poverty, exact on yes/no); --rollback undoes it; --check looks for one on the update feed now (the automatic check runs at most weekly); --allow-major installs a release that jumps a major version of the planner or policyengine-us. |
 | `verify` | Recompute a filed year from its inputs; compare each line to what was filed. With no file it checks the shipped reference cases. |
 | `version` | Print the planner version (the release's VERSION file when there is one). |
 | `waive` | Take a late form that will not come (the issuer never sends one) off the Needed list; it stays in `forms`, marked waived. `--undo` puts it back. |
@@ -87,7 +87,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 ## If an update is held
 
 The dashboard says **engine update held** when a downloaded release failed its own
-selfcheck, or moved a tax figure more than $5 from the engine you run now, or jumps a
+selfcheck, or moved a tax figure past its limit from the engine you run now, or jumps a
 major version. Nothing changed: you are still on the release you had.
 
 1. Keep working; the held release is never retried on its own.
@@ -98,7 +98,7 @@ major version. Nothing changed: you are still on the release you had.
 4. If a release that did go in looks wrong, `planner.cmd update --rollback` puts the
    previous one back.
 
-`GUIDE.md` (Updates) explains the selfcheck and the $5 regression in full.
+`GUIDE.md` (Updates) explains the selfcheck and the regression limits in full.
 
 ## Develop
 

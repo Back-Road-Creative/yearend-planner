@@ -897,10 +897,12 @@ year and next from the installed policyengine-us. It needs no network.
   is reported, never a failure; a known variance (say, the self-employed health
   insurance deduction) does not stop updates. The first engine recorded is the baseline.
   A candidate release runs `planner selfcheck --regression` inside `python-candidate/`
-  with its own Python, and every figure must land within $5 of the baseline or the
-  release is held. A release that prints no regression figures is held too. A later
-  engine that is within $5 is recorded beside the baseline; one that is not is named on
-  each run. Delete `data/engine-baseline.json` only to start a new baseline from the
+  with its own Python, and every figure must land within its limit of the baseline or
+  the release is held: $5 on a dollar figure, 0.1 points on a share of the poverty
+  line, and no change at all in a yes/no (Medicaid eligible, itemizes, whether the
+  SE health deduction settled), so an eligibility flip with the same dollars is caught.
+  A release that prints no regression figures is held too. A later engine within the
+  limits is recorded beside the baseline; one that is not is named on each run. Delete `data/engine-baseline.json` only to start a new baseline from the
   engine you run now.
 - **Held.** A release that fails its selfcheck or its regression is never swapped in. The
   dashboard shows "engine update held" with the reason, and the same release
