@@ -18,6 +18,7 @@ from planner.ingest.needs import enter, profile_path
 from planner.ledger import portfolio
 from planner.paths import Layout
 from planner.plan import glidepath, spending
+from planner.taxprep import schedule_c
 
 runner = CliRunner()
 AS_OF = date(2026, 7, 10)
@@ -123,6 +124,7 @@ def test_spending_band_clamps_and_the_drawdown_rule(lay: Layout) -> None:
 
 
 def test_glide_path_table_stresses_and_monthly_cash(lay: Layout) -> None:
+    schedule_c.add_rule(lay, "CLIENT PAYMENT", "receipts")
     g = glidepath.glide(lay, 2026, AS_OF)
     assert g.age == 55 and g.balance == 1_800_000.0
     assert g.access_age == 59.5 and 4.9 < g.years_to_access < 5.0
@@ -264,3 +266,76 @@ def test_a_balance_above_the_ledger_peak_is_the_peak(lay: Layout) -> None:
     assert all(
         rw.spend_floor == 50_000.0 for rw in sp.rows if rw.balance_floor < 2_700_000.0
     )
+
+
+def test_a_dated_cash_balance_anchors_the_line_once(lay: Layout) -> None:
+    """A June 30 statement already holds January's and March's deposits: the
+    line shows the statement in June and works earlier months back from it."""
+    portfolio.save_account(lay, "22222222", balance_date="2026-06-30")
+    g = glidepath.glide(lay, 2026, AS_OF)
+    m = g.months
+    assert m[5].cash == 200_000.0
+    assert m[6].cash == round(200_000 + m[6].net, 2)
+    assert m[4].cash == round(200_000 - m[5].net, 2)
+    assert m[0].cash == pytest.approx(200_000 - sum(x.net for x in m[1:6]), abs=0.05)
+    assert any("2026-06-30" in n and "worked back" in n for n in g.notes)
+    # a mid-month statement: the rest of its month runs forward from it
+    portfolio.save_account(lay, "22222222", balance_date="2026-06-15")
+    m = glidepath.glide(lay, 2026, AS_OF).months
+    assert m[5].cash == round(200_000 + m[5].net * 15 / 30, 2)
+    assert m[4].cash == round(200_000 - m[5].net * 15 / 30, 2)
+    # an undated balance still starts the line on January 1, and says so
+    portfolio.save_account(lay, "22222222", balance_date="")
+    g = glidepath.glide(lay, 2026, AS_OF)
+    assert g.months[0].cash == round(200_000 + g.months[0].net, 2)
+    assert any("no date" in n and "balance_date" in n for n in g.notes)
+
+
+MORE_BANK = """\
+Transaction ID,Date,Description,Amount,Account
+T-4,04/02/2026,PAYROLL EMPLOYER,"2,000.00",Checking
+T-5,04/09/2026,IRS TREAS REFUND,500.00,Checking
+T-6,05/01/2026,LOAN ADVANCE,"10,000.00",Checking
+T-7,05/03/2026,FROM SAVINGS,"3,000.00",Checking
+T-8,06/01/2026,MYSTERY DEPOSIT,700.00,Checking
+"""
+
+
+def test_only_deposits_classed_receipts_are_business_income(lay: Layout) -> None:
+    (lay.data / "inbox" / "bank2.csv").write_text(MORE_BANK, encoding="utf-8")
+    ingest(lay)
+    for match, category in (
+        ("CLIENT PAYMENT", "receipts"),
+        ("PAYROLL", "pay"),
+        ("REFUND", "refund"),
+        ("LOAN", "loan"),
+        ("FROM SAVINGS", "transfer"),
+    ):
+        schedule_c.add_rule(lay, match, category)
+    g = glidepath.glide(lay, 2026, AS_OF)
+    apr, may, jun = g.months[3], g.months[4], g.months[5]
+    assert (g.months[0].se, g.months[0].other_in) == (4_000.0, 0.0)
+    assert (apr.se, apr.other_in) == (0.0, 2_500.0)
+    assert (may.se, may.other_in) == (0.0, 10_000.0)  # the transfer is left out
+    assert (jun.se, jun.other_in) == (0.0, 700.0)  # unclassed: counted once
+    assert jun.net == round(
+        700.0
+        + jun.dividends
+        - (
+            jun.living
+            + jun.mortgage
+            + jun.premiums
+            + jun.est_tax
+            + jun.balance_due
+            + jun.irregular
+        ),
+        2,
+    )
+    # the run rate carries receipts and pay forward, never a one-off
+    assert g.months[7].se == round(12_000 / 7, 2)
+    assert g.months[7].other_in == round(2_000 / 7, 2)
+    assert any(
+        "700.00" in n and "not business income" in n and "planner categorize" in n
+        for n in g.notes
+    )
+    assert any("3,000.00" in n and "transfer" in n for n in g.notes)
