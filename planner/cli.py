@@ -72,6 +72,23 @@ def _single_writer(ctx: typer.Context) -> None:
     except WriterBusyError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=BUSY_EXIT) from exc
+    _refuse_newer_ledger()
+
+
+def _refuse_newer_ledger() -> None:
+    """A writing command stops before any step when the ledger was written by a
+    newer planner, rather than failing partway through."""
+    from planner.ledger import db
+
+    try:
+        conn = db.connect_readonly(layout().data / "ledger" / "planner.db")
+    except db.LedgerTooNew as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except db.LedgerOutOfDate:
+        return  # older: the command's own open brings it up to date
+    if conn is not None:
+        conn.close()
 
 
 def _open_ledger_readonly() -> sqlite3.Connection | None:
@@ -1299,14 +1316,16 @@ def glide(
             f"stress {s.name:22} {end}; at {HORIZON} {s.balance_at_horizon:,.2f}"
         )
     typer.echo(
-        f"{'month':>8} {'SE':>10} {'div':>9} {'in':>9} {'sales':>11} {'living':>9} "
+        f"{'month':>8} {'SE':>10} {'other':>9} {'div':>9} {'in':>9} {'sales':>11} "
+        f"{'living':>9} "
         f"{'mortg':>9} {'prem':>8} {'est tax':>9} {'tax due':>10} {'irreg':>9} "
         f"{'net':>10} {'cash':>12}"
     )
     for m in g.months:
         typer.echo(
             f"{m.year}-{m.month:02d}{'*' if m.actual else ' '} {m.se:>10,.2f} "
-            f"{m.dividends:>9,.2f} {m.cash_in:>9,.2f} {m.planned_in:>11,.2f} "
+            f"{m.other_in:>9,.2f} {m.dividends:>9,.2f} {m.cash_in:>9,.2f} "
+            f"{m.planned_in:>11,.2f} "
             f"{m.living:>9,.2f} {m.mortgage:>9,.2f} {m.premiums:>8,.2f} "
             f"{m.est_tax:>9,.2f} {m.balance_due:>10,.2f} {m.irregular:>9,.2f} "
             f"{m.net:>10,.2f} {m.cash:>12,.2f}"

@@ -2,6 +2,8 @@
 
 How each part works, phase by phase. The one-page start is the [README](README.md).
 
+**Not tax, legal or investment advice. Every figure is an estimate from the documents and answers you give it; have a tax preparer review the return before you file.** The same notice heads the page, the draft return and the tax pack.
+
 ## Engine (Phase 1)
 
 `planner compute <household.yaml>` prints every figure for one household-year as JSON:
@@ -64,13 +66,14 @@ partial row that cites none, or one whose test does not exist). The poverty-line
 on both sides of each line: 138% (Medicaid) and 400% (premium tax credit), with the credit
 worked by hand from the Rev. Proc. 2025-25 table; they ship in `reference.yaml`, so
 `planner update` holds a release whose engine moves any of them. One known engine
-deviation: at 400.00% to 400.99% of the poverty line the engine pays no credit, but the
-statute ("does not exceed 400 percent", IRC 36B(c)(1)(A)) and Form 8962 line 5 (which
-truncates to a whole percent) still allow it, 3,365.04 for the single $800-a-month
-benchmark case at $62,600. That case is a strict expected-failure test, not a filed line
-in `reference.yaml`, and the premium tax credit row in `config/capabilities.yaml` stays
-`partial` until the engine is fixed. The planner stays clear of the line: it sizes
-conversions to strictly under the line (and under it by your margin on top), so no plan depends on the deviation.
+deviation, corrected by the planner: the engine rounds income over the poverty line down
+to a whole percent and ends the premium tax credit at 400.00%. The statute keeps the
+credit while income "does not exceed 400 percent" (IRC 36B(c)(1)(A)), and Form 8962's
+instructions (Worksheet 2) enter 401 only when income is more than 4 times the poverty
+line, in dollars. So the planner pays the credit at exactly 400.00% (3,365.04 for the
+single $800-a-month benchmark case at $62,600, a filed line in `reference.yaml`) and
+none a cent over it, in every figure, sweep and the draft Form 8962 (line 5 = 401). The
+conversion sizer may size onto the line, never past it (less your margin).
 
 ## Intake (Phase 2a)
 
@@ -303,7 +306,10 @@ benefits are typed, NC's scheduled rate step (3.99% to 3.49% in 2027; the
 conversion lever names what waiting would save on the NC side), and from
 2027, with the Medicaid objective, the 80-hour monthly work requirement
 against the thinnest month in the `se_hours` log (`1:85, 2:60`).
-Unknown inputs are named and left out, never treated as zero; unknown
+Every value is in one of four states: known (a typed or documented zero
+included), an estimate (a year-to-date figure standing in), unknown, or not
+applicable (an item another answer makes moot, so it is never asked). Unknown
+inputs are named and left out, never treated as zero; unknown
 qualified dividends are priced as ordinary and flagged. Tax-exempt interest
 (1099-INT box 8, 1099-DIV box 12, or a typed answer) is one of those inputs:
 it is not income, but ACA MAGI adds it back, so the room to the 250% and 400%
@@ -335,8 +341,12 @@ statement figure for that age, else the nearest lower one), the
 accessible-bucket check (taxable plus cash plus Roth basis against the floor
 through `ira_access_age`), three stress rows (a 30% drop in year one, 5%
 inflation, floor returns), and the month-by-month cash line for this year and
-next: SE deposits and dividends from the ledger's rows for the months already
-run and their run-rate after, living cost at the band, `mortgage_monthly`,
+next: SE deposits (bank deposits categorised `receipts`), wages paid in
+(`pay`), other deposits and dividends from the ledger's rows for the months
+already run, and the run-rate of receipts and pay after. A deposit categorised
+`transfer`, `refund` or `loan` is not counted as income; one with no category
+counts once in the `other` column, and a note names it so you can give it one
+(`planner categorize`). Living cost at the band, `mortgage_monthly`,
 `premium_monthly`, estimated payments from `planner esttax` (payments already
 made, in the month they were paid; each later installment at what its safe-harbor
 figure still lacks, so a missed quarter is made up at the next due date; next
@@ -352,6 +362,11 @@ supply counts nothing and is named in the notes. A planned conversion moves no
 cash itself; its tax is in the estimated payments and the `tax due` month, and
 a note gives the tax it adds. None of this needs `--cash-in`. The cash bucket
 is carried month by month and the first month under `cash_target` is named.
+It starts from the cash accounts' balance on their `balance_date`: that
+month's flows after the date run forward from it, later months add their net,
+and earlier months are worked back from it, so a deposit the balance already
+holds is not counted twice. A balance with no date (or dated outside the year)
+starts the line on January 1, and a note says so.
 
 The glide path also runs the comfort-floor line: the same spending rule at
 `return_floor` every year, printed beside the on-track line in the `comfort
@@ -408,7 +423,14 @@ estimated payments are marked "if required" and name the agencies whose
 `planner esttax` result owes them, resting on this year's tax after withholding). The same `--as-of`
 and override options as the planners it composes. A planner whose required
 input is still unknown reports what it needs and the rest of the page still
-renders; nothing is estimated in its place. The page is also written to
+renders; nothing is estimated in its place. A section priced from the
+household (MAGI, conversion, levers, glide path, cash, estimated tax) that
+rests on an unknown input says so ("rests on unknown (left out, not zero): …")
+and the dashboard tags it an estimate even after the year is over; an unknown
+mortgage or premium leaves the cash line running high, and unknown withholding
+makes the estimated-tax amounts the most that could be due. A draft return
+that rests on an unknown (an income item, or a sale with no cost basis) opens
+with "NOT READY for a preparer", and so do its tax-pack page and notes. The page is also written to
 `out/plan-<year>.md` (personal, gitignored; `--no-write` skips it).
 
 From a terminal `planner plan` first asks the few typed fields, and each has an
@@ -539,7 +561,8 @@ first rule wins), and `--row bank:T-3 --as supplies` sets one row, which beats
 any rule. Categories are the Schedule C lines (receipts, returns, advertising,
 car, commissions, contract_labor, insurance, interest, legal_professional,
 office, rent_equipment, rent_property, repairs, supplies, taxes_licenses,
-travel, meals, utilities, wages, other) plus `personal` and `transfer`, which
+travel, meals, utilities, wages, other) plus `personal`, `transfer`, `pay`
+(wages paid to you), `refund` and `loan`, which
 are left out. Rules and row choices are kept in `data/profile/categories.yaml`
 and apply to every later export.
 
@@ -932,6 +955,15 @@ year and next from the installed policyengine-us. It needs no network.
   release the same way, `planner update --rollback` goes back to
   `python-previous/`, and `planner update --check` looks for one now. `data/`
   and `out/` are never touched.
+- **An older `data/` opens in a newer release** (Phase 10, 2e). The first
+  writing command after an update copies the ledger to
+  `data/ledger/planner.db.schemaN.bak` (N is the old schema) and then brings it
+  up to date one step at a time. A ledger written by a *newer* release (say
+  after `--rollback`, or restoring a newer backup) is refused with "written by
+  a newer planner" and left exactly as it was: use that release again, or
+  restore a backup this release made. Every release's tests open the v0.1.0
+  `data/` folder in `tests/fixtures/data-v0.1.0` (synthetic, made by the
+  v0.1.0 tag with `make.py` beside it) and run it end to end.
 - `scripts/build_release.py` writes the `.sha256` file beside the zip.
 
 ## Rolling over to the new year (Phase 7)
@@ -1038,6 +1070,14 @@ steps on a clean Windows runner:
 
 Publishing the draft is a person's decision. The update check reads published
 releases only.
+
+Every push and pull request also runs the `scan` job in `ci.yml` (Phase 10,
+unit 2f): `pip-audit` checks every locked dependency in `uv.lock` against the
+known-vulnerability databases, and `gitleaks` scans the whole git history for
+keys and tokens (the binary is pinned by checksum and findings are redacted).
+The Linux test run measures coverage of `planner/` and fails below the floor in
+`ci.yml`. Dependabot proposes weekly updates for the lockfile and the CI
+actions.
 
 The release can only contain files git tracks. `scripts/build_release.py`
 stages its contents from `git ls-files`, so a developer's own `data/`, `out/`

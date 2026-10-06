@@ -10,7 +10,13 @@ from typer.testing import CliRunner
 
 from planner.cli import app
 from planner.ingest import MAX_ZIP_DEPTH, ingest
-from planner.ingest.pdf import Unmatched, load_templates, parse_amount, parse_pdf
+from planner.ingest.pdf import (
+    Unmatched,
+    load_templates,
+    parse_amount,
+    parse_pdf,
+    parse_texts,
+)
 from planner.ledger import db
 from planner.paths import Layout
 from tests.pdfgen import make_pdf
@@ -85,6 +91,30 @@ def test_single_form_parses_with_issuer_and_year(tmp_path: Path) -> None:
     assert f.boxes["1"] == ("Interest income", 1234.56)
     assert f.boxes["4"][1] == 0.0
     assert "3" not in f.boxes  # optional box absent is absent, not zero
+
+
+def test_div_capital_gain_subsets_parse() -> None:
+    """Boxes 2b-2d split box 2a for the Schedule D line 18 and 19 worksheets;
+    a form that leaves them blank still parses."""
+    templates = load_templates(
+        Path(__file__).resolve().parent.parent / "templates" / "forms"
+    )
+    text = "\n".join(
+        [
+            *DIV_2025[:-1],
+            "2b Unrecap. Sec. 1250 gain $ 40.00",
+            "2c Section 1202 gain $ 0.00",
+            "2d Collectibles (28%) gain $ 25.00",
+            DIV_2025[-1],
+        ]
+    )
+    (f,) = parse_texts([text], templates)
+    assert f.boxes["2a"][1] == 150.0
+    assert f.boxes["2b"][1] == 40.0
+    assert f.boxes["2c"][1] == 0.0
+    assert f.boxes["2d"][1] == 25.0
+    (bare,) = parse_texts(["\n".join(DIV_2025)], templates)
+    assert not {"2b", "2c", "2d"} & set(bare.boxes)
 
 
 def test_missing_required_box_is_unmatched(tmp_path: Path) -> None:

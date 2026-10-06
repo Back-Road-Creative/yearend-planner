@@ -83,6 +83,15 @@ MONEY = {
     "real_estate_taxes": "real_estate_taxes",
     "mortgage_interest": "mortgage_interest",
 }
+# The four states a value can be in. Known includes a known zero; unknown is
+# left out of the arithmetic (never priced as zero without saying so); not
+# applicable is an item another answer makes moot, so it is never asked.
+KNOWN, ESTIMATE, UNKNOWN, NOT_APPLICABLE = (
+    "known",
+    "estimate",
+    "unknown",
+    "not applicable",
+)
 # The income lines a typed total_income is measured against: Form 1040 line 9
 # less wages (the line the total sets) and Social Security (the engine decides
 # how much of it is taxable, so it is never part of a typed total).
@@ -102,6 +111,8 @@ CAPITAL_LOSS_LIMIT_MFS = 1500
 CONVERSION_TARGETS = ("manual", "auto")
 # Needed-panel key -> Household field, a whole-number code rather than dollars.
 CODES = {"tipped_occupation_code": "tipped_occupation_code"}
+# The Needed-panel keys a tax figure reads (the others drive the plan, not the tax).
+TAX_KEYS = (*MONEY, *CODES, "ordinary_dividends", "qualified_dividends")
 OVERRIDES = (
     "q4_dividend_estimate",
     "planned_st_sales",
@@ -168,6 +179,19 @@ class Inputs:
     notes: list[str] = field(default_factory=list)
     overrides: Overrides = field(default_factory=Overrides)
     scope: list[str] = field(default_factory=list)  # Not handled lines (also notes)
+
+    def state(self, key: str) -> str:
+        """KNOWN, ESTIMATE, UNKNOWN or NOT_APPLICABLE (an item never asked)."""
+        if key in self.unknown:
+            return UNKNOWN
+        if key in self.estimates:
+            return ESTIMATE
+        return KNOWN if key in self.origins else NOT_APPLICABLE
+
+    @property
+    def tax_unknown(self) -> list[str]:
+        """The unknown items a tax figure rests on (left out, not zero)."""
+        return [k for k in self.unknown if k in TAX_KEYS]
 
 
 def age_at_year_end(birth: str, year: int) -> int:
