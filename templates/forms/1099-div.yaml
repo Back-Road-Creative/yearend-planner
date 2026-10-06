@@ -1,4 +1,5 @@
-# Form 1099-DIV. Box 1b is a subset of 1a, never added to it. Box 12 counts in ACA MAGI.
+# Form 1099-DIV. Box 1b is a subset of 1a, never added to it; so are 2b-2d of 2a
+# (Schedule D worksheets for lines 18 and 19). Box 12 counts in ACA MAGI.
 form: 1099-DIV
 years: [2024, 2025, 2026]
 match: ["1099-DIV"]
@@ -6,6 +7,9 @@ boxes:
   "1a": {label: "Total ordinary dividends", pattern: "\\b1a Total ordinary dividends\\s+AMOUNT", required: true}
   "1b": {label: "Qualified dividends", pattern: "\\b1b Qualified dividends\\s+AMOUNT", required: true}
   "2a": {label: "Total capital gain distributions", pattern: "\\b2a Total capital gain distr\\S*\\s+AMOUNT"}
+  "2b": {label: "Unrecaptured section 1250 gain", pattern: "\\b2b Unrecap\\S* Sec\\S* 1250 gain\\s+AMOUNT"}
+  "2c": {label: "Section 1202 gain", pattern: "\\b2c Section 1202 gain\\s+AMOUNT"}
+  "2d": {label: "Collectibles (28%) gain", pattern: "\\b2d Collectibles \\(28%\\) gain\\s+AMOUNT"}
   "4": {label: "Federal income tax withheld", pattern: "\\b4 Federal income tax withheld\\s+AMOUNT"}
   "5": {label: "Section 199A dividends", pattern: "\\b5 Section 199A dividends\\s+AMOUNT"}
   "7": {label: "Foreign tax paid", pattern: "\\b7 Foreign tax paid\\s+AMOUNT"}
