@@ -1,0 +1,28 @@
+# Ohio Form IT 1040, page 2 (tax, credits, payments, the refund or the amount
+# due). Merges with page 1 (oh-it1040.yaml) as form OH-IT1040. Line 22's
+# "AMOUNT DUE" is spelled lowercase: AMOUNT is the amount placeholder, and
+# matching ignores case.
+form: OH-IT1040
+years: [2025]
+match: ["Individual Income Tax Return", "Amount from line 7 on page 1"]
+year_pattern: 'Ohio IT 1040\s+(20\d\d)\s+Individual Income Tax Return'
+issuer: OH
+boxes:
+  "7a": {label: "Amount from line 7 on page 1", pattern: 'Amount from line 7 on page 1[\s.]*7a\.\s+AMOUNT'}
+  "8a": {label: "Nonbusiness income tax liability", pattern: 'tax brackets\)[\s.]*8a\.\s+AMOUNT'}
+  "8b": {label: "Business income tax liability", pattern: 'Schedule of Business Income, line 16 \(include schedule\)[\s.]*8b\.\s+AMOUNT'}
+  "8c": {label: "Income tax liability before credits", pattern: 'before credits \(line 8a plus line 8b\)[\s.]*8c\.\s+AMOUNT'}
+  "9": {label: "Ohio nonrefundable credits", pattern: 'Schedule of Credits, line 40 \(include schedule\)[\s.]*9\.\s+AMOUNT'}
+  "10": {label: "Tax liability after nonrefundable credits", pattern: 'line 8c minus line 9; if negative, enter zero\)[\s.]*10\.\s+AMOUNT', required: true}
+  "11": {label: "Interest penalty on underpayment of estimated tax", pattern: 'include Ohio IT/SD 2210\)[\s.]*11\.\s+AMOUNT'}
+  "12": {label: "Unpaid use tax", pattern: 'Unpaid use tax \(see instructions\)[\s.]*12\.\s+AMOUNT'}
+  "13": {label: "Total Ohio tax liability", pattern: 'add lines 10, 11, and 12\)[\s.]*13\.\s+AMOUNT'}
+  "14": {label: "Ohio income tax withheld", pattern: 'income statements\)[\s.]*14\.\s+AMOUNT'}
+  "15": {label: "Estimated and extension payments", pattern: 'original and/or amended \d{4} return[\s.]*15\.\s+AMOUNT'}
+  "16": {label: "Refundable credits", pattern: 'Schedule of Credits, line 47 \(include schedule\)[\s.]*16\.\s+AMOUNT'}
+  "17": {label: "Total Ohio tax payments", pattern: 'add lines 14, 15, and 16\)[\s.]*17\.\s+AMOUNT'}
+  "19": {label: "Line 17 minus line 18", pattern: 'Line 17 minus line 18\. Place a .-. in the box if negative[\s.]*19\.\s+AMOUNT'}
+  "20": {label: "Tax due", pattern: 'add line 19 to line 13[\s.]*20\.\s+AMOUNT'}
+  "22": {label: "Total amount due", pattern: 'with your check[\s.]*amount due ?22\.\s+AMOUNT'}
+  "23": {label: "Overpayment", pattern: 'Overpayment \(line 19 minus line 13\)[\s.]*23\.\s+AMOUNT'}
+  "26": {label: "Refund", pattern: 'YOUR REFUND ?26\.\s+AMOUNT'}
