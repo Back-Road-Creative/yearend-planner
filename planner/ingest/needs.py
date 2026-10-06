@@ -855,6 +855,50 @@ NEEDS: tuple[Need, ...] = (
         asked=lambda s: s.get("state") == "IL",
     ),
     Need(
+        "oh_additions",
+        "OH additions beyond the depreciation add-back (Schedule of Adjustments "
+        "lines 1-11)",
+        "added to federal AGI on OH IT 1040 line 2a",
+        "OH Schedule of Adjustments (non-Ohio municipal bond interest, 529 funds "
+        "used for other expenses, ...; most returns have none; type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "OH",
+    ),
+    Need(
+        "oh_deductions",
+        "OH deductions the draft does not already count (Schedule of Adjustments "
+        "lines 14-46)",
+        "subtracted on OH IT 1040 line 2b with the state refund, taxable social "
+        "security, US obligations interest and business income deduction",
+        "OH Schedule of Adjustments (railroad benefits, military pay, ...; type 0 "
+        "when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "OH",
+    ),
+    Need(
+        "oh_business_income",
+        "OH business income beyond Schedule C and F (Schedule of Business Income "
+        "lines 1, 3-5 and 7-9)",
+        "business income: the business income deduction and the 3% rate",
+        "K-1s, Form 4797 and guaranteed payments that are business income under "
+        "R.C. 5747.01(B) (type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "OH",
+    ),
+    Need(
+        "oh_use_tax",
+        "OH unpaid use tax (IT 1040 line 12)",
+        "tax on purchases no Ohio sales tax was collected on",
+        "your purchase records times your county's rate (the IT 1040 instructions' "
+        "use tax worksheet; type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "OH",
+    ),
+    Need(
         "nc_additions",
         "NC additions to federal AGI (D-400 Schedule S line 16)",
         "added to federal AGI on D-400 line 7",
