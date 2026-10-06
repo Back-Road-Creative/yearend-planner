@@ -135,7 +135,8 @@ Templates in `templates/forms/` now cover Form 1040 (both pages merge into one f
 issuer `self`), Schedules 1, 2, 3, C, D and SE, NC Form D-400 (issuer `NC`), CA Form 540 (issuer
 `CA`; Sides 2-5 merge into one form), NY Form IT-201 (issuer `NY`; pages 2-4 merge), PA Form PA-40 (issuer `PA`; Sides 1-2
 merge as form `PA-PA40`), IL Form IL-1040 (issuer `IL`; front and back merge as form
-`IL-IL1040`, the back's year read from its revision date R-12/25), the Social
+`IL-IL1040`, the back's year read from its revision date R-12/25), OH Form IT 1040
+(issuer `OH`; pages 1 and 2 merge as form `OH-IT1040`), the Social
 Security Statement (monthly estimates at 62, 67 and 70, tax year = statement year),
 1099-NEC, 1099-K, 1098, 5498, 5498-SA and 1099-SA. A template may name a literal
 `issuer` for the taxpayer's own documents instead of a payer regex, and the line
@@ -1024,6 +1025,51 @@ from the same engine run as the federal return.
 - **Not drafted, and named.** Part-year and nonresident returns (Schedule NR),
   lines 10c, 13, 15 (Schedule CR), 17 (1299-C), 20, 22, 27, 28, the IL-2210
   penalty (34) and donations (35).
+
+## The OH return: Form IT 1040 (unit 3d-10)
+
+For an Ohio full-year resident (`state: OH`), `planner draft` adds Form IT 1040
+with the Schedule of Adjustments, Schedule of Business Income and Schedule of
+Credits lines behind it, from the same engine run as the federal return.
+
+- **Lines.** Line numbers, the exemption amounts, the credits and the use tax
+  follow the 2025 IT 1040, its schedules and the IT 1040 instructions; line 8a
+  follows R.C. 5747.02(A)(3). Every line is in whole dollars, rounded half up
+  ("Round all figures to the nearest dollar").
+- **Adjustments (lines 1-3).** Federal AGI (1040 line 11a), plus the engine's
+  depreciation add-backs and `oh_additions` you type (line 2a); less the business
+  income deduction, the state refund, taxable social security, US obligations
+  interest and the other deductions the engine prices, plus `oh_deductions` you
+  type (line 2b).
+- **Business income.** Schedule C and Schedule F are business income, plus
+  `oh_business_income` you type for the rest (K-1s, Form 4797, guaranteed
+  payments). The first $250,000 ($125,000 married filing separately) is deducted;
+  the rest is taxed at 3% (Schedule of Business Income line 16, IT 1040 line 8b).
+- **Exemptions (line 4).** Each exemption is $2,400, $2,150 or $1,900 by modified
+  AGI (line 3 plus the business income deduction), zero at $750,000 or more.
+- **Tax (line 8a).** Nothing to $26,050; $342 plus 2.75% to $100,000; $2,394.32
+  plus 3.125% above. The engine's top-bracket base is $18.69 lower, and the
+  draft says so when line 7 is over $100,000.
+- **Credits.** Retirement income, senior citizen, child care and exemption
+  credits (Schedule of Credits lines 2-9); the joint filing credit (20% down to 5%
+  of line 11 by modified AGI less exemptions, up to $650) when each spouse has
+  $500 of qualifying income; the earned income credit (30% of the federal one);
+  the engine's refundable credits on line 16.
+- **Use tax (line 12).** `oh_use_tax` when typed; until then zero, and the draft
+  says so.
+- **Payments.** Line 14 is OH withholding from W-2 box 17 and 1099-R box 14
+  (`state_withheld`); line 15 the OH estimated payments from the bank export or
+  typed. The draft ends on line 23/26 (refund) or 20/22 (owed).
+- **Safe harbor.** Next year's OH safe harbor (IT/SD 2210) is line 10 less line
+  16, from the draft and from a filed IT 1040 alike; no penalty when the tax less
+  withholding is $500 or less.
+- **Check.** Line 3 is compared with the engine's Ohio AGI less the business
+  income deduction, and line 10 with its tax when nothing is typed and line 7 is
+  $100,000 or less. A gap past the rounding is printed as `CHECK:`.
+- **Not drafted, and named.** Part-year and nonresident returns (IT NRC, IT RC),
+  Schedule of Credits lines 3, 5, 7, 8 and 14-35, IT 1040 lines 11 (the IT/SD
+  2210 penalty), 21, 24 and 25; school district income tax is a separate return
+  (SD 100).
 
 ## The tax pack: one folder for the preparer (Phase 4l)
 

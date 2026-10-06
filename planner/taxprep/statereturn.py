@@ -6,9 +6,9 @@ engine variables the return reads, and the function that lays its lines.
 
 NC's D-400 is the first entry, CA's Form 540 the second (unit 3d-6), NY's
 IT-201 the third (unit 3d-7), PA's PA-40 the fourth (unit 3d-8), IL's
-IL-1040 the fifth (unit 3d-9). A drafted state is a module beside d400.py, a
-template under templates/forms/ (``issuer`` is the state's code; one per page
-when the return runs to several)
+IL-1040 the fifth (unit 3d-9), OH's IT 1040 the sixth (unit 3d-10). A
+drafted state is a module beside d400.py, a template under templates/forms/
+(``issuer`` is the state's code; one per page when the return runs to several)
 and an entry here; the draft, ``planner close``, the rollover and the
 coverage gate read this table, so nothing else names a state's return."""
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from planner.taxprep import ca540, d400, il1040, ny201, pa40
+from planner.taxprep import ca540, d400, il1040, ny201, oh1040, pa40
 
 
 @dataclass(frozen=True)
@@ -127,6 +127,27 @@ RETURNS: dict[str, StateReturn] = {
         keys=il1040.KEYS,
         engine=il1040.ENGINE,
         lay=il1040.lay_lines,
+    ),
+    "OH": StateReturn(
+        code="OH",
+        forms={
+            oh1040.FORM: ("OH Form IT 1040", "oh_it1040_draft"),
+            oh1040.ADJ: ("OH Schedule of Adjustments", "oh_it1040_draft"),
+            oh1040.BUS: ("OH Schedule of Business Income", "oh_it1040_draft"),
+            oh1040.CRED: ("OH Schedule of Credits", "oh_it1040_draft"),
+        },
+        form=oh1040.FORM,
+        template="OH-IT1040",
+        boxes=("1", "3", "4", "5", "6", "7", "8c", "9", "10", "12", "13", "14")
+        + ("15", "16", "17", "20", "22", "23", "26"),
+        # IT/SD 2210: the prior year's tax liability is IT 1040 line 10 less the
+        # refundable credits on line 16.
+        tax_line="10",
+        carry="state_tax",  # prior_state_tax's estimate
+        prior=("10", "-16"),
+        keys=oh1040.KEYS,
+        engine=oh1040.ENGINE,
+        lay=oh1040.lay_lines,
     ),
 }
 
