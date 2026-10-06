@@ -1,0 +1,15 @@
+# Georgia Form 500, page 4 (payments, the balance due or the overpayment).
+# Merges with pages 2 (ga-500.yaml) and 3 as form GA-500. "2026" on this
+# page is line 31's next year, so the year is read from the header only.
+form: GA-500
+years: [2025]
+match: ["Individual Income Tax Return", "Georgia Income Tax Withheld on Wages and 1099s"]
+year_pattern: 'Georgia Department of Revenue\s*(?:YOUR SOCIAL SECURITY NUMBER)?\s*(20\d\d)'
+issuer: GA
+boxes:
+  "24": {label: "Georgia income tax withheld on wages and 1099s", pattern: 'Withheld on Wages and 1099s[\s.]*24\.\s+AMOUNT'}
+  "26": {label: "Estimated tax paid", pattern: 'and Form IT-560[\s.]*26\.\s+AMOUNT'}
+  "27": {label: "Schedule 2B refundable tax credits", pattern: 'Schedule 2B Refundable Tax Credits[\s.]*27\.\s+AMOUNT'}
+  "28": {label: "Total prepayment credits", pattern: 'Add Lines 24, 25, 26 and 27\)[\s.]*28\.\s+AMOUNT'}
+  "29": {label: "Balance due", pattern: 'subtract Line 28 from Line 23 and enter[^\n]*\n[^\n]*?29\.\s+AMOUNT'}
+  "30": {label: "Overpayment", pattern: 'overpayment[\s.]*30\.\s+AMOUNT'}

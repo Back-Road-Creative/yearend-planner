@@ -899,6 +899,39 @@ NEEDS: tuple[Need, ...] = (
         asked=lambda s: s.get("state") == "OH",
     ),
     Need(
+        "ga_additions",
+        "GA additions to federal AGI (Form 500 Schedule 1 lines 1, 3-5)",
+        "added to federal AGI on GA Form 500 line 9 with the lump sum "
+        "distributions the planner counts",
+        "Form 500 Schedule 1 additions: interest on other states' and their "
+        "cities' bonds, the bonus depreciation add-back, ... (type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "GA",
+    ),
+    Need(
+        "ga_subtractions",
+        "GA subtractions the draft does not already count (Form 500 Schedule 1 "
+        "lines 11-12)",
+        "subtracted on GA Form 500 line 9 with the retirement exclusion, taxable "
+        "social security, Path2College 529 and US obligations interest",
+        "Form 500 Schedule 1 lines 11 and 12 (the IT-511 booklet's list of other "
+        "adjustments; type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "GA",
+    ),
+    Need(
+        "ga_itemized_adjustment",
+        "GA adjustments to federal itemized deductions (Form 500 line 12b)",
+        "taken off the federal itemized deductions on GA Form 500 line 12c",
+        "the IT-511 booklet's line 12b worksheet: other states' income taxes in "
+        "Schedule A's SALT, ... (type 0 when none; asked only when you itemize)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "GA",
+    ),
+    Need(
         "nc_additions",
         "NC additions to federal AGI (D-400 Schedule S line 16)",
         "added to federal AGI on D-400 line 7",
