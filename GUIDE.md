@@ -1385,6 +1385,38 @@ A married person filing separately takes neither credit; the draft takes none an
 so. A student's 1098-T is expected by January 31 (Expected forms) when `education` names
 one, and it reads as form `1098-T` (boxes 1 and 5).
 
+## Saver's credit (Phase 10, unit 3c-3)
+
+Every household is asked `roth_ira_contribution` (Form 5498 box 10, counting what goes in
+by the filing deadline; not rollovers or conversions; ABLE contributions as the
+beneficiary go here too) and `elective_deferrals` (W-2 box 12 codes D, E, F, G, H, S, AA,
+BB and EE, Roth deferrals included, plus voluntary after-tax contributions to a workplace
+plan). A joint spouse is asked their own (`spouse_roth_ira_contribution`,
+`spouse_elective_deferrals`). Anyone with a contribution the form counts (these two or the
+traditional IRA contribution) is also asked:
+
+- `savers_distributions`: every distribution from an IRA, Roth IRA, ABLE account or
+  workplace plan in the testing period (the two years before this one, this year, and
+  next year up to the filing deadline). On a joint return both spouses' go on each line,
+  except a spouse's from a year you did not file jointly. Leave out rollovers,
+  trustee-to-trustee transfers, Roth conversions, plan loans, returned excess
+  contributions, 404(k) dividends, military retirement and an inherited IRA's. The draft
+  never takes less than the year's own IRA distributions.
+- `savers_barred`: yes when someone else claims that person on their return, or they were
+  a full-time student during some part of five calendar months of the year.
+
+Someone born after January 1, 18 years back (after January 1, 2008, for 2025) cannot take
+the credit; the birth date decides it.
+
+The draft lays out Form 8880 (2025): each person's column, lines 1 and 2 less line 4
+(line 5), capped at $2,000 (line 6); both columns (line 7); AGI (line 8, Form 1040 line
+11a); the decimal from the line 9 table (0.5, 0.2 or 0.1 by AGI and filing status, and 0
+above $79,000 joint, $59,250 head of household or $39,500 otherwise, for 2025); the
+credit before the limit (line 10); the Credit Limit Worksheet (line 11: the tax on 1040
+line 18 less Schedule 3 lines 1-3); and the credit (line 12) on Schedule 3 line 4. The
+table comes from the engine's own parameters for the year and the tests pin its 2025
+edges to the printed form.
+
 ## Coverage gate (Phase 10, unit 2a)
 
 `planner.coverage.gate` runs right after intake, before any plan or draft, and lists

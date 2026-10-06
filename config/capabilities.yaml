@@ -69,6 +69,11 @@ education_credits:
   evidence: implemented
   tests: ["tests/test_form_8863.py"]
   note: "Form 8863 (unit 3c-2): the American opportunity credit per student (Part III lines 27-30), its refundable 40% (line 8, none when the line 7 conditions apply), the lifetime learning credit (lines 10-12) and the shared $80,000-$90,000 ($160,000-$180,000 joint) phase-out, with the i8863 adjusted-expenses examples (a Pell grant applied) and the recapture example as tests; the nonrefundable part goes on Schedule 3 line 3 through the Credit Limit Worksheet. Each student, the expenses paid and the aid are typed per student from the 1098-T; whether a student meets the American opportunity tests (first four years, half time, a credential, no felony drug conviction, not claimed four times) is the filer's answer. Not drafted: Part III lines 20-26 (school names and EINs), recapture of a credit taken in an earlier year, and expenses paid by someone else"
+savers_credit:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_form_8880.py"]
+  note: "Form 8880 (unit 3c-3): each spouse's traditional, Roth IRA and ABLE contributions (line 1) and W-2 box 12 elective deferrals (codes D, E, F, G, H, S, AA, BB, EE; line 2), less the testing period's distributions (line 4, never below the year's own IRA distributions), capped at $2,000 per person (line 6), times the line 9 decimal (checked at every edge of the 2025 table for every filing status) and held to the tax by the Credit Limit Worksheet, on Schedule 3 line 4. The age test (born after January 1, 18 years back) comes from the birth date; student and dependent status is the filer's yes or no. The testing period's distributions (two years back to the next filing deadline) are typed, since earlier years' 1099-Rs are not on file"
 aca_slcsp_county:
   status: verified
   evidence: implemented

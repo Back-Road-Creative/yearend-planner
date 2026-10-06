@@ -45,6 +45,11 @@ PERSON_INPUTS = {
 }
 
 
+# Each person's own Form 8880 money lines (unit 3c-3), typed or summed per
+# person like PERSON_INPUTS; the engine takes the line 5 they make, not these.
+PERSON_SAVERS = ("roth_ira_contribution", "elective_deferrals", "savers_distributions")
+
+
 @dataclass(frozen=True)
 class Person:
     """The spouse on a joint return: their age and their own income. Investment
@@ -61,6 +66,14 @@ class Person:
     tipped_occupation_code: int = 0
     qualified_overtime: int = 0
     dependent_care_benefits: int = 0  # their W-2 box 10
+    # Form 8880 (unit 3c-3): their Roth IRA and ABLE contributions (line 1 with the
+    # traditional IRA), elective deferrals (line 2), the testing period's
+    # distributions (line 4) and whether they can take the credit at all (None:
+    # the engine's own age, student and dependent tests)
+    roth_ira_contribution: int = 0
+    elective_deferrals: int = 0
+    savers_distributions: int = 0
+    savers_eligible: bool | None = None
     # Their W-2 boxes 3 and 7, to the wage base (Schedule SE line 8a: unit 3a-5);
     # None = the engine takes their wages
     ss_wages: int | None = None
@@ -119,6 +132,13 @@ def _people(kind: str, cls: type, data: Any) -> Any:
     return cls(**dict(data))
 
 
+def savers_line5(x: Household | Person, floor: int) -> int:
+    """Form 8880 line 5 for one person: lines 1 and 2 less line 4, not below
+    zero. ``floor`` is the least line 4 can be (the year's IRA distributions)."""
+    line3 = x.traditional_ira_contribution + x.roth_ira_contribution
+    return max(line3 + x.elective_deferrals - max(x.savers_distributions, floor), 0)
+
+
 @dataclass(frozen=True)
 class Household:
     age: int
@@ -169,6 +189,14 @@ class Household:
     dependent_care_benefits: int = 0
     dependent_care_grace: int = 0
     dependent_care_forfeited: int = 0
+    # Form 8880 (unit 3c-3): the head's Roth IRA and ABLE contributions (line 1 with the
+    # traditional IRA), elective deferrals (line 2), the testing period's
+    # distributions (line 4) and whether the head can take the credit at all (None:
+    # the engine's own age, student and dependent tests)
+    roth_ira_contribution: int = 0
+    elective_deferrals: int = 0
+    savers_distributions: int = 0
+    savers_eligible: bool | None = None
     other: dict[str, int] = field(default_factory=dict)
     # Tax-unit variables the engine takes as given instead of computing: the
     # draft return sets a Schedule 1-A deduction to the form's own figure (the
@@ -240,6 +268,7 @@ class Household:
         ``omit`` drops the head's inputs (a swept axis must not also be a fixed
         input; an engine axis moves the first person only).
         """
+        omit = tuple(omit)
         y = year
         person: dict[str, Any] = {
             "age": {y: self.age},
@@ -298,6 +327,21 @@ class Household:
             people[st.who]["qualified_tuition_expenses"] = {y: st.expenses}
             for flag in EDUCATION_CREDITS[st.credit]:
                 people[st.who][flag] = {y: True}
+        savers = [("p", self), *((("s", self.spouse),) if self.spouse else ())]
+        # Line 4 holds at least the year's own IRA distributions, both spouses'
+        # on a joint return (Form 8880 line 4); conversions are not on it.
+        floor = sum(x.ira_distributions for _, x in savers)
+        for who, x in savers:
+            if who == "p" and {
+                "traditional_ira_contributions",
+                "taxable_ira_distributions",
+            } & set(omit):
+                continue  # a sweep moves them: the engine's own line 5 follows
+            people[who]["savers_credit_qualified_contributions"] = {
+                y: savers_line5(x, floor)
+            }
+            if x.savers_eligible is not None:
+                people[who]["savers_credit_eligible_person"] = {y: x.savers_eligible}
         members = list(people)
         couple = [m for m in ("p", "s") if m in people]
         tax_unit: dict[str, Any] = {

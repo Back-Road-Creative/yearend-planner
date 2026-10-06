@@ -61,6 +61,7 @@ def test_inputs_mirror_the_needed_panel_and_the_recorded_conversions(
         qualified_dividends=3000,
         non_qualified_dividends=0,
         roth_conversion=40000,
+        savers_eligible=True,
     )
     assert inp.origins["roth_conversion"] == "conversions recorded this year"
     assert "wages" in inp.unknown and "qualified_dividends" not in inp.unknown
