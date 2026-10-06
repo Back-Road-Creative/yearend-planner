@@ -178,6 +178,8 @@ class Inputs:
     tax_age: int | None = None
     spouse_tax_age: int | None = None  # the same, for a joint return's spouse
     spouse_death: str | None = None  # a joint spouse who died in the year (3b-3)
+    married: str | None = None  # a joint return's marriage date in the year (3b-4)
+    spouse_kids: int = 0  # dependents on the spouse's side before the marriage
     notes: list[str] = field(default_factory=list)
     overrides: Overrides = field(default_factory=Overrides)
     forecast: list[forecast.Stream] = field(default_factory=list)
@@ -319,6 +321,25 @@ def build(
         )
         for d in value.get("dependents") or ()
     )
+    wed = value.get("marriage_date")
+    if (
+        fields["filing_status"] == "JOINT"
+        and wed
+        and wed != "none"
+        and date.fromisoformat(str(wed)).year == year
+    ):
+        out.married = str(wed)
+        kids, n = (
+            int(value.get("spouse_premarriage_dependents") or 0),
+            len(fields["dependents"]),
+        )
+        out.spouse_kids = min(kids, n)
+        if kids > n:
+            out.notes.append(
+                f"spouse_premarriage_dependents is {kids} but the return has {n} "
+                f"dependents: the year-of-marriage calculation counts {n} on your "
+                "spouse's side; check spouse_premarriage_dependents"
+            )
     out.coverage = coverage.gate(
         lay,
         fields["state"],

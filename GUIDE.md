@@ -1202,7 +1202,7 @@ checks its own folder first with `findstr` and prints the same warning before
 it downloads or runs anything, so a double-click in a synced folder explains
 itself in the window it keeps open.
 
-## Scope guard and the household's people (Phase 10, units 0b, 3a-2 to 3a-7 and 3b-1 to 3b-3)
+## Scope guard and the household's people (Phase 10, units 0b, 3a-2 to 3a-7 and 3b-1 to 3b-4)
 
 The profile names the household's people: `spouse_birth_date` (asked when the filing
 status is married_joint), `spouse_death_date` (a date or `none`; asked for married_joint
@@ -1246,6 +1246,30 @@ The draft's notes say to check the spouse's Deceased box with the date and to si
 leaves that year's joint return as it is. The date is the current spouse's: after a
 remarriage in the year the joint return is with the new spouse (`none`), and the
 deceased spouse's own return, married filing separately, is not drafted.
+
+A couple married during the year (unit 3b-4, `marriage_date`: a date or `none`, asked
+for married_joint) may repay less excess advance premium credit through Form 8962's
+alternative calculation for the year of marriage (2025 Form 8962 instructions, Table 4
+and Worksheet 3; Pub. 974, Worksheets I-V). When dependents are named,
+`spouse_premarriage_dependents` says how many were the spouse's before the marriage
+(a child the spouse could claim; one either of you could claim may go on either side);
+more than there are dependents is cut to the number of dependents, with a note. The
+draft runs it when the return is joint, each of you was unmarried on January 1,
+someone had marketplace coverage before the first full month of marriage, and the
+regular calculation leaves an excess advance. Each spouse's family before the marriage
+(you or the spouse, plus the dependents on that side) gets half the household income
+over the poverty line for its own size (`planner.engine.tax.poverty_line`), its own
+applicable figure (`applicable_figure`, i8962 Table 2) and monthly contribution, run
+against that spouse's own 1095-A (documents are each person's, unit 3a-4) from the
+first month of coverage to the month of marriage. The draft elects it only when
+Worksheet V's total is more than the regular credit for those months: then the
+pre-marriage months' columns (c) and (e) are the worksheets', lines 35-36 hold each
+side's family size, contribution and months, line 26 is zero and the notes say to check
+Yes on line 9 and No on line 10, with the repayment before and after. Otherwise a note
+says it does not lower the excess and Part V stays blank. The tests run Pub. 974's own
+example (Paulette Oak and Quentin Cedar: line 24 $7,021, line 29 $1,402 against $2,942).
+A policy covering both spouses in the month of marriage counts on its owner's side, and
+the calculation runs only when the household is eligible for the credit at all.
 
 The line leads the dashboard's alerts (kind `scope`), reaches the draft return's notes,
 `planner magi` and the tax pack's notes. Once the people are named it goes: the draft lays out the spouse's Schedule 1-A line 36b and the dependents'
