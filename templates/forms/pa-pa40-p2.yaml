@@ -1,0 +1,26 @@
+# Pennsylvania Form PA-40, Side 2 (tax, payments, forgiveness, credits, use
+# tax, the refund or amount due). Merges with Side 1 (pa-pa40.yaml) as form
+# PA-PA40; line 12 is required here. Next year's safe harbor (REV-1630) reads
+# line 12 less the line 21 forgiveness.
+form: PA-PA40
+years: [2025]
+match: ["PA-40 20", "PA Tax Liability. Multiply Line 11"]
+year_pattern: 'PA-40 (20\d\d) \d\d-\d\d'
+issuer: PA
+boxes:
+  "12": {label: "PA tax liability", pattern: 'PA Tax Liability\. Multiply Line 11 by [\d.]+ percent \([\d.]+\)[\s.•]*12\.\s+AMOUNT', required: true}
+  "13": {label: "Total PA tax withheld", pattern: 'Total PA Tax Withheld\. See the instructions[\s.•]*13\.\s+AMOUNT'}
+  "14": {label: "Credit from the prior year's return", pattern: 'PA Income Tax return[\s.•]*14\.\s+AMOUNT'}
+  "15": {label: "Estimated installment payments", pattern: 'including Form REV-459B\.?[\s.•]*15\.\s+AMOUNT'}
+  "18": {label: "Total estimated payments and credits", pattern: 'Add Lines 14, 15, 16, and 17[\s.•]*18\.\s+AMOUNT'}
+  "21": {label: "Tax forgiveness credit", pattern: 'Section IV, Line 16, PA Schedule SP[\s.•]*21\.\s+AMOUNT'}
+  "22": {label: "Resident credit", pattern: 'G-L and/or RK-1[\s.•]*22\.\s+AMOUNT'}
+  "23": {label: "Total other credits", pattern: 'PA Schedule OC and/or PA Schedule DC[\s.•]*23\.\s+AMOUNT'}
+  "24": {label: "Total payments and credits", pattern: 'Add Lines 13, 18, 21, 22, and 23[\s.•]*24\.\s+AMOUNT'}
+  "25": {label: "Use tax", pattern: 'out-of-state purchases\. See the instructions\.[\s.•]*25\.\s+AMOUNT'}
+  "26": {label: "Tax due", pattern: 'more than Line 24,\s+enter the difference here[\s.•]*26\.\s+AMOUNT'}
+  "27": {label: "Penalties and interest", pattern: 'REV-1630/REV-1630A[\s.•]*27\.\s+AMOUNT'}
+  "28": {label: "Total payment due", pattern: 'TOTAL PAYMENT DUE\. See the instructions[\s.•]*28\.\s+AMOUNT'}
+  "29": {label: "Overpayment", pattern: 'and Line 27\s+enter the difference here[\s.•]*29\.\s+AMOUNT'}
+  "30": {label: "Refund", pattern: 'as a check mailed to you[\s.•]*REFUND\s+30\.\s+AMOUNT'}
+  "31": {label: "Credit to next year's estimated account", pattern: 'estimated account[\s.•]*31\.\s+AMOUNT'}
