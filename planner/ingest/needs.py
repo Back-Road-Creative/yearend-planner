@@ -66,7 +66,8 @@ class Need:
     kind: str  # date | int | money | fraction | enum | monthly | dependents |
     # education | str
     scope: str = YEAR
-    boxes: tuple[tuple[str, str], ...] = ()  # (form, box) ledger lookups, summed
+    # (form, box) ledger lookups, summed; a "-" before the box subtracts it
+    boxes: tuple[tuple[str, str], ...] = ()
     estimate: tuple[tuple[str, str], ...] = ()  # YTD facts that stand in meanwhile
     choices: tuple[str, ...] = ()
     # An estimate computed from the ledger when the boxes give nothing:
@@ -1767,9 +1768,10 @@ def _sum_boxes(
     total = 0.0
     origins: list[str] = []
     for form, box in boxes:
+        name, sign = statereturn.signed(box)
         for f in db.facts_for(conn, year, form):
-            if f.box == box and owner in (None, f.owner):
-                total += f.value
+            if f.box == name and owner in (None, f.owner):
+                total += sign * f.value
                 origins.append(_origin(f))
     if not origins:
         return None

@@ -27,7 +27,9 @@ class StateReturn:
     boxes: tuple[str, ...]  # template boxes; the draft form numbers them the same
     tax_line: str  # the state's income tax: what the safe harbor carries
     carry: str  # the rollover key it carries under (CARRY-EST)
-    prior: tuple[str, ...]  # the filed return's lines whose sum the safe harbor reads
+    # The lines next year's safe harbor sums, from the filed return or the
+    # draft alike; a "-" before a line subtracts it (NY's refundable credits).
+    prior: tuple[str, ...]
     keys: tuple[str, ...]  # typed Needed keys the return reads
     engine: tuple[str, ...]  # engine variables the return reads
     # (add, notes, values, facts, paid, year, agi, typed, status): lays the
@@ -63,9 +65,8 @@ RETURNS: dict[str, StateReturn] = {
         template="CA-540",
         boxes=("13", "17", "19", "31", "48", "64", "71", "72", "78", "97", "99")
         + ("100", "111", "115"),
-        # 540-ES 2026 worksheet line 19b: lines 48, 61 and 62 of the 2025 540;
-        # line 64 adds line 63, which the draft leaves empty, so a filed 540
-        # carries the three lines and the draft carries line 64.
+        # 540-ES 2026 worksheet line 19b: lines 48, 61 and 62 of the 2025 540
+        # (line 64 adds line 63, which the safe harbor leaves out).
         tax_line="64",
         carry="state_tax",  # prior_state_tax's estimate
         prior=("48", "61", "62"),
@@ -85,6 +86,21 @@ def prior_boxes(carry: str) -> tuple[tuple[str, str], ...]:
         if r.carry == carry
         for line in r.prior
     )
+
+
+def signed(line: str) -> tuple[str, float]:
+    """A ``prior`` entry as (line, sign): "-63" subtracts line 63."""
+    return (line[1:], -1.0) if line.startswith("-") else (line, 1.0)
+
+
+def carried(get: Callable[[str, str], float | None], ret: StateReturn) -> float | None:
+    """The safe-harbor tax a draft carries: the signed sum of the ``prior``
+    lines it laid (``get`` is Draft.get), None when it laid none; the same
+    lines a filed return is read for."""
+    got = [(sign, get(ret.form, line)) for line, sign in map(signed, ret.prior)]
+    if all(v is None for _, v in got):
+        return None
+    return round(sum(sign * v for sign, v in got if v is not None), 2)
 
 
 def get(code: str | None) -> StateReturn | None:
