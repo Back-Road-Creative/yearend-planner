@@ -333,6 +333,35 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("MAGI headroom", "Roth conversion", "Levers", "Draft 1040"),
     ),
     Need(
+        "marriage_date",
+        "Date you married during the year (or none)",
+        "a couple married during the year who each had a marketplace plan before "
+        "it may repay less excess advance credit: Form 8962's alternative "
+        "calculation for the year of marriage (Pub. 974)",
+        "the date as YYYY-MM-DD, or none",
+        "date_or_none",
+        PROFILE,
+        asked=lambda s: s.get("filing_status") == "married_joint",
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "spouse_premarriage_dependents",
+        "How many of the dependents were your spouse's before the marriage",
+        "the year-of-marriage calculation splits the household into your family "
+        "and your spouse's before the marriage: a child counts on your spouse's "
+        "side only if your spouse could claim them (Pub. 974, Alternative Family "
+        "Size); one either of you could claim may go on either side",
+        "a whole number, 0 when every dependent was yours",
+        "int",
+        PROFILE,
+        asked=lambda s: (
+            s.get("filing_status") == "married_joint"
+            and s.get("marriage_date") not in (None, "none")
+            and bool(s.get("dependents"))
+        ),
+        unlocks=("Draft 1040",),
+    ),
+    Need(
         "spending_floor",
         "Spending floor (annual $)",
         "the lowest the household can run on",
@@ -1154,7 +1183,9 @@ def need_for(key: str) -> Need:
 SIGNED = frozenset({"se_income", "short_term_gains", "long_term_gains"})
 # The Treasury tipped-occupation list (IRS.gov/TippedOccupations) numbers its
 # occupations with three-digit codes; 0 is "none".
+DEPENDENTS_MAX = 20
 INT_RANGE = {
+    "spouse_premarriage_dependents": (0, DEPENDENTS_MAX),
     "ss_claim_age": (62, 70),
     "hsa_months": (0, 12),
     "hsa_family_share": (0, 100),
@@ -1163,7 +1194,6 @@ INT_RANGE = {
 MONEY_MAX = 100_000_000
 TEXT_MAX = 200
 DEPENDENT_MARKS = ("student", "disabled")  # full-time student; permanently disabled
-DEPENDENTS_MAX = 20
 
 
 def _number(need: Need, s: str, what: str) -> float:
