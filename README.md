@@ -60,6 +60,9 @@ line 29 and the nonrefundable credits on Schedule 3 line 3 (unit 3c-2).
 Roth IRA and ABLE contributions, W-2 box 12 elective deferrals and the testing period's
 distributions are typed per spouse; the draft carries Form 8880, the saver's credit, on
 Schedule 3 line 4 (unit 3c-3).
+Foreign tax on Forms 1099-DIV (box 7) and 1099-INT (box 6) becomes the foreign tax credit on
+Schedule 3 line 1: by the election at $300 or less ($600 joint), else by Form 1116 for
+passive income, the Worksheet for Line 18 included (unit 3e-7).
 The draft works the earned income credit on 1040 line 27a by the EIC worksheet and the
 EIC Table, with Schedule EIC for each qualifying child (unit 3c-4), and Schedule 8812's
 additional child tax credit line by line, Part II-B included (unit 3c-5).

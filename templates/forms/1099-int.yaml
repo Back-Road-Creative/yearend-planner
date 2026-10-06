@@ -6,4 +6,5 @@ boxes:
   "1": {label: "Interest income", pattern: "\\b1 Interest income\\s+AMOUNT", required: true}
   "3": {label: "Interest on U.S. Savings Bonds and Treasury obligations", pattern: "\\b3 Interest on U\\.?S\\.? Savings Bonds[^\\n]*?\\s+AMOUNT"}
   "4": {label: "Federal income tax withheld", pattern: "\\b4 Federal income tax withheld\\s+AMOUNT"}
+  "6": {label: "Foreign tax paid", pattern: "\\b6 Foreign tax paid\\s+AMOUNT"}
   "8": {label: "Tax-exempt interest", pattern: "\\b8 Tax-exempt interest\\s+AMOUNT"}

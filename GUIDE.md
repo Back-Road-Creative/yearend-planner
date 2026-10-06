@@ -1909,6 +1909,42 @@ line 18 less Schedule 3 lines 1-3); and the credit (line 12) on Schedule 3 line 
 table comes from the engine's own parameters for the year and the tests pin its 2025
 edges to the printed form.
 
+## Foreign tax credit (Phase 10, unit 3e-7)
+
+A fund that holds foreign stocks pays tax to other countries and passes it to you on Form
+1099-DIV box 7 (a bank, on 1099-INT box 6). It comes off your U.S. tax on Schedule 3
+line 1. The Needed panel reads it as `foreign_tax_paid` whenever you have interest or
+dividends (0 when no form shows any).
+
+- **$300 or less ($600 married filing jointly), no carryover.** The election (Form 1116
+  instructions): no form, all of it is the credit, up to Form 1040 line 16 plus Schedule
+  2 line 1z. No unused tax carries to or from that year.
+- **More, or a carryover.** The panel asks `foreign_source_income` (each fund's year-end
+  foreign source income statement), `foreign_qualified_dividends` (the qualified part)
+  and `foreign_tax_carryover` (unused tax from last year's Schedule B (Form 1116), 0 when
+  none), and the draft lays out Form 1116 for passive category income in one column, as
+  the instructions allow for a mutual fund. Line 3a is your standard deduction, or when
+  you itemize the real estate taxes' share of the capped state and local tax deduction
+  (flagged CHECK: add medical expenses, general sales tax and personal property taxes if
+  you have them); 3b is Schedule 1 line 26; 3e is Form 1040 line 9 (a smaller figure than
+  gross income, so the credit is never overstated); 4a is 0 at $5,000 or less of foreign
+  income, else deductible mortgage interest times 3d / 3e. Line 18 is taxable income plus
+  Schedule 1-A line 37; line 20 is Form 1040 line 16 plus Schedule 2 line 1z.
+- **Qualified dividends.** When your dividends and gains are taxed at the lower rates,
+  foreign qualified dividends on line 1a are multiplied by 0.4054 (taxed at 15%) or
+  0.5405 (20%) or left out (0%), and line 18 comes from the Worksheet for Line 18. Below
+  the 24% bracket's top ($197,300, or $394,600 joint, for 2025) with foreign qualified
+  dividends under $20,000 you may skip the adjustment; the draft takes whichever credit
+  is larger and says so. A split across rates is pro rata and flagged CHECK.
+- **The limit.** The credit is the smaller of the tax paid plus the carryover (line 14)
+  and the U.S. tax times foreign over total taxable income (line 21). Tax over the limit
+  carries back 1 year and forward 10: the draft names the amount; type it next year as
+  `foreign_tax_carryover`. The credit then reprices the return, so the child care,
+  education, saver's and child tax credit limits all start after it.
+- **Not drafted, and named.** Other categories (general, section 901(j), treaty), foreign
+  tax on Schedules K-1 and K-3, foreign capital gains (Worksheets A and B), lines 2, 5,
+  12, 13, 16, 22 and 34, the asset method for line 4b, and Schedules B and C (Form 1116).
+
 ## Earned income credit (Phase 10, unit 3c-4)
 
 The draft works Form 1040 line 27a by the instructions' EIC worksheet (2025): Worksheet A,

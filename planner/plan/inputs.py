@@ -524,6 +524,13 @@ def build(
     # Form 4797 line 18b, Schedule 1 line 4 (unit 3e-6c)
     if cg.form4797 is not None and cg.form4797.line18b:
         rate_gains["other_net_gain"] = cg.form4797.line18b
+    # The foreign tax credit (unit 3e-7): the tax itself, the engine capping
+    # it at the whole tax; the draft applies Form 1116's limit
+    foreign = float(value.get("foreign_tax_paid") or 0)
+    if foreign:
+        rate_gains["foreign_tax_credit_potential"] = foreign + float(
+            value.get("foreign_tax_carryover") or 0
+        )
     if rate_gains:
         fields["tax_unit_inputs"] = {**fields.get("tax_unit_inputs", {}), **rate_gains}
     out.household = Household(**fields)
