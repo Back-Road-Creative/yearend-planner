@@ -54,6 +54,9 @@ unit 3b-4, Pub. 974).
 A household with a child under 13 is asked for the care it paid and any dependent care
 benefits (W-2 box 10); the draft carries Form 2441, its credit on Schedule 3 line 2 and
 benefits above the care or the lower earner's income on Form 1040 line 1e (unit 3c-1).
+Each student's tuition, the aid applied and the credit taken are typed per student; the
+draft carries Form 8863, the American opportunity credit's refundable part on Form 1040
+line 29 and the nonrefundable credits on Schedule 3 line 3 (unit 3c-2).
 `planner separate` prices a joint couple's two married-filing-separately returns, each
 on that spouse's own documents, against the joint return (unit 3b-2; not in a
 community property state). Filing as married filing separately stays
