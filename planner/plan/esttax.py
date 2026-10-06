@@ -1,5 +1,8 @@
 """Estimated tax: the safe harbor, the four installments, what was paid and
-when, the next due date and amount. Federal and NC separately. A payment is
+when, the next due date and amount. Federal and the household's state (when
+it taxes income) separately, each on its own installment rules (``states``;
+a state without its own rules in the planner is on the federal ones, and says
+so). A payment is
 credited to the installment whose window it falls in, so a late payment never
 cures an earlier shortfall. The Form 2210 penalty itself is reported as
 unavailable."""
@@ -12,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
+from planner import states
 from planner.engine.tax import r
 from planner.ingest.needs import load_manual, manual_path, need_value
 from planner.ledger import db
@@ -21,27 +25,37 @@ from planner.plan.inputs import UNKNOWN, Overrides
 from planner.plan.magi import HIGH_INCOME_AGI, project
 
 PAYMENTS = "payments"  # top-level list in the year's manual file
-AGENCIES = ("fed", "nc")
-DESCRIPTIONS = {
-    "fed": re.compile(r"IRS|USATAXPYMT|US TREASURY|EFTPS", re.I),
-    "nc": re.compile(r"NCDOR|NC ?DOR|N\.?C\.? DEPT\.? OF REV|NC DEPT REVENUE", re.I),
-}
-DE_MINIMIS = {"fed": 1_000.0, "nc": 1_000.0}
-HIGH_INCOME_FACTOR = {"fed": 1.10, "nc": 1.00}
+FED = "fed"
+FED_PAYEE = re.compile(r"IRS|USATAXPYMT|US TREASURY|EFTPS", re.I)
 LUMPY_SHARE = 0.50
-WITHHELD = ("fed_withheld", "nc_withheld")  # the year's withholding, per agency
 
 
-def due_dates(year: int) -> list[date]:
-    """The four installment due dates, each moved to the next business day
-    when the 15th is a weekend or a holiday."""
-    nominal = (
-        date(year, 4, 15),
-        date(year, 6, 15),
-        date(year, 9, 15),
-        date(year + 1, 1, 15),
-    )
-    return [shift(d) for d in nominal]
+def agencies(state: str) -> tuple[str, ...]:
+    """fed, then the state's key ("nc") when the state taxes income; a value
+    that is not a state code adds none (the coverage gate names it)."""
+    st = states.STATES.get(state.upper()) if state else None
+    return (FED, st.agency) if st is not None and st.income_tax else (FED,)
+
+
+def rules(agency: str) -> tuple[states.EstRules, bool]:
+    """The agency's installment rules, and whether they are its own."""
+    return (states.FEDERAL, True) if agency == FED else states.rules(agency)
+
+
+def withheld_key(agency: str) -> str:
+    """The Needed item holding the agency's withholding for the year."""
+    return {FED: "fed_withheld", "nc": "nc_withheld"}.get(agency, "state_withheld")
+
+
+def prior_key(agency: str) -> str:
+    """The Needed item holding the agency's prior-year tax."""
+    return {FED: "prior_total_tax", "nc": "prior_nc_tax"}.get(agency, "prior_state_tax")
+
+
+def due_dates(year: int, agency: str = FED) -> list[date]:
+    """The agency's installment due dates for tax year ``year``, each moved to
+    the next business day when it falls on a weekend or a federal holiday."""
+    return [shift(date(year + off, m, d)) for off, m, d in rules(agency)[0].due]
 
 
 @dataclass(frozen=True)
@@ -56,7 +70,7 @@ class Payment:
         """1-4: the first installment whose due date is on or after the date."""
         paid = date.fromisoformat(self.date)
         for n, due in enumerate(
-            due_dates(paid.year if paid.month > 1 else paid.year - 1), 1
+            due_dates(paid.year if paid.month > 1 else paid.year - 1, self.agency), 1
         ):
             if paid <= due:
                 return n
@@ -102,8 +116,11 @@ class EstTax:
 
 def record(lay: Layout, year: int, agency: str, paid: str, amount: float) -> Payment:
     """Type a payment the bank export does not show (or did not match)."""
-    if agency not in AGENCIES:
-        raise ValueError(f"agency must be one of {', '.join(AGENCIES)}")
+    st = states.STATES.get(agency.upper())
+    if agency != FED and (st is None or not st.income_tax or agency != st.agency):
+        raise ValueError(
+            "agency must be fed or a state that taxes income, lowercase (nc, ca)"
+        )
     date.fromisoformat(paid)
     data = load_manual(lay, year)
     data.setdefault(PAYMENTS, []).append(
@@ -116,8 +133,14 @@ def record(lay: Layout, year: int, agency: str, paid: str, amount: float) -> Pay
 
 
 def payments(conn: sqlite3.Connection, lay: Layout, year: int) -> list[Payment]:
-    """Bank withdrawals to the IRS or NCDOR inside the year's windows, plus the
-    typed ones; the January window belongs to the prior tax year."""
+    """Bank withdrawals to the IRS or a state revenue department the planner
+    knows by name (``states``: NCDOR) inside the year's windows, plus the typed
+    ones; the January window belongs to the prior tax year."""
+    payees = {FED: FED_PAYEE}
+    for st in states.STATES.values():
+        pat = states.payee(st.code)
+        if pat is not None:
+            payees[st.agency] = pat
     out: list[Payment] = []
     lo, hi = date(year, 1, 16), date(year + 1, 1, 15)
     for row in db.rows_for(conn, kind="bank"):
@@ -126,7 +149,7 @@ def payments(conn: sqlite3.Connection, lay: Layout, year: int) -> list[Payment]:
         when = date.fromisoformat(row.date)
         if not lo <= when <= hi:
             continue
-        for agency, pat in DESCRIPTIONS.items():
+        for agency, pat in payees.items():
             if pat.search(row.description or ""):
                 out.append(
                     Payment(
@@ -154,7 +177,7 @@ def safe_harbor(
     if prior is None:
         return cur, "90% of this year's projected tax (prior year unknown)"
     factor = (
-        HIGH_INCOME_FACTOR[name]
+        rules(name)[0].high_income_factor
         if prior_agi is not None and prior_agi > HIGH_INCOME_AGI
         else 1.0
     )
@@ -183,13 +206,16 @@ def _agency(
     year: int,
     as_of: date,
 ) -> Agency:
+    rule, own = rules(name)
     annual, basis = safe_harbor(name, current, prior, prior_agi)
     required = r(max(annual - withheld, 0.0))
-    de_minimis = r(current - withheld) < DE_MINIMIS[name]
+    de_minimis = r(current - withheld) < rule.de_minimis
     ag = Agency(name, current, prior, prior_agi, required, basis, withheld, de_minimis)
     ag.payments = [p for p in paid if p.agency == name]
-    for n, due in enumerate(due_dates(year), 1):
-        req = r(required * n / 4) if not de_minimis else 0.0
+    for n, (due, share) in enumerate(
+        zip(due_dates(year, name), rule.shares, strict=True), 1
+    ):
+        req = r(required * share) if not de_minimis else 0.0
         by_due = r(
             sum(p.amount for p in ag.payments if date.fromisoformat(p.date) <= due)
         )
@@ -202,9 +228,15 @@ def _agency(
             ag.next_due = inst.due
             ag.next_amount = r(max(inst.required - total_paid, 0.0))
             break
+    if not own:
+        ag.notes.append(
+            f"{name}: Estimated: the state's own installment rules are not in the "
+            "planner; the federal dates, shares, de minimis and safe harbor "
+            "stand in"
+        )
     if de_minimis:
         ag.notes.append(
-            f"{name}: tax after withholding under {DE_MINIMIS[name]:,.0f}; "
+            f"{name}: tax after withholding under {rule.de_minimis:,.0f}; "
             "no estimated payments required"
         )
     missed = [
@@ -240,7 +272,7 @@ def next_year_required(ag: Agency, agi: float) -> float:
     legs) less the same withholding, floored at zero (IRC 6654(d)(1)(B): no
     installment is due when withholding covers it), and zero under the de
     minimis test. ``cash_flows`` and the year plan's calendar both read it."""
-    if r(ag.current_tax - ag.withheld) < DE_MINIMIS[ag.name]:
+    if r(ag.current_tax - ag.withheld) < rules(ag.name)[0].de_minimis:
         return 0.0
     annual, _ = safe_harbor(ag.name, ag.current_tax, ag.current_tax, agi)
     return r(max(annual - ag.withheld, 0.0))
@@ -283,8 +315,13 @@ def cash_flows(et: EstTax) -> tuple[list[Flow], list[str]]:
             flows.append(Flow(filing.isoformat(), ag.name, owed, "balance due"))
         required = next_year_required(ag, et.agi)
         before = 0.0
-        for n, due in enumerate(due_dates(et.year + 1)[:3], 1):
-            cum = r(required * n / 4)
+        rule = rules(ag.name)[0]
+        dated = zip(rule.due, due_dates(et.year + 1, ag.name), rule.shares, strict=True)
+        # the installments that fall inside the following year (not January's)
+        for n, ((off, _month, _day), due, share) in enumerate(dated, 1):
+            if off:
+                continue
+            cum = r(required * share)
             flows.append(
                 Flow(
                     due.isoformat(),
@@ -310,13 +347,13 @@ def estimate(
     try:
         paid = payments(conn, lay, year)
         quarters = _quarters(conn, year)
+        names = agencies(pj.inputs.household.state)
+        prior_agi = need_value(conn, lay, year, "prior_agi")
         prior: dict[str, Any] = {
-            k: need_value(conn, lay, year, k)
-            for k in ("prior_agi", "prior_total_tax", "prior_nc_tax")
+            a: need_value(conn, lay, year, prior_key(a)) for a in names
         }
         withheld = {
-            "fed": float(need_value(conn, lay, year, "fed_withheld") or 0),
-            "nc": float(need_value(conn, lay, year, "nc_withheld") or 0),
+            a: float(need_value(conn, lay, year, withheld_key(a)) or 0) for a in names
         }
     finally:
         conn.close()
@@ -330,17 +367,19 @@ def estimate(
     # Form 2210 Part I and the 1040-ES worksheet test the 90% leg on line 24 less
     # the refundable credits (EIC, additional child tax credit, refundable AOTC);
     # compute's fed_total_tax is the gross line 24.
-    for name, current, prior_key in (
-        ("fed", r(res.fed_total_tax - res.refundable_credits), "prior_total_tax"),
-        ("nc", res.state_tax, "prior_nc_tax"),
-    ):
-        pri = prior[prior_key]
+    for name in names:
+        current = (
+            r(res.fed_total_tax - res.refundable_credits)
+            if name == FED
+            else res.state_tax
+        )
+        pri = prior[name]
         et.agencies.append(
             _agency(
                 name,
                 current,
                 float(pri) if pri is not None else None,
-                float(prior["prior_agi"]) if prior["prior_agi"] is not None else None,
+                float(prior_agi) if prior_agi is not None else None,
                 withheld[name],
                 paid,
                 year,
@@ -353,7 +392,13 @@ def estimate(
             "lump): the annualized method (Schedule AI) may cut an earlier "
             "installment's shortfall; not computed"
         )
-    for key in WITHHELD:
+    if len(names) == 1 and res.state_tax > 0:
+        et.notes.append(
+            f"{pj.inputs.household.state}: the engine's {res.state_tax:,.2f} of "
+            "state tax has no installments here and is not on the cash line "
+            "(a state with no income tax: a capital gains excise, say)"
+        )
+    for key in (withheld_key(a) for a in names):
         if pj.inputs.state(key) == UNKNOWN:
             et.notes.append(
                 f"{key} unknown: the amounts due assume nothing was withheld "

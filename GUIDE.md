@@ -411,18 +411,27 @@ is still open as of the date.
 ## Planners: estimated tax (Phase 4d)
 
 `planner esttax --year 2026 [--as-of …] [--conversion 40000 …]` shows, for the
-IRS and NC separately: the projected tax, the safe harbor (the lesser of 90% of
+IRS and the state you live in separately (no state line in the nine states
+without an income tax: AK, FL, NV, NH, SD, TN, TX, WA, WY): the projected tax, the safe harbor (the lesser of 90% of
 this year's tax and 100% of last year's — 110% federal when last year's AGI
 topped 150,000; 90% of this year's when the prior return is not in), the four
 installments (April 15, June 15, September 15, January 15) with what was paid
 by each due date, and the next payment. Payments come from bank rows whose
 description names the IRS (`USATAXPYMT`, `EFTPS`) or NCDOR, plus anything
 typed with `planner paid --year 2026 --agency fed --on 2026-04-10 --amount 1200`
-(kept in the year's manual file). A payment counts toward the installment
+(`--agency` is `fed` or the state's code in lowercase, `nc`, `ca`; kept in the
+year's manual file; another state's payments are typed). NC's installment
+rules are its own (Form NC-40: the federal dates, 1,000 de minimis, 100% of
+last year with no 110% step). Every other state's are not in the planner yet:
+the federal dates, shares, de minimis and safe harbor stand in, and the state's
+line says `Estimated:` (unit 3d-1; each state's own rules follow in 3d-2). A payment counts toward the installment
 whose window it falls in, so a late payment never cures an earlier shortfall.
 Tax after withholding under 1,000 is de minimis (no payments required);
-withholding comes from `fed_withheld` / `nc_withheld` on the Needed panel (a W-2
-template now reads boxes 1, 2, 16 and 17).
+withholding comes from `fed_withheld` and `nc_withheld`, or `state_withheld`
+for another state, on the Needed panel (W-2 box 17, 1099-R box 14); last
+year's state tax is `prior_nc_tax` or `prior_state_tax`. Each is asked only
+for the state it belongs to, and the state itself is typed as its two-letter
+code.
 Income with over half in one quarter, or a planned year-end lump, raises the
 annualized-method flag (Schedule AI is not computed). The Form 2210 penalty is
 reported as unavailable.
@@ -436,7 +445,8 @@ spending band, the glide path with its stresses and the first month the cash
 line goes negative, the cash to raise and the lots to sell, estimated tax by
 agency with the next payment, wash-sale flags and open windows, and the
 deadline calendar from October through next September (the June and September
-estimated payments are marked "if required" and name the agencies whose
+estimated payments, federal and your state's on one line when the dates
+match, are marked "if required" and name the agencies whose
 `planner esttax` result owes them, resting on this year's tax after withholding). The same `--as-of`
 and override options as the planners it composes. A planner whose required
 input is still unknown reports what it needs and the rest of the page still
@@ -1456,9 +1466,11 @@ every fact the planner cannot answer correctly. Each gap has a reason (starting
 
 - **Household**: the lines above. An unnamed spouse or qualifying person touches every
   priced panel and the draft; once named, only the draft and the estimated tax.
-- **State**: a state other than NC. The plan's state income tax is the engine's
-  estimate; the state return is not drafted (have a preparer draft it). Touches only
-  the state return, so the federal draft stays ready.
+- **State**: a state other than NC that taxes income. The plan's state income tax is
+  the engine's estimate; the state return is not drafted (have a preparer draft it).
+  Touches only the state return, so the federal draft stays ready. A state with no
+  income tax has no gap; a value that is not a state's code is one that touches every
+  priced panel.
 - **Document**: each file in `data/inbox/UNMATCHED/`. Anything on it is left out, so it
   touches every priced panel and the draft until its figures are typed with
   `planner enter` or the file is moved out because it holds no tax figures.

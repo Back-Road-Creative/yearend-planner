@@ -240,6 +240,16 @@ estimated_tax:
   status: verified
   evidence: implemented
   tests: ["tests/test_esttax.py::test_safe_harbor_and_installments"]
+state_registry:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_states.py"]
+  note: "50 states and DC (planner/states.py); no income tax in AK FL NV NH SD TN TX WA WY (NH's interest and dividends tax repealed from 2025, TIR 2025-001); esttax, the calendar, the Needed panel and coverage read the household's state"
+state_estimated_tax_rules:
+  status: partial
+  evidence: implemented
+  tests: ["tests/test_states.py::test_a_state_without_its_own_rules_is_estimated_on_federal_ones"]
+  note: "NC's own rules (Form NC-40); every other taxing state on the federal dates, shares, de minimis and safe harbor, marked Estimated (unit 3d-2 grounds each state)"
 underpayment_penalty:
   status: unsupported
   evidence: implemented
