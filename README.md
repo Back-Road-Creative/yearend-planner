@@ -46,7 +46,9 @@ for the dependents, and each spouse's own Schedule SE. The spouse's documents go
 Security are theirs, and so are their Schedule SE and Form 8889 (the family HSA limit
 split between the spouses' HSAs).
 A qualifying surviving spouse is priced at joint rates for the two years after the
-year of death while a dependent child lives at home (`spouse_death_year`, unit 3b-1).
+year of death while a dependent child lives at home (`spouse_death_date`, unit 3b-1); a
+spouse who died during the year stays on that year's joint return at their age at
+death (unit 3b-3).
 `planner separate` prices a joint couple's two married-filing-separately returns, each
 on that spouse's own documents, against the joint return (unit 3b-2; not in a
 community property state). Filing as married filing separately stays

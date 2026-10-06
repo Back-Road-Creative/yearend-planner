@@ -8,6 +8,7 @@ other section is "verified" when its capability row is, else "estimated"."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 from planner.config import load_capabilities
 from planner.paths import Layout
@@ -33,7 +34,8 @@ PRICED = (
 # one person and tagged, never passed off as a full plan (master plan unit 0b).
 # Separate returns stay tagged until unit 3b. A qualifying surviving spouse
 # (unit 3b-1) is tagged without a dependent child or outside the two years
-# after the year of death (2025 Form 1040 instructions).
+# after the year of death (2025 Form 1040 instructions). A joint return after
+# the year the spouse died (unit 3b-3) is tagged the same way.
 HOUSEHOLD = {
     "JOINT": (
         "Not handled: married filing jointly is priced for one person; the "
@@ -71,17 +73,38 @@ HOUSEHOLD_NEEDED = {
 }
 
 
+def death_year(answer: object) -> int | None:
+    """The year of a stored spouse_death_date; None when unset or "none"."""
+    if not answer or answer == "none":
+        return None
+    return date.fromisoformat(str(answer)).year
+
+
+def _died_joint(death_year: int, year: int) -> tuple[str, str]:
+    """A joint return for a year after the spouse's death: the reason and what
+    to file instead (2025 Form 1040 instructions: a joint return "if ... your
+    spouse died in 2025"; qualifying surviving spouse for the two years after)."""
+    return (
+        f"Not handled: married filing jointly for {year}, but the spouse died in "
+        f"{death_year}; a joint return is filed for the year of death at the latest",
+        f"for {death_year + 1} and {death_year + 2} the status is "
+        "qualifying_surviving_spouse while a dependent child lives at home, "
+        "otherwise single or head_of_household (planner enter filing_status ...); "
+        "check spouse_death_date",
+    )
+
+
 def _widowed_needed(death_year: int, year: int) -> str:
     """What a surviving spouse whose year of death falls outside the two years
     before ``year`` files instead (2025 Form 1040 instructions)."""
     if death_year >= year:
         return (
             f"a spouse who died in {year} files a joint return for {year} "
-            "(planner enter filing_status married_joint); check spouse_death_year"
+            "(planner enter filing_status married_joint); check spouse_death_date"
         )
     return (
         f"from {death_year + 3} the status is single or head_of_household "
-        "(planner enter filing_status ...); check spouse_death_year"
+        "(planner enter filing_status ...); check spouse_death_date"
     )
 
 
@@ -132,7 +155,8 @@ def gate(
     """Every gap for this household, in a fixed order: household, state, documents.
     ``filing_status`` is the engine's (SINGLE, JOINT, ...); None when not yet known.
     ``spouse`` and ``dependents`` are the people the profile names; ``death_year``
-    a surviving spouse's year of death, checked against the tax ``year``."""
+    the spouse's year of death, checked against the tax ``year`` for a surviving
+    spouse and a joint return."""
     out = []
     unnamed = (
         filing_status == "SEPARATE"
@@ -159,6 +183,13 @@ def gate(
                 PRICED,
             )
         )
+    elif (
+        filing_status == "JOINT"
+        and death_year is not None
+        and year is not None
+        and int(death_year) < year
+    ):
+        out.append(Gap("household", *_died_joint(int(death_year), year), PRICED))
     if state and state not in DRAFTED_STATES:
         out.append(
             Gap(
