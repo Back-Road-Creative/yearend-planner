@@ -248,8 +248,8 @@ state_registry:
 state_estimated_tax_rules:
   status: partial
   evidence: implemented
-  tests: ["tests/test_states.py::test_a_state_without_its_own_rules_is_estimated_on_federal_ones"]
-  note: "NC's own rules (Form NC-40); every other taxing state on the federal dates, shares, de minimis and safe harbor, marked Estimated (unit 3d-2 grounds each state)"
+  tests: ["tests/test_state_estimates.py", "tests/test_states.py::test_a_state_without_its_own_rules_is_estimated_on_federal_ones"]
+  note: "CA NY PA IL OH GA NC MI NJ VA on their own 2026 rules (dates, shares, de minimis, safe harbor); every other taxing state on the federal ones, marked Estimated; a state's AGI is the federal AGI; GA's income test and NYC/Yonkers tax are not applied"
 underpayment_penalty:
   status: unsupported
   evidence: implemented
