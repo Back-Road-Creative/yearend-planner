@@ -444,12 +444,12 @@ def basis(
             for k in BASIS_LINES
         }
         e = value.get(pre + "ira_basis")
-        name = "you" if who == "you" else "your spouse"
+        name = "your" if who == "you" else "your spouse's"
         if e is None:
             if have["ira_distributions"] or have["roth_conversion"]:
                 notes.append(
-                    f"{pre}ira_basis not given: every IRA distribution and conversion "
-                    f"of {name} is taxed in full, as if there were no basis (type "
+                    f"{pre}ira_basis not given: {name} IRA distributions and "
+                    "conversions are taxed in full, as if there were no basis (type "
                     "none when there is none)"
                 )
             continue
@@ -469,8 +469,8 @@ def basis(
         if f.lines["1"] > have["traditional_ira_contribution"]:
             notes.append(
                 f"{pre}ira_basis: nondeductible {f.lines['1']:,.0f} is more than "
-                f"the {have['traditional_ira_contribution']:,} traditional IRA "
-                f"contribution of {name}; type the contribution in "
+                f"{name} {have['traditional_ira_contribution']:,} traditional IRA "
+                "contribution; type the contribution in "
                 f"{pre}traditional_ira_contribution (all of it, deducted or not)"
             )
             new["nondeductible_ira_contribution"] = have["traditional_ira_contribution"]
