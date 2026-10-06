@@ -9,6 +9,16 @@ broker reports wash sales only inside its own account, so its 1099-B figure can
 differ; the difference is named. When no lots are on file the 1099-B summaries go
 straight onto Schedule D lines 1a and 8a (basis reported, no adjustments).
 
+A lot whose symbol is on the typed ``collectibles`` list (a bullion trust, say)
+carries code C. When Schedule D lines 15 and 16 are both gains, line 18 is the
+28% Rate Gain Worksheet (collectibles lots in Part II, 1099-DIV box 2d, K-1
+collectibles, less the long-term carryover and a short-term loss) and line 19
+the Unrecaptured Section 1250 Gain Worksheet from line 10 (1099-DIV box 2b, a
+trust's K-1 box 4c and the typed ``unrecaptured_1250``), both per the Schedule D
+instructions. The section 1202 exclusion, Forms 4684, 6252, 6781 and 8824
+(28% worksheet lines 2-3) and Form 4797 (1250 worksheet lines 1-9) are named,
+not drafted.
+
 The stored ``SCH-D`` facts feed the Needed panel's gains once the year has ended;
 until then the year-to-date estimate stands in.
 """
@@ -41,6 +51,8 @@ LABELS = {
     "14": "Long-term loss carryover",
     "15": "Net long-term gain or loss",
     "16": "Combined gain or loss",
+    "18": "28% rate gain (28% Rate Gain Worksheet line 7)",
+    "19": "Unrecaptured section 1250 gain (its worksheet, line 18)",
 }
 CARRYOVER = {"6": "st_loss_carryover", "14": "lt_loss_carryover"}
 
@@ -167,6 +179,8 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> CapGains:
         db.rows_for(conn, year, kind="realized"),
         key=lambda r: (r.date or "", r.symbol, r.line),
     )
+    typed = load_manual(lay, year)[MANUAL_VALUES]
+    collectible = set(typed.get("collectibles") or ())
     unknown_accounts: set[str] = set()
     for row in rows:
         if row.amount_cents is None or row.basis_cents is None or not row.date:
@@ -204,7 +218,7 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> CapGains:
                 row.date,
                 proceeds,
                 basis,
-                "W" if adj else "",
+                ("C" if row.symbol in collectible else "") + ("W" if adj else ""),
                 adj,
                 row.account,
             )
@@ -214,8 +228,12 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> CapGains:
             f"account(s) {', '.join(sorted(unknown_accounts))} have no type; their "
             "sales are reported as taxable (planner enter account:<number> <type>)"
         )
+    if collectible and not cg.lots:
+        cg.notes.append(
+            "collectibles are typed but no realized-lots CSV is on file: the 1099-B "
+            "totals do not separate them, so Schedule D line 18 leaves them out"
+        )
     facts = db.facts_for(conn, year)
-    typed = load_manual(lay, year)[MANUAL_VALUES]
     carried = need_values(conn, lay, year, tuple(CARRYOVER.values()))
     _lines(cg, facts, typed, carried)
     return cg
@@ -269,12 +287,9 @@ def _lines(
         cg.lines["13"] = round(sum(f.value for f in dist), 2)
         cg.sources["13"] = "1099-DIV box 2a (" + ", ".join(f.issuer for f in dist) + ")"
     k1s = typed.get("k1s")
+    k1p = k1.portfolio(k1s if isinstance(k1s, list) else [])
     for line, word in (("5", "stgain"), ("12", "ltgain")):
-        got = [
-            i
-            for i in k1.portfolio(k1s if isinstance(k1s, list) else [])
-            if i[0] == word
-        ]
+        got = [i for i in k1p if i[0] == word]
         if got:
             cg.lines[line] = round(sum(a for _, _, a, _ in got), 2)
             cg.sources[line] = "; ".join(f"{p} {s}" for _, p, _, s in got)
@@ -293,7 +308,65 @@ def _lines(
     cg.sources.update(
         {"7": "1a + 1b + 5 + 6", "15": "8a + 8b + 12 + 13 + 14", "16": "7 + 15"}
     )
+    _rate_gains(cg, facts, typed, k1p)
     cg.lines = {k: cg.lines[k] for k in LABELS if k in cg.lines}
+
+
+def _rate_gains(
+    cg: CapGains,
+    facts: list[db.FactRow],
+    typed: dict[str, object],
+    k1p: list[tuple[str, str, float, str]],
+) -> None:
+    """Schedule D lines 18 and 19, filled only when lines 15 and 16 are both
+    gains (line 17 "Yes"): the 28% Rate Gain Worksheet and the Unrecaptured
+    Section 1250 Gain Worksheet in the Schedule D instructions."""
+
+    def reported(box: str, word: str) -> tuple[float, list[str]]:
+        div = [f for f in facts if f.form == "1099-DIV" and f.box == box and f.value]
+        got = [i for i in k1p if i[0] == word]
+        amount = sum(f.value for f in div) + sum(a for _, _, a, _ in got)
+        where = [f"1099-DIV box {box} ({f.issuer})" for f in div]
+        return round(amount, 2), where + [f"{p} {s}" for _, p, _, s in got]
+
+    get = cg.lines.get
+    w1 = round(sum(lt.gain for lt in cg.lots if lt.box == "D" and "C" in lt.code), 2)
+    w4, w4_from = reported("2d", "collectibles")
+    w5 = get("14", 0.0)  # the long-term carryover, already negative
+    w6 = min(get("7", 0.0), 0.0)
+    w7 = max(round(w1 + w4 + w5 + w6, 2), 0.0)
+    w11, w11_from = reported("2b", "unrecaptured1250")
+    w10_12 = float(str(typed.get("unrecaptured_1250") or 0))
+    w13 = round(w10_12 + w11, 2)
+    w14 = round(w1 + w4, 2)  # 28% worksheet lines 1-4 (2 and 3 not drafted)
+    w17 = -min(round(w14 + w6 + w5, 2), 0.0)
+    w18 = max(round(w13 - w17, 2), 0.0)
+    if any(f.form == "1099-DIV" and f.box == "2c" and f.value for f in facts):
+        cg.notes.append(
+            "1099-DIV box 2c (section 1202 gain): its exclusion is not drafted, so "
+            "the 28% Rate Gain Worksheet line 2 is left out"
+        )
+    if get("15", 0.0) <= 0 or get("16", 0.0) <= 0:
+        return
+    if w7 > 0:
+        cg.lines["18"] = w7
+        parts = (["Form 8949 Part II code C"] if w1 else []) + w4_from
+        cg.sources["18"] = (
+            "28% Rate Gain Worksheet: " + "; ".join(parts) + ", less lines 14 and "
+            "a line 7 loss"
+        )
+    if w18 > 0:
+        cg.lines["19"] = w18
+        parts = (["unrecaptured_1250 (typed)"] if w10_12 else []) + w11_from
+        cg.sources["19"] = "Unrecaptured Section 1250 Gain Worksheet: " + "; ".join(
+            parts
+        )
+    if w7 > 0 or w18 > 0:
+        cg.notes.append(
+            "Schedule D lines 18 and 19 leave out the section 1202 exclusion, Forms "
+            "4684, 6252, 6781 and 8824 (28% Rate Gain Worksheet lines 2-3) and Form "
+            "4797 (Unrecaptured Section 1250 Gain Worksheet lines 1-9)"
+        )
 
 
 def carryover(
@@ -339,11 +412,13 @@ def render(cg: CapGains) -> str:
         for lt in mine:
             out.append(
                 f"  {lt.description:24.24} {lt.acquired:10} {lt.sold:10} "
-                f"{lt.proceeds:>12,.2f} {lt.basis:>12,.2f} {lt.code:1} "
+                f"{lt.proceeds:>12,.2f} {lt.basis:>12,.2f} {lt.code:2} "
                 f"{lt.adjustment:>10,.2f} {lt.gain:>12,.2f}"
             )
         p, c, a, g = cg.totals(box)
-        out.append(f"  {'totals':56} {p:>12,.2f} {c:>12,.2f}   {a:>10,.2f} {g:>12,.2f}")
+        out.append(
+            f"  {'totals':56} {p:>12,.2f} {c:>12,.2f}    {a:>10,.2f} {g:>12,.2f}"
+        )
     if cg.lines:
         out.append("Schedule D")
     for line, value in cg.lines.items():

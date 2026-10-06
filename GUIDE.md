@@ -781,6 +781,20 @@ carries both.
 - **Other lines.** Capital gain distributions (1099-DIV box 2a) go on line 13.
   The loss carried in from last year is typed as `st_loss_carryover` and
   `lt_loss_carryover` and goes on lines 6 and 14.
+- **28% and 25% gains (lines 18 and 19, unit 3e-6b2).** Type the symbols you
+  sold that are collectibles (a bullion trust, say) as `collectibles`, or
+  `none`; their lots carry code C (with W, "CW", when a loss is also washed).
+  When lines 15 and 16 are both gains, line 18 is the 28% Rate Gain Worksheet:
+  the code C long-term lots, 1099-DIV box 2d and K-1 `collectibles` (1065 box
+  9b, 1120-S 8b, 1041 4b), less the long-term carryover and a short-term loss.
+  Line 19 is the Unrecaptured Section 1250 Gain Worksheet from line 10:
+  1099-DIV box 2b, a trust's K-1 `unrecaptured1250` (box 4c) and the typed
+  `unrecaptured_1250` (worksheet lines 10 and 12, asked when you have rentals or
+  a partnership K-1), less what the collectibles and losses use up. Both go to
+  the engine, so the tax is the Schedule D Tax Worksheet's. Not drafted, and
+  named: the section 1202 exclusion and Forms 4684, 6252, 6781 and 8824 (28%
+  worksheet lines 2-3), Form 4797 and a partnership's or S corporation's
+  unrecaptured section 1250 gain (1250 worksheet lines 1-9).
 - **When the Needed panel uses it.** After the year ends, Schedule D lines 7 and
   15 are the short- and long-term gains in the Needed panel. Until then the
   year-to-date estimate stands in, and it now includes capital gain
