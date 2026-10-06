@@ -340,6 +340,11 @@ ny_it201_draft:
   evidence: implemented
   tests: ["tests/test_ny201.py", "tests/test_state_returns.py"]
   note: "planner draft; NY Form IT-201 lines 19-46, 59-65, 67-68, 72, 75-80 for a full-year resident (unit 3d-7, 2025 IT-201 and IT-201-I): Tax Table below $65,000 (schedule at the row midpoint, the joint column's 5.25% bracket from its unrounded base), rate schedule above, tax computation worksheets over $107,650 NYAGI, 529 subtraction capped, use tax chart; filed IT-201 pages 2-4 read by templates ny-it201*.yaml; next year's safe harbor 46 + 58 less credits 63-71; IT-203, NYC/Yonkers/MCTMT 47-58, lines 41, 45, 60, 66, 69-71, 73-74, 78a, 81-82 named, not drafted"
+pa_40_draft:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_pa40.py", "tests/test_state_returns.py"]
+  note: "planner draft; PA Form PA-40 lines 1a-6, 9-13, 15, 18, 21, 23-26, 28-30 and Schedule SP for a full-year resident (unit 3d-8, 2025 PA-40 and PA-40 IN): compensation from W-2 box 16 (else box 1 plus box 12 deferrals), US bond interest out of line 2, losses on lines 4-6 never netted, 3.07% and the line 21 forgiveness to the dollar, the use tax table; filed PA-40 Sides 1-2 read by templates pa-pa40*.yaml; next year's safe harbor 12 less 21 (REV-1630 Exception 1); part-year and nonresident returns, lines 7, 8, 14, 16, 17, 22, 27, Schedule OC, the married-separate forgiveness and the Working Pennsylvanians Tax Credit named, not drafted"
 taxpack:
   status: verified
   evidence: implemented
