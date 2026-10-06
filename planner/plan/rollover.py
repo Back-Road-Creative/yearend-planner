@@ -1,7 +1,8 @@
 """``planner rollover``: the year that ended becomes last year.
 
 Rolling a year carries what next year's plan needs from it: AGI, total tax and
-the NC tax (the safe-harbor inputs) and the capital loss carried forward. They
+the NC tax (the safe-harbor inputs; another state's prior tax is asked) and the
+capital loss carried forward. They
 come from the filed return once ``planner close`` has recorded it, else from
 the draft, marked as estimates. Each rollover also keeps a snapshot of the
 ledger and of the year's dashboard, bumps the active year, refreshes next
@@ -44,6 +45,7 @@ ASK = (
     "prior_agi",
     "prior_total_tax",
     "prior_nc_tax",
+    "prior_state_tax",
     "prior_capital_loss_carryforward",
     "ss_estimate_62",
     "ss_estimate_67",

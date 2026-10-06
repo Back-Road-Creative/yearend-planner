@@ -10,11 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from planner import states
 from planner.config import load_capabilities
 from planner.paths import Layout
 
 VERIFIED, ESTIMATED, NOT_HANDLED = "verified", "estimated", "not handled"
-DRAFTED_STATES = ("NC",)  # the states whose return the draft lays out
+DRAFTED_STATES = states.DRAFTED  # the states whose return the draft lays out
 STATE_RETURN = "state return"  # what a state gap touches: that return alone
 # Every section whose figure rests on the household's income and deductions;
 # "draft" stands for each form of the draft return.
@@ -190,7 +191,17 @@ def gate(
         and int(death_year) < year
     ):
         out.append(Gap("household", *_died_joint(int(death_year), year), PRICED))
-    if state and state not in DRAFTED_STATES:
+    if state and state not in states.STATES:
+        out.append(
+            Gap(
+                "state",
+                f"Not handled: {state!r} is not a state's two-letter code, so no "
+                "state income tax is priced",
+                "type the state as its two-letter code (NC, CA, TX)",
+                PRICED,
+            )
+        )
+    elif state and states.get(state).income_tax and state not in DRAFTED_STATES:
         out.append(
             Gap(
                 "state",

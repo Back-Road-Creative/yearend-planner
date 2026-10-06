@@ -67,7 +67,7 @@ def test_bad_answers_are_refused_with_what_is_expected(
 
 
 def test_text_answers_are_bounded_and_printable() -> None:
-    need = next(n for n in _all() if n.kind == "str")
+    need = next(n for n in _all() if n.kind == "str" and not n.choices)
     assert parse_value(need, "  Fidelity  ") == "Fidelity"
     with pytest.raises(ValueError, match="200 characters"):
         parse_value(need, "x" * 201)

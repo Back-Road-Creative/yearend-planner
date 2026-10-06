@@ -26,6 +26,7 @@ from typing import Any
 
 import yaml
 
+from planner import states
 from planner.config import ASSUMPTION_FIELDS, load_assumptions
 from planner.engine.household import PERSON_INPUTS, PERSON_SAVERS
 from planner.ingest.derive import county_from_zip
@@ -280,6 +281,7 @@ NEEDS: tuple[Need, ...] = (
         "str",
         PROFILE,
         boxes=(("1040", "state"),),
+        choices=tuple(states.STATES),
         doc="filed_return",
         unlocks=("MAGI headroom", "Levers", "Draft 1040", "Expected forms"),
     ),
@@ -621,6 +623,18 @@ NEEDS: tuple[Need, ...] = (
         estimate=(("CARRY-EST", "nc_tax"),),
         doc="filed_return",
         unlocks=("Estimated tax", "Year rollover"),
+        asked=lambda s: s.get("state") == "NC",
+    ),
+    Need(
+        "prior_state_tax",
+        "Prior-year state income tax (a state other than NC)",
+        "the state's safe harbor",
+        "the tax line of last year's return for the state you live in",
+        "money",
+        PRIOR,
+        doc="filed_return",
+        unlocks=("Estimated tax", "Year rollover"),
+        asked=lambda s: _other_taxing_state(s),
     ),
     Need(
         "prior_capital_loss_carryforward",
@@ -655,6 +669,18 @@ NEEDS: tuple[Need, ...] = (
         boxes=(("W-2", "17"), ("1099-R", "14")),
         doc="w2",
         unlocks=("Estimated tax", "NC D-400 draft"),
+        asked=lambda s: s.get("state") == "NC",
+    ),
+    Need(
+        "state_withheld",
+        "State income tax withheld (a state other than NC)",
+        "credited to the state's installments",
+        "W-2 box 17, 1099-R box 14 (zero when nothing withholds)",
+        "money",
+        boxes=(("W-2", "17"), ("1099-R", "14")),
+        doc="w2",
+        unlocks=("Estimated tax",),
+        asked=lambda s: _other_taxing_state(s),
     ),
     Need(
         "nc_additions",
@@ -663,6 +689,7 @@ NEEDS: tuple[Need, ...] = (
         "D-400 Schedule S Part A (most returns have none; type 0 when none)",
         "money",
         unlocks=("NC D-400 draft",),
+        asked=lambda s: s.get("state") == "NC",
     ),
     Need(
         "nc_other_deductions",
@@ -673,6 +700,7 @@ NEEDS: tuple[Need, ...] = (
         "(type 0 when none)",
         "money",
         unlocks=("NC D-400 draft",),
+        asked=lambda s: s.get("state") == "NC",
     ),
     Need(
         "nc_use_tax",
@@ -682,6 +710,7 @@ NEEDS: tuple[Need, ...] = (
         "(the draft uses the table until you type it)",
         "money",
         unlocks=("NC D-400 draft",),
+        asked=lambda s: s.get("state") == "NC",
     ),
     Need(
         "wages",
@@ -1467,6 +1496,19 @@ def _education(key: str, s: str) -> list[dict[str, Any]]:
     return out
 
 
+def _other_taxing_state(so_far: dict[str, Any]) -> bool:
+    """A state other than NC that taxes income: its withholding and last
+    year's tax are asked under their own keys (NC's are nc_withheld and
+    prior_nc_tax, which its D-400 draft reads)."""
+    code = so_far.get("state")
+    return (
+        isinstance(code, str)
+        and code in states.STATES
+        and code != "NC"
+        and states.get(code).income_tax
+    )
+
+
 def parse_value(need: Need, text: str) -> Any:
     """Typed, validated; a bad answer is an error naming what is expected,
     never a guess."""
@@ -1513,6 +1555,13 @@ def parse_value(need: Need, text: str) -> Any:
         if low not in need.choices:
             raise ValueError(f"{need.key}: one of {', '.join(need.choices)}")
         return low
+    if need.choices:  # a code from a fixed list (the state)
+        code = s.upper()
+        if code not in need.choices:
+            raise ValueError(
+                f"{need.key}: a two-letter code ({', '.join(need.choices)})"
+            )
+        return code
     if len(s) > TEXT_MAX:
         raise ValueError(f"{need.key}: at most {TEXT_MAX} characters")
     if any(not c.isprintable() for c in s):
