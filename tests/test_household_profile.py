@@ -81,7 +81,7 @@ def test_the_household_carries_the_spouse_and_the_dependents(
     inp = inputs.build(home, 2026)
     hh = inp.household
     # 64 on December 31, but 65 for the tax tests (Pub. 501: the day before)
-    assert hh.spouse == Person(age=64)
+    assert hh.spouse == Person(age=64, savers_eligible=True)
     assert inp.spouse_tax_age == 65
     assert hh.dependents == (
         Dependent(age=8),

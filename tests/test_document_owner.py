@@ -188,8 +188,13 @@ def test_the_household_carries_the_spouses_own_income(
         enter(lay, YEAR, key, text)
     hh = inputs.build(lay, YEAR).household
     assert hh.wages == 50_000
+    # 18 or older and not barred: the saver's credit age test (Form 8880)
     assert hh.spouse == Person(
-        age=52, wages=30_000, social_security=12_000, traditional_ira_contribution=7_000
+        age=52,
+        wages=30_000,
+        social_security=12_000,
+        traditional_ira_contribution=7_000,
+        savers_eligible=True,
     )
 
 

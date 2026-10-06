@@ -322,6 +322,26 @@ def self_employment_parameters(year: int) -> dict[str, float]:
     }
 
 
+def savers_credit_table(year: int, filing_status: str) -> list[tuple[float, float]]:
+    """Form 8880 line 9's table for one filing status: (top AGI, rate) rows in
+    order, a rate applying up to and including its top; above the last row the
+    rate is 0. The engine keeps the joint brackets (each the first dollar of the
+    next rate) and scales them by filing status, as the form's columns do."""
+    p = _system().parameters.gov.irs.credits.retirement_saving.rate
+    at = f"{year}-01-01"
+    scale = float(getattr(p.threshold_adjustment, filing_status)(at))
+    rows = p.joint.brackets
+    return [
+        ((float(nxt.threshold(at)) - 1) * scale, float(b.amount(at)))
+        for b, nxt in zip(rows, rows[1:], strict=False)
+    ]
+
+
+def savers_credit_cap(year: int) -> float:
+    """Form 8880 line 6's per-person cap on the contributions ($2,000)."""
+    return _param("gov.irs.credits.retirement_saving.contributions_cap", year)
+
+
 PREFERENTIAL = ("qualified_dividend_income", "long_term_capital_gains")
 PREMIUMS = "self_employed_health_insurance_premiums"
 

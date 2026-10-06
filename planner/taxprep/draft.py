@@ -21,7 +21,7 @@ from datetime import date
 
 from planner import NOTICE, coverage
 from planner.engine import tax
-from planner.engine.household import Household
+from planner.engine.household import Household, Person
 from planner.ingest.needs import need_values, schedule_b_required
 from planner.ledger import db
 from planner.paths import Layout
@@ -63,6 +63,8 @@ ENGINE = (
     "refundable_american_opportunity_credit",
     "non_refundable_american_opportunity_credit",
     "lifetime_learning_credit",
+    "savers_credit",
+    "savers_credit_potential",
     "head_earned",
     "spouse_earned",
     "self_employment_tax",
@@ -890,6 +892,22 @@ def build(lay: Layout, year: int) -> Draft:
     education = _form_8863(sheet, d, v, hh, l11, l18 - (s3_2 or 0.0))
     if education is not None:
         add("Sch 3", "3", "Education credits", education[1], "Form 8863 line 19")
+    savers = _form_8880(
+        sheet,
+        d,
+        v,
+        hh,
+        l11,
+        l18 - (s3_2 or 0.0) - (education[1] if education is not None else 0.0),
+    )
+    if savers is not None:
+        add(
+            "Sch 3",
+            "4",
+            "Retirement savings contributions credit",
+            savers,
+            "Form 8880 line 12",
+        )
     engine_education = (
         v["non_refundable_american_opportunity_credit"] + v["lifetime_learning_credit"]
     )
@@ -901,11 +919,14 @@ def build(lay: Layout, year: int) -> Draft:
         - v["non_refundable_ctc"]
         - v["cdcc"]
         - engine_education
+        - v["savers_credit"]
         + (s3_2 or 0.0)
-        + (education[1] if education is not None else engine_education),
+        + (education[1] if education is not None else engine_education)
+        + (v["savers_credit"] if savers is None else savers),
         "engine income_tax_non_refundable_credits less the child credit"
         + (", with line 2 from Form 2441" if s3_2 is not None else "")
-        + (", line 3 from Form 8863" if education is not None else ""),
+        + (", line 3 from Form 8863" if education is not None else "")
+        + (", line 4 from Form 8880" if savers is not None else ""),
     )
     s3_9 = add("Sch 3", "9", "Net premium tax credit", net_ptc, "Form 8962 line 26")
     s3_15 = add("Sch 3", "15", "Other payments and refundable credits", s3_9, "line 9")
@@ -995,6 +1016,9 @@ def build(lay: Layout, year: int) -> Draft:
     # The lines against the engine's own totals: a gap is a mapping the draft
     # missed, and is said, never hidden.
     sb_4, sb_6 = d.get("Sch B", "4"), d.get("Sch B", "6")
+    # The Tax Table's difference reaches line 22 only past the nonrefundable
+    # credits: credits the tax limits (Form 8880 line 11, say) absorb it.
+    passed = 0.0 if l22 <= 0 else min(l22, table_gap)
     for got, want, what in (
         (
             l9,
@@ -1007,9 +1031,10 @@ def build(lay: Layout, year: int) -> Draft:
         (l15, v["taxable_income"], "line 15 against the engine's taxable income"),
         (
             l22 - s2_1a + s2_12 - (l27 + l28 + l29),
-            v["income_tax"] + table_gap,
+            v["income_tax"] + passed,
             "line 22 (less 1a, plus NIIT, less refundable credits) against the "
-            "engine's income tax (plus any Tax Table difference)",
+            "engine's income tax (plus any Tax Table difference left after the "
+            "credits)",
         ),
     ):
         if got is not None and abs(got - want) > TOLERANCE:
@@ -1289,6 +1314,103 @@ def _form_8863(
         "the 1098-T and the student's records"
     )
     return l8, l19
+
+
+def _form_8880(
+    sheet: _Sheet,
+    d: Draft,
+    v: dict[str, float],
+    hh: Household,
+    agi: float,
+    limit: float,
+) -> float | None:
+    """Form 8880, the saver's credit (2025 Form 8880, which carries its own
+    instructions; unit 3c-3): column (a) the head's and (b) a joint spouse's
+    lines 1-6, then lines 7-12 with the Credit Limit Worksheet. ``limit`` is 1040
+    line 18 less Schedule 3 lines 1-3. Returns line 12, or None when no one made
+    a contribution the form counts."""
+    people: list[tuple[str, str, Household | Person]] = [("a", "you", hh)]
+    if hh.spouse is not None and hh.filing_status == "JOINT":
+        people.append(("b", "your spouse", hh.spouse))
+    if not any(
+        x.traditional_ira_contribution + x.roth_ira_contribution + x.elective_deferrals
+        for _, _, x in people
+    ):
+        return None
+    add = sheet.add
+    f = "8880"
+    cap = tax.savers_credit_cap(d.year)
+    # Line 4 is never below the year's own IRA distributions, both spouses' on
+    # a joint return (the form: both spouses' go in both columns).
+    floor = sum(x.ira_distributions for _, _, x in people)
+    l7 = 0.0
+    for col, who, x in people:
+        l1 = add(
+            f,
+            f"1({col})",
+            f"Traditional and Roth IRA and ABLE contributions ({who})",
+            float(x.traditional_ira_contribution + x.roth_ira_contribution),
+            "traditional_ira_contribution + roth_ira_contribution",
+        )
+        l2 = add(
+            f,
+            f"2({col})",
+            f"Elective deferrals and voluntary contributions ({who})",
+            float(x.elective_deferrals),
+            "elective_deferrals (W-2 box 12)",
+        )
+        l3 = add(f, f"3({col})", "Lines 1 and 2", l1 + l2, "1 + 2")
+        l4 = add(
+            f,
+            f"4({col})",
+            "Distributions in the testing period",
+            float(max(x.savers_distributions, floor)),
+            "savers_distributions, at least the year's IRA distributions",
+        )
+        l5 = add(f, f"5({col})", "Line 3 less line 4", max(l3 - l4, 0.0), "3 - 4")
+        barred = x.savers_eligible is False or (
+            x.savers_eligible is None and x.age < 18
+        )
+        l7 += add(
+            f,
+            f"6({col})",
+            f"Smaller of line 5 or ${cap:,.0f}",
+            0.0 if barred else min(l5, cap),
+            "none: under 18, a student or claimed as a dependent"
+            if barred
+            else f"min(5, {cap:,.0f})",
+        )
+    add(f, "7", "Line 6, both columns", l7, "6(a) + 6(b)")
+    add(f, "8", "Adjusted gross income", agi, "Form 1040 line 11a")
+    table = tax.savers_credit_table(d.year, hh.filing_status)
+    rate = next((r for top, r in table if agi <= top), 0.0)
+    top = table[-1][0]
+    l9 = add(
+        f,
+        "9",
+        "Decimal from the table",
+        rate,
+        f"line 8 against the table; over ${top:,.0f} it is 0",
+    )
+    l10 = add(f, "10", "Line 7 times line 9", l7 * l9, "7 x 9")
+    l11 = add(
+        f,
+        "11",
+        "Credit Limit Worksheet",
+        max(limit, 0.0),
+        "1040 line 18 less Sch 3 lines 1-3",
+    )
+    l12 = add(
+        f, "12", "Credit for qualified retirement savings", min(l10, l11), "min(10, 11)"
+    )
+    # Line 10 against the engine's credit before the limit: line 11 follows the
+    # Tax Table's 1040 line 16, the engine the exact rate schedule.
+    if abs(l10 - v["savers_credit_potential"]) > TOLERANCE:
+        d.notes.append(
+            f"CHECK: Form 8880 line 10 against the engine's saver's credit: "
+            f"{l10:,.2f} vs {v['savers_credit_potential']:,.2f}"
+        )
+    return l12
 
 
 def _schedule_8812(
@@ -1908,6 +2030,7 @@ ORDER = (
     "8949",
     "2441",
     "8863",
+    "8880",
     "8889",
     hsa.SPOUSE_FORM,
     "8962",
@@ -1922,6 +2045,7 @@ HEADINGS = {
     "8962": "Form 8962",
     "2441": "Form 2441 (child and dependent care expenses)",
     "8863": "Form 8863 (education credits)",
+    "8880": "Form 8880 (credit for qualified retirement savings contributions)",
     d400.FORM: "NC Form D-400",
     d400.SCHED: "NC D-400 Schedule S (additions and deductions)",
     "Carryover": "Capital loss carryover to next year",
@@ -1940,6 +2064,7 @@ FORM_CAPABILITY = {
     "8962": "aca_premium_tax_credit",
     "2441": "child_dependent_care_credit",
     "8863": "education_credits",
+    "8880": "savers_credit",
     d400.FORM: "nc_d400_draft",
     d400.SCHED: "nc_d400_draft",
     "Carryover": "schedule_d",
