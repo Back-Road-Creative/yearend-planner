@@ -618,8 +618,12 @@ listed under the lines. Schedule SE is drawn line by line (2, 3, 4a, 4c, 6, 7, 8
 13): the wage base, the 12.4% and 2.9% rates and the $400 floor are the
 engine's own parameters, W-2 wages (boxes 3 and 7 when a W-2 gives them, else
 box 1 as a stand-in, said on the line) use up the wage base, and net earnings under
-$400 owe nothing. Lines 12 and 13 feed Schedule 2 line 4 and Schedule 1 line 15,
-and are checked against the engine's totals.
+$400 owe nothing. On a joint return each spouse with self-employment income has
+their own Schedule SE ("Sch SE (spouse)" for the spouse, from `spouse_se_income`),
+with their own wage base used up by their own W-2s (unit 3a-5). Line 12 is checked
+against the engine's tax for that person; the line 12s add to Schedule 2 line 4 and
+the line 13s to Schedule 1 line 15 (checked against the engine's deduction), and
+Schedule 1 line 3 carries both profits.
 
 Line 16 follows the Tax Table, as the filed return does: under $100,000 of
 taxable income the tax is the table row's (the tax on the row's midpoint,
@@ -1153,7 +1157,7 @@ checks its own folder first with `findstr` and prints the same warning before
 it downloads or runs anything, so a double-click in a synced folder explains
 itself in the window it keeps open.
 
-## Scope guard and the household's people (Phase 10, units 0b, 3a-2, 3a-3 and 3a-4)
+## Scope guard and the household's people (Phase 10, units 0b and 3a-2 to 3a-5)
 
 The profile names the household's people: `spouse_birth_date` (asked when the filing
 status is married_joint) and `dependents` (asked for married_joint and
@@ -1178,10 +1182,11 @@ Until they are named, `planner.coverage.HOUSEHOLD` holds one line per status:
 
 The line leads the dashboard's alerts (kind `scope`), reaches the draft return's notes,
 `planner magi` and the tax pack's notes. Once the people are named it is replaced by
-`coverage.PEOPLE`, which touches only the draft and the estimated tax: the draft lays
-out Schedule SE and Form 8889 for the first person only, and a spouse's own HSA is not
-modeled. The draft lays out the spouse's Schedule 1-A line 36b and the dependents'
-Schedule 8812 (unit 3a-3). A single filer has none.
+`coverage.PEOPLE` on a joint return, which touches only the draft and the estimated
+tax: a spouse's own HSA is not modeled (the HSA deduction and Form 8889 are the first
+person's). The draft lays out the spouse's Schedule 1-A line 36b and the dependents'
+Schedule 8812 (unit 3a-3) and each spouse's own Schedule SE (unit 3a-5). A single
+filer or a head of household with dependents has none.
 
 Each document is one person's (unit 3a-4). Drop the spouse's W-2, 1099-R, SSA-1099,
 5498 and 1099-NEC in `data/inbox/spouse/` (any case); everything else is yours. A

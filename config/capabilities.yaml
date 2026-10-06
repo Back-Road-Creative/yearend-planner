@@ -28,7 +28,8 @@ federal_ltcg_rates:
 self_employment_tax:
   status: verified
   evidence: implemented
-  tests: ["tests/test_tax.py::test_self_employment_30k"]
+  tests: ["tests/test_tax.py::test_self_employment_30k", "tests/test_draft_people.py"]
+  note: "each spouse's own Schedule SE on a joint return (unit 3a-5): their own wage base from their own W-2 boxes 3 and 7; IRS 2025 Schedule SE lines 4a-12"
 qbi_deduction:
   status: verified
   evidence: implemented
