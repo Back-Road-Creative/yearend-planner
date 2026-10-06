@@ -2027,8 +2027,31 @@ A leading `spouse` puts the box 14 code A earnings on the spouse's Schedule SE.
 - **Notes.** Basis and at-risk are taken as met: Form 7203 for an S corporation, the
   partner's basis worksheet and Form 6198. Line 27 is drafted No. A trust's net
   investment income is not priced (a note names Form 8960). Each K-1 makes a K-1
-  expected, due March 15 (1065, 1120-S) or April 15 (1041). Portfolio boxes (interest,
-  dividends, gains, royalties) come in unit 3e-3b.
+  expected, due March 15 (1065, 1120-S) or April 15 (1041).
+
+### K-1 portfolio boxes (unit 3e-3b)
+
+Portfolio income is never passive (IRC 469(e)(1)) and never on Parts II or III.
+The same `k1s` entry takes it:
+
+| Word | Form 1065 | Form 1120-S | Form 1041 | Goes to |
+| --- | --- | --- | --- | --- |
+| interest | box 5 | box 4 | box 1 | Schedule B line 1, 1040 line 2b |
+| dividends | box 6a | box 5a | box 2a | Schedule B line 5, 1040 line 3b |
+| qualified | box 6b | box 5b | box 2b | 1040 line 3a |
+| royalties | box 7 | box 6 | | Schedule E line 4, its own column |
+| stgain | box 8 | box 7 | box 3 | Schedule D line 5 |
+| ltgain | box 9a | box 8a | box 4a | Schedule D line 12 |
+
+- The K-1 interest and dividends are added on top of the `interest`,
+  `ordinary_dividends` and `qualified_dividends` answers, which take the 1099s only.
+- Schedule B names each K-1 by its kind and order ("the 1st partnership") for you to
+  write the entity's name.
+- The gains reach `short_term_gains` and `long_term_gains` through Schedule D lines 7
+  and 15. A typed gain replaces those lines, which is a CHECK when a K-1 has a gain.
+- A K-1 with only portfolio boxes has no Part II or III row.
+- Collectibles (28%) gain, unrecaptured section 1250 gain and section 1231 gain come in
+  unit 3e-6.
 
 ## Coverage gate (Phase 10, unit 2a)
 
