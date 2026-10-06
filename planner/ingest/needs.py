@@ -2257,7 +2257,14 @@ PERSON_HSA = (
 )
 
 
-TWINS = ("qcd", "ira_basis")  # typed per person, outside the lists above
+TWINS = (  # typed per person, outside the lists above
+    "qcd",
+    "ira_basis",
+    "ss_claim_age",  # each spouse's own record and claim (3f-4)
+    "ss_estimate_62",
+    "ss_estimate_67",
+    "ss_estimate_70",
+)
 
 
 def _spouse_asked(
@@ -2279,6 +2286,11 @@ def _spouse_asked(
     return asked
 
 
+def _lead_lower(label: str) -> str:
+    """The label after "Spouse's": its first letter lowered, an acronym kept."""
+    return label if label[1:2].isupper() else label[0].lower() + label[1:]
+
+
 def _with_spouse(needs: tuple[Need, ...]) -> tuple[Need, ...]:
     """Each per-person line (PERSON_INPUTS, PERSON_HSA, PERSON_8880) is the head's, summed from the
     head's documents, followed by a joint spouse's twin summed from theirs
@@ -2293,7 +2305,7 @@ def _with_spouse(needs: tuple[Need, ...]) -> tuple[Need, ...]:
             replace(
                 n,
                 key=SPOUSE + n.key,
-                label=f"Spouse's {n.label[0].lower()}{n.label[1:]}",
+                label=f"Spouse's {_lead_lower(n.label)}",
                 source=f"the spouse's own: {n.source}",
                 owner="spouse",
                 asked=_spouse_asked(n.asked, n.key),
