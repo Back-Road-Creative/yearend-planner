@@ -117,6 +117,8 @@ TAX_KEYS = (
     "rentals",
     "k1s",
     "farms",
+    "collectibles",
+    "unrecaptured_1250",
     "rental_active",
     "lived_apart",
     "rental_qbi",
@@ -125,6 +127,11 @@ TAX_KEYS = (
 )
 # A joint spouse's own Form 8880 column rests the credit on them as the head's does.
 TAX_KEYS = (*TAX_KEYS, *(f"spouse_{k}" for k in (*PERSON_SAVERS, "savers_barred")))
+# Schedule D line -> the engine's tax unit input
+RATE_GAINS = {
+    "18": "capital_gains_28_percent_rate_gain",
+    "19": "unrecaptured_section_1250_gain",
+}
 OVERRIDES = (
     "q4_dividend_estimate",
     "planned_st_sales",
@@ -288,7 +295,7 @@ def build(
     ov = overrides or Overrides()
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
-        capgains.store(conn, lay, year)  # typed carryovers reach Schedule D
+        cg = capgains.store(conn, lay, year)  # typed carryovers reach Schedule D
         for who in hsa.WHO:  # and typed HSA answers reach each Form 8889
             hsa.store(conn, lay, year, who=who)
         report = _needed(conn, lay, year)
@@ -468,6 +475,13 @@ def build(
         fields["hsa_contribution"] = int(round(ov.planned_hsa))
     if value.get("rentals") or value.get("k1s") or value.get("farms"):
         _schedule_e(out, fields, value)
+    # Schedule D lines 18 and 19 price the 28% and 25% gains by the Schedule D
+    # Tax Worksheet (planner.engine.tax, unit 3e-6b1)
+    rate_gains = {
+        var: cg.lines[line] for line, var in RATE_GAINS.items() if line in cg.lines
+    }
+    if rate_gains:
+        fields["tax_unit_inputs"] = {**fields.get("tax_unit_inputs", {}), **rate_gains}
     out.household = Household(**fields)
     return out
 
