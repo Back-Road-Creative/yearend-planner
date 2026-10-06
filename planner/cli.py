@@ -1504,7 +1504,9 @@ def paid(
     year: int = typer.Option(
         ..., help="tax year the payment is for", min=1990, max=2100
     ),
-    agency: str = typer.Option(..., help="fed or nc"),
+    agency: str = typer.Option(
+        ..., help="fed, or the state's code in lowercase (nc, ca)"
+    ),
     on: str = typer.Option(..., help="payment date YYYY-MM-DD"),
     amount: float = typer.Option(..., help="dollars", min=0),
 ) -> None:

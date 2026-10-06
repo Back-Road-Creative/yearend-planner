@@ -89,6 +89,11 @@ def test_documents_and_rows_cover_needs(lay: Layout) -> None:
     assert (
         by["ss_estimate_67"].state == "actual" and by["ss_estimate_67"].value == 2640.0
     )
+    # NC's own items are asked once the state is NC (unit 3d-1), and the 1040
+    # does not fill them
+    assert "prior_nc_tax" not in by
+    enter(lay, 2026, "state", "NC")
+    by = {s.need.key: s for s in needed(lay, 2026).items}
     assert by["prior_nc_tax"].state == "missing"
     # the YTD facts stay; once the year has ended Schedule D from the lots is actual
     conn = db.connect(lay.data / "ledger" / "planner.db")

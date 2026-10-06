@@ -50,15 +50,15 @@ def test_holidays_and_the_business_day_shift() -> None:
 
 
 def test_deadlines_in_order_with_the_rule_date_kept() -> None:
-    ds = calendar.deadlines(2026)
+    ds = calendar.deadlines(2026, "NC")
     assert [d.date for d in ds] == sorted(d.date for d in ds)
     by_item = {d.item: d for d in ds}
     q4 = next(d for d in ds if d.item.startswith("Q4 estimated"))
     assert (q4.date, q4.nominal) == ("2027-01-15", "2027-01-15")
     assert any("Medicaid work requirement" in i for i in by_item)
-    assert all(d.nominal == d.date for d in calendar.deadlines(2026))
+    assert all(d.nominal == d.date for d in calendar.deadlines(2026, "NC"))
     # 2028-01-15 is a Saturday, then MLK Day: the Q4 payment lands on the 18th
-    q4 = next(d for d in calendar.deadlines(2027) if d.item.startswith("Q4"))
+    q4 = next(d for d in calendar.deadlines(2027, "NC") if d.item.startswith("Q4"))
     assert (q4.date, q4.nominal) == ("2028-01-18", "2028-01-15")
 
 
@@ -281,19 +281,19 @@ def test_calendar_q2_q3_are_conditional_on_esttax() -> None:
         return next(d.item for d in ds if d.item.startswith(f"Q{n} estimated"))
 
     # nothing known: the dates stay, marked "if required"
-    unknown = calendar.deadlines(2026)
+    unknown = calendar.deadlines(2026, "NC")
     assert q(unknown, 2) == "Q2 estimated payments (federal and NC) if required"
     assert q(unknown, 3) == "Q3 estimated payments (federal and NC) if required"
     # esttax says who owes: federal only in Q2, nobody in Q3
-    known = calendar.deadlines(2026, {2: ("fed",), 3: ()})
+    known = calendar.deadlines(2026, "NC", {2: ("fed",), 3: ()})
     assert q(known, 2).endswith("if required: required for federal")
     assert "if required: not required" in q(known, 3)
     # nobody owes and the reason is given: the line states it
     why = "withholding covers the safe harbor"
-    reasoned = calendar.deadlines(2026, {2: (), 3: ()}, why)
+    reasoned = calendar.deadlines(2026, "NC", {2: (), 3: ()}, why)
     assert q(reasoned, 3).endswith(f"if required: not required ({why})")
     assert "de minimis" not in q(reasoned, 2)
-    both = calendar.deadlines(2026, {2: ("fed", "nc"), 3: ("fed", "nc")})
+    both = calendar.deadlines(2026, "NC", {2: ("fed", "nc"), 3: ("fed", "nc")})
     assert q(both, 3).endswith("if required: required for federal and NC")
     # Q1 and Q4 are not conditional
     assert q(known, 4) == "Q4 estimated payments (federal and NC)"

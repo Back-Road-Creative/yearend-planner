@@ -92,7 +92,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `dont-have` | Mark an item as not available; it leaves the Needed list and the plan shows it as unavailable instead of guessing. `--undo` puts it back. |
 | `draft` | The draft return: Form 1040 with Schedules 1, 1-A, 2, 3, C, D and SE and the other forms, and the NC D-400 with Schedule S, every line priced by the engine and naming its source. |
 | `enter` | Type one answer the documents did not supply; profile answers go to data/profile/assumptions.yaml, year answers to data/manual/<year>.yaml. |
-| `esttax` | The safe harbor and the four installments, federal and NC: what was paid (bank rows to the IRS or NCDOR, plus `planner paid`), each due date's shortfall, and the next payment. |
+| `esttax` | The safe harbor and the four installments, federal and the household's state (none in a state without an income tax; NC on its own rules, any other state on the federal ones, marked `Estimated:`): what was paid (bank rows to the IRS or NCDOR, plus `planner paid`), each due date's shortfall, and the next payment. |
 | `facts` | List the accepted facts in the ledger, each with its source file and page. |
 | `forms` | The forms the year should produce (from last year's issuers, the accounts and the Needed panel), which have arrived, and where to download the rest. |
 | `gains` | Form 8949 and Schedule D: each closed lot in a taxable account, wash sales across every account (code W), 1099-DIV capital gain distributions and the loss carried in. |
@@ -107,7 +107,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `paths` | Show where this planner keeps its folders, creating data/ and out/. |
 | `plan` | The year-end plan on one page: the Needed panel, projected MAGI against every line, the conversion, the spending band with its return-band table, the glide path with its age/year table, cash to raise with the monthly cash line, estimated tax, wash sales and the deadline calendar. From a terminal it first asks for total income, Q4 dividends, planned sales and the conversion target (`--total-income`, `--q4-dividends`, `--sales-st`, `--sales-lt`, `--conversion-target manual\|auto`; `--no-ask` skips the questions). |
 | `restore` | Check a backup (paths, size, every file against its manifest), then swap its data/ in. |
-| `rollover` | Roll the year that ended into the next: carry AGI, total tax, NC tax and the capital loss carryforward (filed figures once closed, else the draft's), keep a snapshot of the ledger and the year's dashboard, make next year the active one, refresh its limits, report next year's spending band and glide path, print the checklist and ask for next year's figures (last year's actual spending included). |
+| `rollover` | Roll the year that ended into the next: carry AGI, total tax, NC tax (another state's is asked) and the capital loss carryforward (filed figures once closed, else the draft's), keep a snapshot of the ledger and the year's dashboard, make next year the active one, refresh its limits, report next year's spending band and glide path, print the checklist and ask for next year's figures (last year's actual spending included). |
 | `rows` | List imported CSV rows (holdings, lots, transactions, income, bank lines). |
 | `run` | The one command: read the inbox, run every planner and the draft return, write out/index.html, then serve the page on this computer and open it. |
 | `schedule` | Register a monthly quiet run (`planner.cmd run --quiet`, the 1st at 09:00) with Windows Task Scheduler; `--remove` deletes it. |
