@@ -345,6 +345,11 @@ pa_40_draft:
   evidence: implemented
   tests: ["tests/test_pa40.py", "tests/test_state_returns.py"]
   note: "planner draft; PA Form PA-40 lines 1a-6, 9-13, 15, 18, 21, 23-26, 28-30 and Schedule SP for a full-year resident (unit 3d-8, 2025 PA-40 and PA-40 IN): compensation from W-2 box 16 (else box 1 plus box 12 deferrals), US bond interest out of line 2, losses on lines 4-6 never netted, 3.07% and the line 21 forgiveness to the dollar, the use tax table; filed PA-40 Sides 1-2 read by templates pa-pa40*.yaml; next year's safe harbor 12 less 21 (REV-1630 Exception 1); part-year and nonresident returns, lines 7, 8, 14, 16, 17, 22, 27, Schedule OC, the married-separate forgiveness and the Working Pennsylvanians Tax Credit named, not drafted"
+il_1040_draft:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_il1040.py", "tests/test_state_returns.py"]
+  note: "planner draft; IL Form IL-1040 lines 1-12, 14, 16, 18, 19, 21, 23-26, 29-33, 37, 38 and 41 for a full-year resident (unit 3d-9, 2025 IL-1040 and instructions): federal AGI plus tax-exempt interest, retirement income and taxable social security out, the Line 10a chart, 65-or-older and dependent exemptions (zero above the income exceptions), 4.95%, Schedule ICR credits, the UT Table, the IL EITC and Child Tax Credit, every line half up to the dollar; filed IL-1040 front and back read by templates il-il1040*.yaml; next year's safe harbor 14 + 22 less 15, 16, 17, 28, 29, 30 (IL-2210 Step 2); part-year and nonresident returns, lines 10c, 13, 15, 17, 20, 22, 27, 28, 34 and 35 named, not drafted"
 taxpack:
   status: verified
   evidence: implemented

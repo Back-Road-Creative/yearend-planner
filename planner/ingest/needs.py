@@ -824,6 +824,37 @@ NEEDS: tuple[Need, ...] = (
         asked=lambda s: s.get("state") == "PA",
     ),
     Need(
+        "il_additions",
+        "IL other additions (IL-1040 line 3, Schedule M)",
+        "added to federal AGI on IL-1040 line 3",
+        "IL Schedule M Step 2 (a child's tax-exempt interest from Form 8814, "
+        "pass-through additions, ...; most returns have none; type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "IL",
+    ),
+    Need(
+        "il_subtractions",
+        "IL other subtractions beyond US bond interest and 529 contributions "
+        "(IL-1040 line 7, Schedule M)",
+        "subtracted on IL-1040 line 7 with the US obligations interest and 529 "
+        "contributions the draft already counts",
+        "IL Schedule M Step 3 (military pay, ...; type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "IL",
+    ),
+    Need(
+        "il_use_tax",
+        "IL use tax owed (IL-1040 line 21)",
+        "tax on purchases no sales tax was collected on",
+        "your purchase records (the UT Worksheet), or the UT Table in the IL-1040 "
+        "instructions (the draft uses the table until you type it)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "IL",
+    ),
+    Need(
         "nc_additions",
         "NC additions to federal AGI (D-400 Schedule S line 16)",
         "added to federal AGI on D-400 line 7",
