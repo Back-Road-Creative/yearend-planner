@@ -761,8 +761,28 @@ carries both.
   a partnership K-1), less what the collectibles and losses use up. Both go to
   the engine, so the tax is the Schedule D Tax Worksheet's. Not drafted, and
   named: the section 1202 exclusion and Forms 4684, 6252, 6781 and 8824 (28%
-  worksheet lines 2-3), Form 4797 and a partnership's or S corporation's
-  unrecaptured section 1250 gain (1250 worksheet lines 1-9).
+  worksheet lines 2-3, 1250 worksheet line 4). Lines 1-9 come from Form 4797,
+  below.
+- **Form 4797, sales of business property (line 11, unit 3e-6c).** Type each
+  sale in `business_sales` (asked when you have rentals, farms, a business or a
+  K-1): `1250 acquired 2015-03-01 sold 2025-06-30 price 300000 basis 200000
+  depreciation 50000`, the kind 1245 (equipment, vehicles), 1250 (buildings) or
+  land, basis before depreciation, and `additional N` for 1250 property
+  depreciated faster than straight line. Split a rental house into its building
+  and its land. A gain on 1245 or 1250 property held more than 1 year goes to
+  Part III, which recaptures the depreciation (1245) or the additional
+  depreciation (1250) as ordinary income; land and losses go to Part I, and
+  anything held 1 year or less to Part II. A K-1's `section1231` (1065 box 10,
+  1120-S box 9) joins Part I; a passive K-1's section 1231 loss belongs to
+  Form 8582 and is not taken. Line 7's net gain, less `section_1231_lookback`
+  (the net section 1231 losses of the 5 years before not yet recaptured; line
+  8, recaptured as ordinary), goes to Schedule D line 11; line 18b goes to
+  Schedule 1 line 4 and to the engine as its other net gain. The Unrecaptured
+  Section 1250 Gain Worksheet lines 1-9 take each Part III building's
+  depreciation (up to its gain, less its recapture) plus a partnership's or S
+  corporation's K-1 `unrecaptured1250` (1065 9c, 1120-S 8c). Not drafted, and
+  named: lines 1a-1c, Forms 4684, 6252 and 8824, Part IV, lines 26c-26f and
+  18a, and the passive losses a disposition frees.
 - **When the Needed panel uses it.** After the year ends, Schedule D lines 7 and
   15 are the short- and long-term gains in the Needed panel. Until then the
   year-to-date estimate stands in, and it now includes capital gain
@@ -2030,8 +2050,9 @@ The same `k1s` entry takes it:
 - The gains reach `short_term_gains` and `long_term_gains` through Schedule D lines 7
   and 15. A typed gain replaces those lines, which is a CHECK when a K-1 has a gain.
 - A K-1 with only portfolio boxes has no Part II or III row.
-- Collectibles (28%) gain, unrecaptured section 1250 gain and section 1231 gain come in
-  unit 3e-6.
+- Collectibles (28%) gain and unrecaptured section 1250 gain go to Schedule D lines 18
+  and 19 (unit 3e-6b2); section 1231 gain (1065 box 10, 1120-S box 9) to Form 4797 Part
+  I (unit 3e-6c).
 
 
 ## Form 8582: passive activity losses (Phase 10, unit 3e-4)
