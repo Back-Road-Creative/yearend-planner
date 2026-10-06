@@ -238,7 +238,10 @@ class WhatIf:
 
 
 def cost(res: TaxResult) -> float:
-    return r(res.fed_total_tax + res.state_tax - res.refundable_credits - res.aca_ptc)
+    # Line 24 already holds the repayment of an advance above the credit allowed
+    # (8962 line 29), so only the credit paid out above the advance (line 26)
+    # comes off; taking the whole credit too would count each dollar of it twice.
+    return r(res.fed_total_tax + res.state_tax - res.refundable_credits - res.net_ptc)
 
 
 def crossings(before: list[Line], after: list[Line]) -> tuple[str, ...]:
