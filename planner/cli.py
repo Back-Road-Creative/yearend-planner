@@ -1603,6 +1603,8 @@ def esttax(
             typer.echo(f"  paid {p.date} {p.amount:>10,.2f}  ({p.origin})")
         if ag.next_due:
             typer.echo(f"  next: {ag.next_amount:,.2f} by {ag.next_due}")
+        if ag.penalty is not None:
+            typer.echo(f"  Form 2210 penalty {ag.penalty:,.2f}")
         for note in ag.notes:
             typer.echo(f"note: {note}")
     for note in et.notes:
