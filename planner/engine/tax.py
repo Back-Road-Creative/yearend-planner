@@ -655,15 +655,19 @@ def values(
     household: Household,
     names: Iterable[str],
     prior: Iterable[str] = (),
+    own: Iterable[str] = (),
 ) -> dict[str, float]:
     """Named engine variables for one household-year, in one run (the draft
     return reads its lines from these). Unrounded; a person figure is the tax
     unit's sum (``_calc``).
     ``prior`` names are read for the year before, keyed ``<name>@prior``
-    (Form 8962 uses the prior year's poverty line). The figures come from the
-    simulation at the settled health insurance deduction (``_settle``), and two
-    keys report that settlement: ``se_health_converged`` (1 or 0) and
-    ``se_health_ptc`` (the credit allowed, or -1 when no premiums were settled)."""
+    (Form 8962 uses the prior year's poverty line). ``own`` person figures are
+    also read for each spouse alone, keyed ``<name>@you`` and ``<name>@spouse``
+    (0 with no spouse): each has their own Schedule SE (unit 3a-5). The
+    figures come from the simulation at the settled health insurance deduction
+    (``_settle``), and two keys report that settlement: ``se_health_converged``
+    (1 or 0) and ``se_health_ptc`` (the credit allowed, or -1 when no premiums
+    were settled)."""
     settled = _settle(year, household)
     sim = settled.sim
     out = {name: float(_calc(sim, name, year)[0]) for name in names}
@@ -679,6 +683,14 @@ def values(
     out["se_health_ptc"] = float(settled.ptc[0]) if settled.ptc is not None else -1.0
     for name in prior:
         out[f"{name}@prior"] = float(_calc(sim, name, year - 1)[0])
+    for name in own:
+        for who, role in (
+            ("you", "is_tax_unit_head"),
+            ("spouse", "is_tax_unit_spouse"),
+        ):
+            mask = np.asarray(sim.calculate(role, year), dtype=bool)
+            mine = np.asarray(sim.calculate(name, year), dtype=float)[mask]
+            out[f"{name}@{who}"] = float(mine[0]) if mine.size else 0.0
     return out
 
 

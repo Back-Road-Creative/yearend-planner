@@ -51,6 +51,9 @@ class Person:
     qualified_tips: int = 0
     tipped_occupation_code: int = 0
     qualified_overtime: int = 0
+    # Their W-2 boxes 3 and 7, to the wage base (Schedule SE line 8a: unit 3a-5);
+    # None = the engine takes their wages
+    ss_wages: int | None = None
 
 
 @dataclass(frozen=True)
@@ -202,6 +205,8 @@ class Household:
                 "is_tax_unit_spouse": {y: True},
                 **{PERSON_INPUTS[k]: {y: getattr(sp, k)} for k in PERSON_INPUTS},
             }
+            if sp.ss_wages is not None:
+                people["s"]["taxable_earnings_for_social_security"] = {y: sp.ss_wages}
         for i, d in enumerate(self.dependents, 1):
             people[f"d{i}"] = {
                 "age": {y: d.age},
