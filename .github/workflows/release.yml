@@ -33,7 +33,9 @@ jobs:
         shell: pwsh
         run: |
           $zip = (Get-ChildItem dist\yearend-planner-*-win64.zip | Select-Object -First 1).FullName
-          & scripts\windows_proof.ps1 -Zip $zip
+          $inbox = Join-Path $env:RUNNER_TEMP 'synthetic-inbox'
+          uv run python scripts/synthetic_inbox.py $inbox
+          & scripts\windows_proof.ps1 -Zip $zip -Inbox $inbox
       - name: Draft release
         shell: pwsh
         env:

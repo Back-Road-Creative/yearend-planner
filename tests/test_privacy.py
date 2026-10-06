@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import zipfile
@@ -151,6 +152,20 @@ def test_windows_proof_runs_the_synthetic_inbox_offline() -> None:
     for needed in ("data\\inbox", "run --quiet --no-update-check", "index.html"):
         assert needed in step, needed
     assert "Example Bank (synthetic)" in step
+
+
+def test_ci_audits_dependencies_scans_secrets_and_holds_a_coverage_floor() -> None:
+    """Phase 10, unit 2f: every push runs pip-audit on the lockfile, gitleaks over
+    the whole history (pinned by checksum) and the suite under a coverage floor;
+    Dependabot proposes the updates."""
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "uvx pip-audit==" in ci and "uv export --frozen" in ci
+    assert "fetch-depth: 0" in ci and 'gitleaks" git --redact' in ci
+    assert "sha256sum -c" in ci
+    floor = re.search(r"--cov-fail-under=(\d+)", ci)
+    assert floor and int(floor.group(1)) >= 93
+    bot = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+    assert "package-ecosystem: uv" in bot and "package-ecosystem: github-actions" in bot
 
 
 def test_synthetic_inbox_writes_only_synthetic_pdfs(tmp_path: Path) -> None:

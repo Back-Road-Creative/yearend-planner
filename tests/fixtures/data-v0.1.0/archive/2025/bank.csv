@@ -1,0 +1,3 @@
+Transaction ID,Date,Description,Amount,Account
+T-1001,01/05/2025,CLIENT PAYMENT ACME,"2,500.00",Checking
+T-1002,01/06/2025,CARD PURCHASE,(45.10),Checking

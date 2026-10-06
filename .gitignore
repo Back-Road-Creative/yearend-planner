@@ -18,3 +18,5 @@ __pycache__/
 .ruff_cache/
 .data/
 config/thresholds.engine.yaml
+.coverage
+.coverage.*

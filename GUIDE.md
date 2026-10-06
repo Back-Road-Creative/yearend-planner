@@ -2,6 +2,8 @@
 
 How each part works, phase by phase. The one-page start is the [README](README.md).
 
+**Not tax, legal or investment advice. Every figure is an estimate from the documents and answers you give it; have a tax preparer review the return before you file.** The same notice heads the page, the draft return and the tax pack.
+
 ## Engine (Phase 1)
 
 `planner compute <household.yaml>` prints every figure for one household-year as JSON:
@@ -192,7 +194,10 @@ assumptions, SS estimates) go to `data/profile/assumptions.yaml`, which is creat
 `config/assumptions.example.yaml` on first use; year items go to
 `data/manual/<year>.yaml`. `planner dont-have <item> --year 2026` takes an item off the
 list and the plan shows it as unavailable; `--undo` puts it back. The loop is done when `planner needed` prints
-`nothing needed`; `--all` shows the covered items with their source.
+`nothing needed`; `--all` shows the covered items with their source. A list emptied by
+setting items aside (`dont-have`, or a waived late form) prints `nothing left to answer,
+N set aside: not ready` instead, and the page says the same: the figures that rest on
+those items are estimates, not ready to act on or hand to a preparer.
 
 Every kind of item in the Needed panel can be closed on the live page. Every
 don't-have and every waiver can be undone there; a row you categorised is changed
@@ -301,7 +306,10 @@ benefits are typed, NC's scheduled rate step (3.99% to 3.49% in 2027; the
 conversion lever names what waiting would save on the NC side), and from
 2027, with the Medicaid objective, the 80-hour monthly work requirement
 against the thinnest month in the `se_hours` log (`1:85, 2:60`).
-Unknown inputs are named and left out, never treated as zero; unknown
+Every value is in one of four states: known (a typed or documented zero
+included), an estimate (a year-to-date figure standing in), unknown, or not
+applicable (an item another answer makes moot, so it is never asked). Unknown
+inputs are named and left out, never treated as zero; unknown
 qualified dividends are priced as ordinary and flagged. Tax-exempt interest
 (1099-INT box 8, 1099-DIV box 12, or a typed answer) is one of those inputs:
 it is not income, but ACA MAGI adds it back, so the room to the 250% and 400%
@@ -419,7 +427,14 @@ estimated payments are marked "if required" and name the agencies whose
 `planner esttax` result owes them, resting on this year's tax after withholding). The same `--as-of`
 and override options as the planners it composes. A planner whose required
 input is still unknown reports what it needs and the rest of the page still
-renders; nothing is estimated in its place. The page is also written to
+renders; nothing is estimated in its place. A section priced from the
+household (MAGI, conversion, levers, glide path, cash, estimated tax) that
+rests on an unknown input says so ("rests on unknown (left out, not zero): …")
+and the dashboard tags it an estimate even after the year is over; an unknown
+mortgage or premium leaves the cash line running high, and unknown withholding
+makes the estimated-tax amounts the most that could be due. A draft return
+that rests on an unknown (an income item, or a sale with no cost basis) opens
+with "NOT READY for a preparer", and so do its tax-pack page and notes. The page is also written to
 `out/plan-<year>.md` (personal, gitignored; `--no-write` skips it).
 
 From a terminal `planner plan` first asks the few typed fields, and each has an
@@ -926,10 +941,12 @@ year and next from the installed policyengine-us. It needs no network.
   is reported, never a failure; a known variance (say, the self-employed health
   insurance deduction) does not stop updates. The first engine recorded is the baseline.
   A candidate release runs `planner selfcheck --regression` inside `python-candidate/`
-  with its own Python, and every figure must land within $5 of the baseline or the
-  release is held. A release that prints no regression figures is held too. A later
-  engine that is within $5 is recorded beside the baseline; one that is not is named on
-  each run. Delete `data/engine-baseline.json` only to start a new baseline from the
+  with its own Python, and every figure must land within its limit of the baseline or
+  the release is held: $5 on a dollar figure, 0.1 points on a share of the poverty
+  line, and no change at all in a yes/no (Medicaid eligible, itemizes, whether the
+  SE health deduction settled), so an eligibility flip with the same dollars is caught.
+  A release that prints no regression figures is held too. A later engine within the
+  limits is recorded beside the baseline; one that is not is named on each run. Delete `data/engine-baseline.json` only to start a new baseline from the
   engine you run now.
 - **Held.** A release that fails its selfcheck or its regression is never swapped in. The
   dashboard shows "engine update held" with the reason, and the same release
@@ -949,6 +966,15 @@ year and next from the installed policyengine-us. It needs no network.
   release the same way, `planner update --rollback` goes back to
   `python-previous/`, and `planner update --check` looks for one now. `data/`
   and `out/` are never touched.
+- **An older `data/` opens in a newer release** (Phase 10, 2e). The first
+  writing command after an update copies the ledger to
+  `data/ledger/planner.db.schemaN.bak` (N is the old schema) and then brings it
+  up to date one step at a time. A ledger written by a *newer* release (say
+  after `--rollback`, or restoring a newer backup) is refused with "written by
+  a newer planner" and left exactly as it was: use that release again, or
+  restore a backup this release made. Every release's tests open the v0.1.0
+  `data/` folder in `tests/fixtures/data-v0.1.0` (synthetic, made by the
+  v0.1.0 tag with `make.py` beside it) and run it end to end.
 - `scripts/build_release.py` writes the `.sha256` file beside the zip.
 
 ## Rolling over to the new year (Phase 7)
@@ -1056,6 +1082,14 @@ steps on a clean Windows runner:
 Publishing the draft is a person's decision. The update check reads published
 releases only.
 
+Every push and pull request also runs the `scan` job in `ci.yml` (Phase 10,
+unit 2f): `pip-audit` checks every locked dependency in `uv.lock` against the
+known-vulnerability databases, and `gitleaks` scans the whole git history for
+keys and tokens (the binary is pinned by checksum and findings are redacted).
+The Linux test run measures coverage of `planner/` and fails below the floor in
+`ci.yml`. Dependabot proposes weekly updates for the lockfile and the CI
+actions.
+
 The release can only contain files git tracks. `scripts/build_release.py`
 stages its contents from `git ls-files`, so a developer's own `data/`, `out/`
 or untracked notes cannot ship. Before zipping, `audit()` refuses a stage that
@@ -1102,3 +1136,21 @@ because the sync client would copy your ledger to the cloud. `planner.cmd`
 checks its own folder first with `findstr` and prints the same warning before
 it downloads or runs anything, so a double-click in a synced folder explains
 itself in the window it keeps open.
+
+## Scope guard: one person (Phase 10, unit 0b)
+
+The household the engine prices has one member: no spouse and no dependents. For the
+filing statuses whose answer turns on a second person, `planner.plan.inputs.NOT_HANDLED`
+holds one line each, and `inputs.build` puts it in `Inputs.scope` and the notes:
+
+- Married filing jointly: the spouse's income, age, deductions and credits are left out,
+  so every figure is this person's share, not the joint return.
+- Married filing separately: the spouse's choice to itemize (which binds this return), a
+  community-property split and the spouse's figures are left out.
+- Head of household: no qualifying person is entered, so dependents' credits and the
+  larger household for the ACA credit and benefits are left out.
+
+The line leads the dashboard's alerts (kind `scope`), reaches the draft return's notes,
+`planner magi` and the tax pack's notes. A single filer has none. The tag stays until the
+household model (unit 3a) adds the spouse and dependents.
+

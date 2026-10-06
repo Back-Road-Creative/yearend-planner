@@ -18,6 +18,7 @@ import dataclasses
 import math
 from dataclasses import dataclass, field
 
+from planner import NOTICE
 from planner.engine import tax
 from planner.engine.household import Household
 from planner.ingest.needs import need_values, schedule_b_required
@@ -129,12 +130,9 @@ ENGINE_LINE = {
 SS_WAGES = (("W-2", "3"), ("W-2", "7"))  # Social Security wages and tips
 # The Needed-panel keys behind Schedule 1-A Parts II to IV.
 PART_KEYS = ("qualified_tips", "qualified_overtime", "car_loan_interest")
-# The Needed-panel keys a return reads (the others drive the plan, not the 1040).
-TAX_KEYS = (
-    *inputs.MONEY,
-    *inputs.CODES,
-    "ordinary_dividends",
-    "qualified_dividends",
+TAX_KEYS = inputs.TAX_KEYS  # the Needed-panel keys a return reads
+NOT_READY = (
+    "NOT READY for a preparer: it rests on unknown figures (left out, not zero): "
 )
 
 
@@ -156,6 +154,11 @@ class Draft:
     estimates: list[str] = field(default_factory=list)  # keys standing in from YTD
     unknown: list[str] = field(default_factory=list)  # keys left out (not zero)
     missing: list[str] = field(default_factory=list)  # forms still to come
+
+    @property
+    def not_ready(self) -> str | None:
+        """The line that heads every copy of a draft resting on an unknown."""
+        return NOT_READY + ", ".join(self.unknown) if self.unknown else None
 
     def get(self, form: str, line: str) -> float | None:
         for ln in self.lines:
@@ -343,7 +346,7 @@ def build(lay: Layout, year: int) -> Draft:
         tax.engine_version(),
         notes=list(inp.notes),
         estimates=list(inp.estimates),
-        unknown=[k for k in inp.unknown if k in TAX_KEYS],
+        unknown=inp.tax_unknown,
     )
     d.missing = [f"{e.form} from {e.issuer}" for e in inventory(lay, year).outstanding]
     sheet = _Sheet(d)
@@ -1183,6 +1186,7 @@ def _schedule_d(
     for line, value in cg.lines.items():
         sheet.add("Sch D", line, capgains.LABELS[line], value, cg.sources[line])
     d.notes.extend(cg.notes)
+    d.unknown.extend(cg.unknown)
     l16 = cg.lines.get("16", 0.0)
     want = l16 if l16 >= 0 else max(l16, -limit)
     if l16 < 0:
@@ -1236,6 +1240,9 @@ def render(d: Draft) -> str:
         "numbers follow the 2025 forms. A draft to check against the forms, not "
         "a filing.",
     ]
+    if d.not_ready:
+        out.append(d.not_ready)  # the blocker first, then the standing notice
+    out.append(NOTICE)
     for form in (*ORDER, "Carryover"):
         lines = [ln for ln in d.lines if ln.form == form]
         if not lines:

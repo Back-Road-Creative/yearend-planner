@@ -753,6 +753,16 @@ def test_line_36b_note_reaches_a_joint_return_whose_filer_is_under_65(
     assert "born before January 2, 1962" in note
 
 
+def test_a_joint_draft_says_the_spouse_is_not_handled(planner_home: Path) -> None:
+    lay = Layout(planner_home)
+    lay.ensure()
+    d = _joint(lay, 2026, "1980-06-01")
+    assert [n for n in d.notes if n.startswith("Not handled:")] == inputs.build(
+        lay, 2026
+    ).scope
+    assert "Not handled:" in draft.render(d)
+
+
 def _sched_b_lay(planner_home: Path, banks: tuple[float, float], div: float) -> Layout:
     """Two synthetic banks' interest (box 1, one with box 3 Treasury interest)
     and one fund's ordinary dividends; nothing typed for either."""

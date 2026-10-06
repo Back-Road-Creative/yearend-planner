@@ -32,6 +32,7 @@ HORIZON_AGE = 95
 SS_AGES = (62, 67, 70)
 STRESS_DROP = 0.30
 STRESS_INFLATION = 0.05
+MONTHLY = ("mortgage_monthly", "premium_monthly")  # typed costs on the cash line
 
 
 @dataclass(frozen=True)
@@ -454,10 +455,11 @@ def months(
     planned = _planned_sales(lay, year, as_of, overrides, notes)
     mortgage = float(profile.get("mortgage_monthly") or 0)
     premiums = float(profile.get("premium_monthly") or 0)
-    for key in ("mortgage_monthly", "premium_monthly"):
+    for key in MONTHLY:
         if profile.get(key) is None:
             notes.append(
-                f"{key} not set: counted as zero (planner needed --year {year})"
+                f"{key} unknown: left out of the cash line, which runs high by "
+                f"that much a month (planner needed --year {year})"
             )
     irregular = _irregular(profile, notes)
     rows: list[MonthRow] = []

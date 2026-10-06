@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from planner import NOTICE
 from planner.cli import app
 from planner.engine.household import MissingInputError
 from planner.ingest import ingest
@@ -74,6 +75,9 @@ def test_taxpack_writes_every_file(lay: Layout) -> None:
     page = (folder / "draft.html").read_text(encoding="utf-8")
     assert page.startswith("<!doctype html>") and "NC Form D-400" in page
     assert "<script" not in page
+    # the limits notice heads the draft, its printable page and the pack summary
+    assert NOTICE in draft.render(d) and NOTICE in page
+    assert package.render(pack).splitlines()[1] == f"  {NOTICE}"
 
     lots = _rows(folder / "form-8949.csv")
     assert len(lots) == 3  # the IRA's own sale is not reported
@@ -147,6 +151,13 @@ def test_taxpack_rerun_replaces_and_cli_lists(lay: Layout) -> None:
     assert "draft.html" in res.output and "originals.zip" in res.output
     pays = _rows(lay.out / "tax-2025" / "estimated-payments.csv")
     assert [p["agency"] for p in pays] == ["fed", "nc"]
+
+
+def test_taxpack_notes_a_joint_return_it_does_not_model(lay: Layout) -> None:
+    enter(lay, 2025, "filing_status", "married_joint")
+    pack = package.build(lay, 2025)
+    (gap,) = [n for n in pack.notes if n.startswith("Not handled:")]
+    assert "spouse" in gap and f"note: {gap}" in package.render(pack)
 
 
 def test_taxpack_blocked_writes_nothing(planner_home: Path) -> None:

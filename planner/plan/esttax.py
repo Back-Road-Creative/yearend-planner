@@ -17,7 +17,7 @@ from planner.ingest.needs import load_manual, manual_path, need_value
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan.calendar import shift
-from planner.plan.inputs import Overrides
+from planner.plan.inputs import UNKNOWN, Overrides
 from planner.plan.magi import HIGH_INCOME_AGI, project
 
 PAYMENTS = "payments"  # top-level list in the year's manual file
@@ -29,6 +29,7 @@ DESCRIPTIONS = {
 DE_MINIMIS = {"fed": 1_000.0, "nc": 1_000.0}
 HIGH_INCOME_FACTOR = {"fed": 1.10, "nc": 1.00}
 LUMPY_SHARE = 0.50
+WITHHELD = ("fed_withheld", "nc_withheld")  # the year's withholding, per agency
 
 
 def due_dates(year: int) -> list[date]:
@@ -352,9 +353,12 @@ def estimate(
             "lump): the annualized method (Schedule AI) may cut an earlier "
             "installment's shortfall; not computed"
         )
-    for key in ("fed_withheld", "nc_withheld"):
-        if key not in pj.inputs.origins:
-            et.notes.append(f"{key} unknown: counted as zero")
+    for key in WITHHELD:
+        if pj.inputs.state(key) == UNKNOWN:
+            et.notes.append(
+                f"{key} unknown: the amounts due assume nothing was withheld "
+                "(the most that could be due), not a figure to pay from"
+            )
     if pj.inputs.unknown:
         et.notes.append("projection leaves out: " + ", ".join(pj.inputs.unknown))
     return et
