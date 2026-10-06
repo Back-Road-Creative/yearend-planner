@@ -29,10 +29,10 @@ from planner.engine.household import (
     Student,
 )
 from planner.ingest.derive import CountyError, resolve_county
-from planner.ingest.needs import _needed
+from planner.ingest.needs import _needed, undetermined
 from planner.ledger import db
 from planner.paths import Layout
-from planner.taxprep import capgains, f8582, hsa, k1, sche, schf
+from planner.taxprep import annuity, capgains, f8582, hsa, k1, sche, schf
 
 FILING = {
     "single": "SINGLE",
@@ -125,6 +125,7 @@ TAX_KEYS = (
     "rentals",
     "k1s",
     "farms",
+    "annuities",
     "collectibles",
     "unrecaptured_1250",
     "rental_active",
@@ -209,6 +210,7 @@ class Inputs:
     married: str | None = None  # a joint return's marriage date in the year (3b-4)
     spouse_kids: int = 0  # dependents on the spouse's side before the marriage
     qcd: dict[str, float] = field(default_factory=dict)  # who -> excluded (3f-1)
+    annuities: list[annuity.Worksheet] = field(default_factory=list)  # 3f-2
     notes: list[str] = field(default_factory=list)
     overrides: Overrides = field(default_factory=Overrides)
     scope: list[str] = field(default_factory=list)  # Not handled lines (also notes)
@@ -314,6 +316,73 @@ def exclude_qcd(value: dict[str, Any], year: int, notes: list[str]) -> dict[str,
     return out
 
 
+def simplified(
+    value: dict[str, Any],
+    left: dict[int, dict[str, Any]],
+    year: int,
+    notes: list[str],
+) -> list[annuity.Worksheet]:
+    """The Simplified Method Worksheet for each typed annuity, its taxable
+    amount added to its owner's pension income (2025 Form 1040 instructions,
+    lines 5a and 5b). ``left`` is each plan 1099-R that leaves the taxable
+    amount to you (planner.ingest.needs.undetermined): line 1 is its box 1
+    when it is the owner's only annuity."""
+    entries = value.get("annuities") or []
+    out: list[annuity.Worksheet] = []
+    for e in entries:
+        who = "spouse" if e.get("spouse") else "you"
+        pre = "spouse_" if who == "spouse" else ""
+        theirs = [r for r in left.values() if r["owner"] == who]
+        mine = [x for x in entries if bool(x.get("spouse")) == (who == "spouse")]
+        gross = e.get("gross")
+        if gross is None and len(mine) == 1 and theirs:
+            gross = sum(float(r.get("1") or 0) for r in theirs)
+        if gross is None:
+            notes.append(
+                f"annuities: the {who} annuity starting {e['start']} needs gross "
+                "(its 1099-R box 1): more than one annuity, or no 1099-R leaving "
+                "the taxable amount blank; line 5b leaves it out"
+            )
+            continue
+        birth = value.get(pre + "birth_date")
+        age = e.get("age")
+        if age is None and birth:
+            age = age_on(str(birth), date.fromisoformat(e["start"]))
+        if age is None:
+            notes.append(
+                f"annuities: the {who} annuity starting {e['start']} needs age (at "
+                "the starting date) or the birth date; line 5b leaves it out"
+            )
+            continue
+        try:
+            w = annuity.worksheet(e, float(gross), int(age), year)
+        except ValueError as err:
+            notes.append(f"annuities: {err}; line 5b leaves it out")
+            continue
+        before = float(value.get(pre + "pension_income") or 0)
+        value[pre + "pension_income"] = before + w.taxable
+        out.append(w)
+        notes.extend(w.notes)
+        shown = sum(float(r.get("9b") or 0) for r in theirs)
+        if (
+            shown
+            and len(mine) == 1
+            and "7" in w.lines
+            and round(shown) != round(w.lines["7"])
+        ):
+            notes.append(
+                f"annuities: box 9b shows {shown:,.2f} of cost not yet recovered; "
+                f"the worksheet's line 7 is {w.lines['7']:,.2f}: check cost and "
+                "recovered"
+            )
+    if left and value.get("annuities") == []:
+        notes.append(
+            "annuities is none, but a 1099-R from a plan leaves the taxable amount "
+            "blank: its box 1 is on line 5a and nothing of it on line 5b"
+        )
+    return out
+
+
 def age_at_year_end(birth: str, year: int) -> int:
     return age_on(birth, date(year, 12, 31))
 
@@ -385,6 +454,7 @@ def build(
             hsa.store(conn, lay, year, who=who)
         report = _needed(conn, lay, year)
         recorded = _recorded_conversions(conn, year)
+        left = undetermined(db.facts_for(conn, year, "1099-R", text=None))
     finally:
         conn.close()
     value: dict[str, Any] = {}
@@ -407,6 +477,7 @@ def build(
             f"the plan needs {', '.join(missing)} (planner needed --year {year})"
         )
     out.qcd = exclude_qcd(value, year, out.notes)
+    out.annuities = simplified(value, left, year, out.notes)
     fields: dict[str, Any] = {
         "age": age_at_year_end(str(value["birth_date"]), year),
         "filing_status": FILING[str(value["filing_status"])],
