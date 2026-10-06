@@ -67,7 +67,7 @@ additional child tax credit line by line, Part II-B included (unit 3c-5).
 on that spouse's own documents, against the joint return (unit 3b-2; not in a
 community property state). Filing as married filing separately stays
 **Not handled**. The state returns drafted are listed in one registry,
-`planner/taxprep/statereturn.py` (NC's D-400, CA's Form 540, NY's IT-201, PA's PA-40, IL's IL-1040 and OH's IT 1040 today; units 3d-4, 3d-6, 3d-7, 3d-8, 3d-9, 3d-10); another state
+`planner/taxprep/statereturn.py` (NC's D-400, CA's Form 540, NY's IT-201, PA's PA-40, IL's IL-1040, OH's IT 1040 and GA's Form 500 today; units 3d-4, 3d-6, 3d-7, 3d-8, 3d-9, 3d-10, 3d-11); another state
 gets the engine's estimate and a **Not handled** line saying to have a preparer draft it.
 A move into or out of the state, income from another state and a city, county or
 school district income tax are asked, and each is **Not handled** when it applies (unit 3d-5).
@@ -93,7 +93,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `dashboard` | Write the dashboard as a static page, out/index.html, for printing and backup: the Needed panel, every planner, the draft return and the alerts, each panel tagged actual, estimate or unavailable. The glide panel carries the age/year table, the cash panel the monthly cash line and the spending panel the return-band table. |
 | `derive` | Recompute the YTD facts (realized gains, dividends, interest, bank flows) for one year from the imported rows; supersedes the previous run. |
 | `dont-have` | Mark an item as not available; it leaves the Needed list and the plan shows it as unavailable instead of guessing. `--undo` puts it back. |
-| `draft` | The draft return: Form 1040 with Schedules 1, 1-A, 2, 3, C, D and SE and the other forms, the NC D-400 with Schedule S, the CA Form 540, the NY Form IT-201, the PA Form PA-40 with Schedule SP, the IL Form IL-1040 and the OH Form IT 1040 with its Schedules of Adjustments, Business Income and Credits, every line priced by the engine and naming its source. |
+| `draft` | The draft return: Form 1040 with Schedules 1, 1-A, 2, 3, C, D and SE and the other forms, the NC D-400 with Schedule S, the CA Form 540, the NY Form IT-201, the PA Form PA-40 with Schedule SP, the IL Form IL-1040, the OH Form IT 1040 with its Schedules of Adjustments, Business Income and Credits, and the GA Form 500 with Schedule 1, every line priced by the engine and naming its source. |
 | `enter` | Type one answer the documents did not supply; profile answers go to data/profile/assumptions.yaml, year answers to data/manual/<year>.yaml. |
 | `esttax` | The safe harbor and the four installments, federal and the household's state (none in a state without an income tax; CA NY PA IL OH GA NC MI NJ VA on their own rules, any other state on the federal ones, marked `Estimated:`): what was paid (bank rows to the IRS or NCDOR, plus `planner paid`), each due date's shortfall, and the next payment. |
 | `facts` | List the accepted facts in the ledger, each with its source file and page. |
