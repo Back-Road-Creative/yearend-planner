@@ -74,6 +74,11 @@ savers_credit:
   evidence: implemented
   tests: ["tests/test_form_8880.py"]
   note: "Form 8880 (unit 3c-3): each spouse's traditional, Roth IRA and ABLE contributions (line 1) and W-2 box 12 elective deferrals (codes D, E, F, G, H, S, AA, BB, EE; line 2), less the testing period's distributions (line 4, never below the year's own IRA distributions), capped at $2,000 per person (line 6), times the line 9 decimal (checked at every edge of the 2025 table for every filing status) and held to the tax by the Credit Limit Worksheet, on Schedule 3 line 4. The age test (born after January 1, 18 years back) comes from the birth date; student and dependent status is the filer's yes or no. The testing period's distributions (two years back to the next filing deadline) are typed, since earlier years' 1099-Rs are not on file"
+earned_income_credit:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_eic.py"]
+  note: "1040 line 27a by the EIC worksheet (unit 3c-4): Worksheet A, or B when anyone is self-employed (Schedule SE line 3 less line 13 plus line 1z), the EIC Table on earned income and, when AGI differs and is past the phase-out start, on AGI, the smaller; the table is priced from the engine's parameters and pinned to the printed 2025 rows and footnotes. Steps 1-4: the investment income limit (1040 lines 2a + 2b + 3b + 7a), the 25-64 age band without a child, no credit married filing separately without a child, and the separated-spouse rule noted with one. Qualifying children by age, student and disability (Schedule EIC lines 3-4b); each child's SSN, relationship and months at home are assumed and left to the preparer. Pub. 596 Worksheet 1 (rental or passive income) and the clergy, Medicaid waiver and combat pay rules are not drafted; the engine's eitc is checked against line 27a"
 aca_slcsp_county:
   status: verified
   evidence: implemented

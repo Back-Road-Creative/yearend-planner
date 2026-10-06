@@ -342,6 +342,66 @@ def savers_credit_cap(year: int) -> float:
     return _param("gov.irs.credits.retirement_saving.contributions_cap", year)
 
 
+EIC_ROW = 50.0  # the EIC Table's rows are $50 wide
+
+
+def eic_parameters(year: int) -> dict[str, float]:
+    """The EIC's tests the Form 1040 line 27a instructions print (2025: the
+    $11,950 investment income limit in Step 2, the 25-64 age band for a filer
+    without a qualifying child in Step 4), from the engine's parameters."""
+    p = _system().parameters.gov.irs.credits.eitc
+    at = f"{year}-01-01"
+    return {
+        "investment_income": float(p.phase_out.max_investment_income(at)),
+        "min_age": float(p.eligibility.age.min(at)),
+        "max_age": float(p.eligibility.age.max(at)),
+    }
+
+
+def _eic_terms(year: int, children: int, joint: bool) -> tuple[float, ...]:
+    """(maximum, phase-in rate, phase-out rate, phase-out start) for an EIC
+    Table column: ``children`` qualifying children, 3 or more the last."""
+    p = _system().parameters.gov.irs.credits.eitc
+    at = f"{year}-01-01"
+    k = min(children, 3)
+    start = float(p.phase_out.start(at).calc(k))
+    if joint:
+        start += float(p.phase_out.joint_bonus(at).calc(k))
+    return (
+        float(p.max(at).calc(k)),
+        float(p.phase_in_rate(at).calc(k)),
+        float(p.phase_out.rate(at).calc(k)),
+        start,
+    )
+
+
+def eic_phaseout_start(year: int, children: int, joint: bool) -> float:
+    """Worksheet A line 5's (B line 10's) AGI below which AGI is not looked up
+    (2025: $10,620, $17,730 joint, with no child; $23,350, $30,470 joint)."""
+    return _eic_terms(year, children, joint)[3]
+
+
+def eic_table(year: int, children: int, joint: bool, amount: float) -> int:
+    """The EIC Table's credit for an amount a worksheet looks up (2025 Form 1040
+    instructions, line 27a), in the column for ``children`` and joint or not.
+    The table prices each $50 row at its midpoint, rounded to the dollar; a row
+    holding the end of the phase-in or the start of the phase-out gets the
+    maximum, and the last row stops where the credit ends (the starred notes)."""
+    if amount < 1:
+        return 0
+    most, rise, fall, start = _eic_terms(year, children, joint)
+    end = round(start + most / fall)
+    if amount >= end:
+        return 0
+    base = amount // EIC_ROW * EIC_ROW
+    low, high = max(base, 1.0), min(base + EIC_ROW, end)
+    mid = (low + high) / 2
+    phased_in = most if low < most / rise < high else min(most, rise * mid)
+    cut = 0.0 if low < start < high else fall * max(mid - start, 0.0)
+    credit = Decimal(f"{phased_in - cut:.6f}").quantize(Decimal(1), ROUND_HALF_UP)
+    return max(int(credit), 0)
+
+
 PREFERENTIAL = ("qualified_dividend_income", "long_term_capital_gains")
 PREMIUMS = "self_employed_health_insurance_premiums"
 
