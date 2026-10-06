@@ -10,6 +10,7 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
+from planner import NOTICE
 from planner.cli import app
 from planner.dashboard import page, render
 from planner.ingest.needs import profile_path
@@ -60,6 +61,7 @@ def test_static_page_escapes_and_carries_no_forms(lots: Layout) -> None:  # noqa
     for panel in pg.panels:
         assert f'id="{panel.name}"' in text
     assert "http://" not in text and "https://" not in text  # no external assets
+    assert NOTICE in text  # the limits notice heads every page
 
 
 @pytest.mark.engine
@@ -89,6 +91,27 @@ def test_cold_start_page_renders_and_names_what_is_needed(planner_home: Path) ->
     assert any(a.kind == "stale" and "no document" in a.text for a in pg.alerts)
     assert page.UNAVAILABLE in {p.tag for p in pg.panels}
     assert "Needed" in render.html(pg)
+
+
+@pytest.mark.engine
+def test_page_alerts_a_household_the_planner_does_not_model(planner_home: Path) -> None:
+    from planner.ingest.needs import enter
+
+    home = Layout(planner_home)
+    home.ensure()
+    for key, text in (
+        ("birth_date", "1971-06-15"),
+        ("filing_status", "head_of_household"),
+        ("state", "NC"),
+    ):
+        enter(home, 2026, key, text)
+    pg = page.gather(home, 2026, AS_OF)
+    (alert,) = [a for a in pg.alerts if a.kind == "scope"]
+    assert alert.text.startswith("Not handled:")
+    assert pg.alerts[0] == alert  # first, above every other alert
+    assert "Not handled:" in render.html(pg)
+    enter(home, 2026, "filing_status", "single")
+    assert not [a for a in page.gather(home, 2026, AS_OF).alerts if a.kind == "scope"]
 
 
 @pytest.mark.engine

@@ -65,11 +65,58 @@ class TaxResult:
     standard_deduction: float = 0.0
 
 
+# IRC 36B(c)(1)(A): the premium tax credit needs household income that "does not
+# exceed 400 percent" of the poverty line, and i8962 Worksheet 2 puts 401 on line 5
+# only when income is MORE than 4 x the guideline, in dollars. policyengine-us floors
+# the ratio to whole percents and ends eligibility at a floored ratio >= 4.00
+# (parameters/gov/aca/ptc_income_eligibility.yaml), so it pays nothing at exactly
+# 400.00%. The planner moves that edge just past 4.00 (exactly 400.00% is eligible)
+# and zeroes the credit on income more than 4 x the guideline (_aca_ptc), which cuts
+# 400.01% to 400.99% the engine's floor would otherwise let through.
+ACA_PTC_LINE = 4.0
+_EDGE = 1e-9  # past 4.00 by less than a cent of MAGI moves the ratio
+_CENT = 0.005  # half a cent: the engine's float32 MAGI against 4 x the guideline
+
+
+def _aca_400_edge(system: Any) -> None:
+    from policyengine_core.periods import instant
+
+    for bracket in system.parameters.gov.aca.ptc_income_eligibility.brackets:
+        if float(bracket.threshold("2026-01-01")) == ACA_PTC_LINE:
+            bracket.threshold.update(
+                start=instant("2014-01-01"), value=ACA_PTC_LINE + _EDGE
+            )
+
+
 @lru_cache(maxsize=1)
 def _system() -> Any:
     from policyengine_us import CountryTaxBenefitSystem
 
-    return CountryTaxBenefitSystem()
+    system = CountryTaxBenefitSystem()
+    _aca_400_edge(system)
+    return system
+
+
+def _ptc_capped(year: int) -> bool:
+    """Whether the year ends the credit above 400% (no cap 2021-2025, P.L. 117-169)."""
+    node = _system().parameters.gov.aca.ptc_income_eligibility
+    return not bool(node(f"{year}-01-01").calc(ACA_PTC_LINE + 0.5))
+
+
+def over_ptc_line(year: int, magi: float, prior_fpg: float) -> bool:
+    """i8962 Worksheet 2: income more than 4 x last year's guideline in a capped
+    year, so Form 8962 line 5 is 401 and no credit is allowed."""
+    return _ptc_capped(year) and magi > ACA_PTC_LINE * prior_fpg + _CENT
+
+
+def _aca_ptc(sim: Any, year: int) -> Any:
+    """The engine's credit, zero where income is more than 4 x last year's
+    guideline in a capped year (i8962 Worksheet 2)."""
+    ptc = _calc(sim, "aca_ptc", year)
+    if not _ptc_capped(year):
+        return ptc
+    line = ACA_PTC_LINE * _calc(sim, "tax_unit_fpg", year - 1)
+    return np.where(_calc(sim, "aca_magi", year) > line + _CENT, 0.0, ptc)
 
 
 def engine_version() -> str:
@@ -401,7 +448,7 @@ def _settle(
     for rounds in range(1, MAX_ROUNDS + 1):
         trail.append(deduction)
         sim = _sim(year, household, axes, omit, premiums=deduction)
-        ptc = np.minimum(_f(sim, "aca_ptc", year), paid)
+        ptc = np.minimum(_aca_ptc(sim, year), paid)
         if rounds == 1:
             full_ptc = ptc
         refigured = np.minimum(np.maximum(paid - ptc, 0.0), limit)
@@ -423,7 +470,7 @@ def _settle(
     lower = np.minimum(trail[-1], trail[-2]) if len(trail) > 1 else trail[-1]
     final = np.where(done, trail[-1], np.where(step, lower, two_pass))
     sim = _sim(year, household, axes, omit, premiums=final)
-    ptc = np.minimum(_f(sim, "aca_ptc", year), paid)
+    ptc = np.minimum(_aca_ptc(sim, year), paid)
     return _Settled(sim, final, ptc, rounds + 1, done | step)
 
 
@@ -528,7 +575,11 @@ def _compute(year: int, household: Household) -> TaxResult:
     # Form 8962 against the household's advance credit (Household.aptc). The
     # credit allowed is the settled one when premiums were settled (the engine's
     # credit is not limited to the premiums; line 11e is).
-    ptc = float(settled.ptc[0]) if settled.ptc is not None else v["aca_ptc"]
+    ptc = (
+        float(settled.ptc[0])
+        if settled.ptc is not None
+        else float(_aca_ptc(sim, year)[0])
+    )
     advance = float(household.aptc)
     excess = max(advance - ptc, 0.0)
     cap = repayment_cap(
@@ -616,6 +667,14 @@ def values(
     settled = _settle(year, household)
     sim = settled.sim
     out = {name: float(_calc(sim, name, year)[0]) for name in names}
+    if "aca_ptc" in out:
+        out["aca_ptc"] = float(_aca_ptc(sim, year)[0])
+    if "is_aca_ptc_eligible" in out and over_ptc_line(
+        year,
+        float(_calc(sim, "aca_magi", year)[0]),
+        float(_calc(sim, "tax_unit_fpg", year - 1)[0]),
+    ):
+        out["is_aca_ptc_eligible"] = 0.0
     out["se_health_converged"] = float(bool(settled.converged[0]))
     out["se_health_ptc"] = float(settled.ptc[0]) if settled.ptc is not None else -1.0
     for name in prior:
@@ -659,6 +718,7 @@ def compute_sweep(
         "aca_ptc",
     )
     series = {c: _calc(sim, c, year) for c in cols}
+    series["aca_ptc"] = _aca_ptc(sim, year)
     if settled.ptc is not None:  # the credit allowed, as compute() reports it
         series["aca_ptc"] = settled.ptc
     series["se_health_deduction"] = settled.deduction

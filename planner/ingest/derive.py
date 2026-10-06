@@ -105,13 +105,16 @@ def derive_year(rows: list[db.LedgerRow], year: int) -> list[db.Fact]:
     """Fold one year's rows into YTD facts, one set per CSV source.
 
     Realized sales come from ``realized`` rows (term short/long). Dividends and
-    interest come from ``income`` rows when any income export covers the year,
-    else from ``transaction`` rows typed Dividend/Interest, so a download and an
-    income export for the same year never double-count. Bank rows give deposits
-    (positive) and withdrawals (negative, reported as a positive figure).
+    interest come from ``income`` rows for each account an income export covers
+    that year, else from that account's ``transaction`` rows typed
+    Dividend/Interest, so a download and an income export for the same account
+    never double-count and an export for one account never hides another's
+    transactions. An income row naming no account covers every account. Bank
+    rows give deposits (positive) and withdrawals (negative, reported as a
+    positive figure).
     """
     cents: dict[tuple[str, str], int] = defaultdict(int)
-    has_income = any(r.kind == "income" and r.tax_year == year for r in rows)
+    covered = {r.account for r in rows if r.kind == "income" and r.tax_year == year}
     for r in rows:
         if r.tax_year != year or r.amount_cents is None:
             continue
@@ -120,7 +123,9 @@ def derive_year(rows: list[db.LedgerRow], year: int) -> list[db.Fact]:
             cents[(r.source, f"{pre}_proceeds")] += r.amount_cents
             if r.basis_cents is not None:
                 cents[(r.source, f"{pre}_basis")] += r.basis_cents
-        elif r.kind == "income" or (r.kind == "transaction" and not has_income):
+        elif r.kind == "income" or (
+            r.kind == "transaction" and not covered & {r.account, ""}
+        ):
             box = _classify_income(r.kind, r.type)
             if box is not None:
                 cents[(r.source, box)] += r.amount_cents

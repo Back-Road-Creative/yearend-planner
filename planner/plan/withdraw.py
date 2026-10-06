@@ -96,6 +96,36 @@ def proceeds_for_gain(
     return r(proceeds), r(max(left, 0.0))
 
 
+def gain_avoided(
+    lots: list[portfolio.Lot], gain: float, term: str, cash: float
+) -> tuple[float, float, float]:
+    """Spending ``cash`` instead of selling for a planned ``gain`` of one term:
+    the gain never realized, the cash that replaces sale proceeds, and the part
+    of the gain no lot supplies (its proceeds unknown, so none of it is avoided).
+
+    Cash replaces proceeds, not gain: the sale draws the lots in the order
+    ``proceeds_for_gain`` does, and the cash keeps the first of them unsold."""
+    if gain <= 0 or cash <= 0:
+        return 0.0, 0.0, 0.0
+    proceeds, unmatched = proceeds_for_gain(lots, gain, term)
+    short = term == "short"
+    pool = [
+        lot
+        for lot in lots
+        if (lot.term == "short") == short and lot.value > 0 and lot.gain > 0
+    ]
+    pool.sort(key=lambda lot: lot.gain / lot.value, reverse=True)
+    spend = min(cash, proceeds)
+    left, avoided = spend, 0.0
+    for lot in pool:
+        take = min(left, lot.value)
+        avoided += lot.gain * take / lot.value
+        left -= take
+        if left <= 0:
+            break
+    return r(min(avoided, gain - unmatched)), r(spend), unmatched
+
+
 def order(lots: list[portfolio.Lot], specific: list[str]) -> list[portfolio.Lot]:
     """Specific-ID lots first in the order given, then by gain per dollar."""
     first = [lot for key in specific for lot in lots if _key(lot) == key]

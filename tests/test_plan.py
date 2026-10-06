@@ -96,6 +96,31 @@ def test_inputs_refuse_without_the_profile_basics(planner_home: Path) -> None:
         inputs.build(lay, 2026)
 
 
+@pytest.mark.parametrize(
+    ("typed", "words"),
+    [
+        ("married_joint", "spouse"),
+        ("married_separate", "spouse"),
+        ("head_of_household", "qualifying person"),
+    ],
+)
+def test_a_household_of_more_than_one_is_tagged_not_handled(
+    lay: Layout, typed: str, words: str
+) -> None:
+    """Only one person is modelled: a status whose answer turns on a spouse or
+    a dependent says so on every output instead of passing for a full plan."""
+    enter(lay, 2026, "filing_status", typed)
+    inp = inputs.build(lay, 2026)
+    (gap,) = inp.scope
+    assert gap.startswith("Not handled:") and words in gap
+    assert gap in inp.notes
+
+
+def test_a_single_filer_has_no_scope_gap(lay: Layout) -> None:
+    inp = inputs.build(lay, 2026)
+    assert inp.scope == [] and not any(n.startswith("Not handled") for n in inp.notes)
+
+
 @pytest.mark.engine
 def test_projection_is_the_engine_on_the_fixture_household(lay: Layout) -> None:
     pj = magi.project(lay, 2026)
@@ -286,11 +311,11 @@ def test_spill_only_when_conversion_adds_15pct(lay: Layout) -> None:
     assert [c.name for c in sz.candidates if c.qualified_spill] == []
 
 
-def test_aca_400_candidate_stays_strictly_under_the_line_at_margin_zero(
+def test_aca_400_candidate_may_sit_on_the_line_at_margin_zero(
     lay: Layout,
 ) -> None:
-    """With no margin a sweep row can land exactly on 400% (62,600). The engine pays
-    no credit on that row, so it must not be picked as "stay under the cliff"."""
+    """With no margin a sweep row can land exactly on 400% (62,600). Income that does
+    not exceed 400% keeps the credit (IRC 36B(c)(1)(A)), so that row is "under"."""
     enter(lay, 2026, "conversion_cap", "58,600")
     enter(lay, 2026, "slcsp_monthly", "800")
     # recurring MAGI is 4,000 (interest + dividends), so a 58,600 conversion is
@@ -298,13 +323,9 @@ def test_aca_400_candidate_stays_strictly_under_the_line_at_margin_zero(
     sz = conversion.size(lay, 2026, step=2930)
     assert sz.margin == 0
     aca = {c.name: c for c in sz.candidates}["aca_400"]
-    assert aca.aca_magi == 4000 + 55_670  # one step short of the line
-    assert aca.aca_magi < 62600
+    assert aca.aca_magi == 62600  # on the line, not one step short of it
     assert aca.ptc_delta > -sz.base.result.aca_ptc  # the credit is kept
     assert aca.aca_ptc > 0
-    # the row on the line is in the sweep and is the cap candidate, priced at zero
-    cap = {c.name: c for c in sz.candidates}["cap"]
-    assert cap.aca_magi == 62600 and cap.aca_ptc == 0
 
 
 @pytest.mark.engine

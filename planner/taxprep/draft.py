@@ -18,6 +18,7 @@ import dataclasses
 import math
 from dataclasses import dataclass, field
 
+from planner import NOTICE
 from planner.engine import tax
 from planner.engine.household import Household
 from planner.ingest.needs import need_values, schedule_b_required
@@ -129,12 +130,9 @@ ENGINE_LINE = {
 SS_WAGES = (("W-2", "3"), ("W-2", "7"))  # Social Security wages and tips
 # The Needed-panel keys behind Schedule 1-A Parts II to IV.
 PART_KEYS = ("qualified_tips", "qualified_overtime", "car_loan_interest")
-# The Needed-panel keys a return reads (the others drive the plan, not the 1040).
-TAX_KEYS = (
-    *inputs.MONEY,
-    *inputs.CODES,
-    "ordinary_dividends",
-    "qualified_dividends",
+TAX_KEYS = inputs.TAX_KEYS  # the Needed-panel keys a return reads
+NOT_READY = (
+    "NOT READY for a preparer: it rests on unknown figures (left out, not zero): "
 )
 
 
@@ -156,6 +154,11 @@ class Draft:
     estimates: list[str] = field(default_factory=list)  # keys standing in from YTD
     unknown: list[str] = field(default_factory=list)  # keys left out (not zero)
     missing: list[str] = field(default_factory=list)  # forms still to come
+
+    @property
+    def not_ready(self) -> str | None:
+        """The line that heads every copy of a draft resting on an unknown."""
+        return NOT_READY + ", ".join(self.unknown) if self.unknown else None
 
     def get(self, form: str, line: str) -> float | None:
         for ln in self.lines:
@@ -208,7 +211,9 @@ def _form_8962(
             box[f.box] = box.get(f.box, 0.0) + f.value
     src = "1095-A " + ", ".join(sorted({f.issuer for f in facts if f.form == "1095-A"}))
     fpl = v["tax_unit_fpg@prior"]
-    pct = tax.poverty_percent(v["aca_magi_fraction"])
+    over = tax.over_ptc_line(d.year, v["aca_magi"], fpl)
+    # i8962 Worksheet 2: income more than 4 x the guideline is 401, not truncated
+    pct = 401 if over else tax.poverty_percent(v["aca_magi_fraction"])
     figure = round(v["aca_required_contribution_percentage"], 4)
     sheet.add(
         "8962", "1", "Tax family size", v["tax_unit_size"], "engine tax_unit_size"
@@ -224,8 +229,14 @@ def _form_8962(
     sheet.add("8962", "8a", "Annual contribution amount", annual, "3 x 7")
     monthly = round(annual / 12)
     sheet.add("8962", "8b", "Monthly contribution amount", monthly, "8a / 12")
-    eligible = v["is_aca_ptc_eligible"] > 0
-    if not eligible:
+    eligible = v["is_aca_ptc_eligible"] > 0 and not over
+    if over:
+        d.notes.append(
+            "Form 8962: household income is over 400% of the poverty line (more "
+            "than 4 x line 4), so line 5 is 401 and no credit is allowed; every "
+            "month's credit is 0 and the advance is repaid"
+        )
+    elif not eligible:
         d.notes.append(
             "Form 8962: the engine finds no premium tax credit eligibility this year "
             "(income under the poverty line or in the Medicaid band, or Medicare "
@@ -335,7 +346,7 @@ def build(lay: Layout, year: int) -> Draft:
         tax.engine_version(),
         notes=list(inp.notes),
         estimates=list(inp.estimates),
-        unknown=[k for k in inp.unknown if k in TAX_KEYS],
+        unknown=inp.tax_unknown,
     )
     d.missing = [f"{e.form} from {e.issuer}" for e in inventory(lay, year).outstanding]
     sheet = _Sheet(d)
@@ -1175,6 +1186,7 @@ def _schedule_d(
     for line, value in cg.lines.items():
         sheet.add("Sch D", line, capgains.LABELS[line], value, cg.sources[line])
     d.notes.extend(cg.notes)
+    d.unknown.extend(cg.unknown)
     l16 = cg.lines.get("16", 0.0)
     want = l16 if l16 >= 0 else max(l16, -limit)
     if l16 < 0:
@@ -1228,6 +1240,9 @@ def render(d: Draft) -> str:
         "numbers follow the 2025 forms. A draft to check against the forms, not "
         "a filing.",
     ]
+    if d.not_ready:
+        out.append(d.not_ready)  # the blocker first, then the standing notice
+    out.append(NOTICE)
     for form in (*ORDER, "Carryover"):
         lines = [ln for ln in d.lines if ln.form == form]
         if not lines:

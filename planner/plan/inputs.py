@@ -31,6 +31,35 @@ FILING = {
     "head_of_household": "HEAD_OF_HOUSEHOLD",
 }
 REQUIRED = ("birth_date", "filing_status", "state")
+# The planner models one person and no dependents. A status whose answer turns
+# on a second person is priced as that one person and tagged, never passed off
+# as a full plan (master plan unit 0b; lifted when unit 3a models the household).
+NOT_HANDLED = {
+    "JOINT": (
+        "Not handled: married filing jointly is priced for one person; the "
+        "spouse's income, age, deductions and credits are left out, so every "
+        "figure here is this person's share only, not the joint return"
+    ),
+    "SEPARATE": (
+        "Not handled: married filing separately is priced from this person's "
+        "figures alone; the spouse's choice to itemize (which binds this "
+        "return), a community-property split and the spouse's figures are left out"
+    ),
+    "HEAD_OF_HOUSEHOLD": (
+        "Not handled: head of household is priced with no qualifying person; "
+        "dependents' credits (child tax credit, earned income credit with "
+        "children, dependent care) and the larger household for the ACA credit "
+        "and benefits are left out"
+    ),
+}
+
+
+def scope_gaps(filing_status: str) -> list[str]:
+    """The Not handled lines for an engine filing status (empty for SINGLE)."""
+    gap = NOT_HANDLED.get(filing_status)
+    return [gap] if gap else []
+
+
 # Needed-panel key -> Household field, dollars rounded to whole dollars.
 MONEY = {
     "wages": "wages",
@@ -54,6 +83,15 @@ MONEY = {
     "real_estate_taxes": "real_estate_taxes",
     "mortgage_interest": "mortgage_interest",
 }
+# The four states a value can be in. Known includes a known zero; unknown is
+# left out of the arithmetic (never priced as zero without saying so); not
+# applicable is an item another answer makes moot, so it is never asked.
+KNOWN, ESTIMATE, UNKNOWN, NOT_APPLICABLE = (
+    "known",
+    "estimate",
+    "unknown",
+    "not applicable",
+)
 # The income lines a typed total_income is measured against: Form 1040 line 9
 # less wages (the line the total sets) and Social Security (the engine decides
 # how much of it is taxable, so it is never part of a typed total).
@@ -73,6 +111,8 @@ CAPITAL_LOSS_LIMIT_MFS = 1500
 CONVERSION_TARGETS = ("manual", "auto")
 # Needed-panel key -> Household field, a whole-number code rather than dollars.
 CODES = {"tipped_occupation_code": "tipped_occupation_code"}
+# The Needed-panel keys a tax figure reads (the others drive the plan, not the tax).
+TAX_KEYS = (*MONEY, *CODES, "ordinary_dividends", "qualified_dividends")
 OVERRIDES = (
     "q4_dividend_estimate",
     "planned_st_sales",
@@ -138,6 +178,20 @@ class Inputs:
     tax_age: int | None = None
     notes: list[str] = field(default_factory=list)
     overrides: Overrides = field(default_factory=Overrides)
+    scope: list[str] = field(default_factory=list)  # Not handled lines (also notes)
+
+    def state(self, key: str) -> str:
+        """KNOWN, ESTIMATE, UNKNOWN or NOT_APPLICABLE (an item never asked)."""
+        if key in self.unknown:
+            return UNKNOWN
+        if key in self.estimates:
+            return ESTIMATE
+        return KNOWN if key in self.origins else NOT_APPLICABLE
+
+    @property
+    def tax_unknown(self) -> list[str]:
+        """The unknown items a tax figure rests on (left out, not zero)."""
+        return [k for k in self.unknown if k in TAX_KEYS]
 
 
 def age_at_year_end(birth: str, year: int) -> int:
@@ -219,6 +273,8 @@ def build(
         if value.get(key) is not None:
             fields[name] = int(value[key])
     out.tax_age = tax_age(str(value["birth_date"]), year)
+    out.scope = scope_gaps(fields["filing_status"])
+    out.notes.extend(out.scope)
     ordinary = value.get("ordinary_dividends")
     qualified = value.get("qualified_dividends")
     if ordinary is not None and qualified is None:

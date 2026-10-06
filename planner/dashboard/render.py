@@ -10,6 +10,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
+from planner import NOTICE
 from planner.dashboard.page import Page
 from planner.paths import Layout
 
@@ -17,11 +18,13 @@ TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "dashboard"
 
 
 def _env() -> Environment:
-    return Environment(
+    env = Environment(
         loader=FileSystemLoader(TEMPLATES_DIR),
         autoescape=select_autoescape(default=True, default_for_string=True),
         keep_trailing_newline=True,
     )
+    env.globals["notice"] = NOTICE
+    return env
 
 
 def html(page: Page, token: str = "", message: str = "") -> str:
