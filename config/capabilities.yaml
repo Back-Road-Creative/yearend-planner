@@ -360,6 +360,11 @@ ga_500_draft:
   evidence: implemented
   tests: ["tests/test_ga500.py", "tests/test_state_returns.py"]
   note: "planner draft; GA Form 500 lines 8-11 or 12a-12c, 13, 14, 15a, 15c, 16, 17a-17c, 19, 20, 22-24, 26, 28-30, 45 and 46 with the Schedule 1 lines behind them, for a full-year resident (unit 3d-11, 2025 Form 500 and IT-511 booklet): the engine's Schedule 1 items plus typed ones, the Georgia standard deduction or federal itemized less line 12b, $4,000 a dependent, 5.19%, the low income, itemizer and IND-CR 202 child care credits, every line half up to the dollar; filed Form 500 pages 2-4 read by templates ga-500*.yaml; next year's safe harbor 23 less 27 (Form 500 UET: 100% of last year or 70% of this, no 110% rule); part-year and nonresident returns, lines 15b, 18, 21, 25, 27, 31-44 and IND-CR credits other than 202 named, not drafted"
+mi_1040_draft:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_mi1040.py", "tests/test_state_returns.py"]
+  note: "planner draft; MI-1040 lines 9a-9d, 9f, 10-17, 21, 25, 26, 28a, 28b, 31, 32, 34, 36, 37 and 39 with the Schedule 1 lines behind them, for a full-year resident (unit 3d-12, 2025 MI-1040, Schedule 1 and instruction book): the engine's Schedule 1 items (the self-employment tax deduction, US obligations interest, military retirement, taxable Social Security, Michigan refunds, 529, the Schedule R base, Tier 2 and Tier 3 Michigan Standard Deductions, Form 4884 and the senior investment deduction) plus typed ones, $5,800 an exemption with the special and disabled veteran exemptions, 4.25%, the 30% earned income tax credit, the typed MI-1040CR property tax credit, every line half up to the dollar; filed MI-1040 pages 1-3 read by templates mi-1040*.yaml; next year's safe harbor 21 less 26, 27, 28b, 29 and 30 (MI-2210: 100% of last year or 90% of this, 110% over 150,000); part-year and nonresident returns, Schedule 1 lines 24A-24H and 30, MI-1040 lines 18-20, 22-24, 27, 29, 30, 33 and 38, the MI-2210 penalty and the MI-1040CR-7 home heating credit named, not drafted"
 taxpack:
   status: verified
   evidence: implemented

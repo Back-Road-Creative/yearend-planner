@@ -7,7 +7,7 @@ engine variables the return reads, and the function that lays its lines.
 NC's D-400 is the first entry, CA's Form 540 the second (unit 3d-6), NY's
 IT-201 the third (unit 3d-7), PA's PA-40 the fourth (unit 3d-8), IL's
 IL-1040 the fifth (unit 3d-9), OH's IT 1040 the sixth (unit 3d-10), GA's
-Form 500 the seventh (unit 3d-11). A
+Form 500 the seventh (unit 3d-11), MI's MI-1040 the eighth (unit 3d-12). A
 drafted state is a module beside d400.py, a template under templates/forms/
 (``issuer`` is the state's code; one per page when the return runs to several)
 and an entry here; the draft, ``planner close``, the rollover and the
@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from planner.taxprep import ca540, d400, ga500, il1040, ny201, oh1040, pa40
+from planner.taxprep import ca540, d400, ga500, il1040, mi1040, ny201, oh1040, pa40
 
 
 @dataclass(frozen=True)
@@ -168,6 +168,25 @@ RETURNS: dict[str, StateReturn] = {
         keys=ga500.KEYS,
         engine=ga500.ENGINE,
         lay=ga500.lay_lines,
+    ),
+    "MI": StateReturn(
+        code="MI",
+        forms={
+            mi1040.FORM: ("MI-1040", "mi_1040_draft"),
+            mi1040.SCHED: ("MI-1040 Schedule 1 (Form 3423)", "mi_1040_draft"),
+        },
+        form=mi1040.FORM,
+        template="MI-1040",
+        boxes=("9f", "10", "11", "12", "13", "14", "15", "16", "17", "21", "25")
+        + ("26", "27", "28b", "29", "30", "31", "32", "34", "36", "37", "39"),
+        # MI-2210 line 4 is last year's line 21 less lines 26, 27, 28b, 29
+        # and 30 (its line 5 does the same for this year).
+        tax_line="21",
+        carry="state_tax",  # prior_state_tax's estimate
+        prior=("21", "-26", "-27", "-28b", "-29", "-30"),
+        keys=mi1040.KEYS,
+        engine=mi1040.ENGINE,
+        lay=mi1040.lay_lines,
     ),
 }
 

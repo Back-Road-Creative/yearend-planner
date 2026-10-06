@@ -1,0 +1,17 @@
+# Michigan MI-1040, page 1 (exemptions, income and the tax). Merges with
+# pages 2 (mi-1040-p2.yaml) and 3 as form MI-1040.
+form: MI-1040
+years: [2025]
+match: ["MICHIGAN Individual Income Tax Return", "Exemption allowance"]
+year_pattern: '(20\d\d) (?:MICHIGAN Individual Income Tax Return MI-1040|MI-1040, Page)'
+issuer: MI
+boxes:
+  "9f": {label: "Total exemptions", pattern: 'Enter here and on line 15[\s.]*9f\.\s+AMOUNT'}
+  "10": {label: "Adjusted gross income", pattern: 'Adjusted Gross Income from your U\.S\. Form 1040 \(see instructions\)[\s.]*10\.\s+AMOUNT', required: true}
+  "11": {label: "Additions from Schedule 1", pattern: 'Schedule 1, line 9\. Include Schedule 1[\s.]*11\.\s+AMOUNT'}
+  "12": {label: "Total", pattern: 'Add lines 10 and 11[\s.]*12\.\s+AMOUNT'}
+  "13": {label: "Subtractions from Schedule 1", pattern: 'Schedule 1, line 31\. Include Schedule 1[\s.]*13\.\s+AMOUNT'}
+  "14": {label: "Income subject to tax", pattern: 'Subtract line 13 from line 12\.[^\n]*?14\.\s+AMOUNT'}
+  "15": {label: "Exemption allowance", pattern: 'Schedule NR, line 19[\s.]*15\.\s+AMOUNT'}
+  "16": {label: "Taxable income", pattern: 'Subtract line 15 from line 14\.[^\n]*?16\.\s+AMOUNT'}
+  "17": {label: "Tax", pattern: 'Multiply line 16 by [\d.]+% \([\d.]+\)[\s.]*17\.\s+AMOUNT', required: true}
