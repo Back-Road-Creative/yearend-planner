@@ -1,5 +1,6 @@
 # Form W-2, IRS box labels: wages, the withholding credited to the installments,
-# and the Social Security wages and tips (boxes 3 and 7) Schedule SE line 8a takes.
+# the Social Security wages and tips (boxes 3 and 7) Schedule SE line 8a takes,
+# and the dependent care benefits (box 10) Form 2441 line 12 takes.
 form: W-2
 years: [2024, 2025, 2026]
 match: ["W-2", "Wage and Tax Statement"]
@@ -10,6 +11,7 @@ boxes:
   "2": {label: "Federal income tax withheld", pattern: "\\b2 Federal income tax withheld\\s+AMOUNT", required: true}
   "3": {label: "Social security wages", pattern: "\\b3 Social security wages\\s+AMOUNT"}
   "7": {label: "Social security tips", pattern: "\\b7 Social security tips\\s+AMOUNT"}
+  "10": {label: "Dependent care benefits", pattern: "\\b10 Dependent care benefits\\s+AMOUNT"}
   "12W": {label: "Box 12 code W: employer and payroll HSA contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?W\s+AMOUNT'}
   "16": {label: "State wages, tips, etc.", pattern: "\\b16 State wages, tips, etc\\.?\\s+AMOUNT"}
   "17": {label: "State income tax", pattern: "\\b17 State income tax\\s+AMOUNT"}

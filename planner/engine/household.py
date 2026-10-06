@@ -39,6 +39,9 @@ PERSON_INPUTS = {
     "qualified_tips": "tip_income",
     "tipped_occupation_code": "treasury_tipped_occupation_code",
     "qualified_overtime": "fsla_overtime_premium",
+    # W-2 box 10 (Form 2441 line 12); planner.engine.tax.dependent_care works
+    # the exclusion out and pins it (unit 3c-1)
+    "dependent_care_benefits": "dependent_care_employer_benefits",
 }
 
 
@@ -57,6 +60,7 @@ class Person:
     qualified_tips: int = 0
     tipped_occupation_code: int = 0
     qualified_overtime: int = 0
+    dependent_care_benefits: int = 0  # their W-2 box 10
     # Their W-2 boxes 3 and 7, to the wage base (Schedule SE line 8a: unit 3a-5);
     # None = the engine takes their wages
     ss_wages: int | None = None
@@ -125,6 +129,14 @@ class Household:
     charitable_shares: int = 0
     real_estate_taxes: int = 0
     mortgage_interest: int = 0
+    # Form 2441 (unit 3c-1): care paid for the year for a child under 13 (the
+    # engine's qualifying persons), the head's W-2 box 10 benefits (a spouse's
+    # are on Person), and the plan's grace-period carryover used (line 13) and
+    # amount forfeited or carried forward (line 14), both the return's.
+    care_expenses: int = 0
+    dependent_care_benefits: int = 0
+    dependent_care_grace: int = 0
+    dependent_care_forfeited: int = 0
     other: dict[str, int] = field(default_factory=dict)
     # Tax-unit variables the engine takes as given instead of computing: the
     # draft return sets a Schedule 1-A deduction to the form's own figure (the
@@ -197,6 +209,12 @@ class Household:
             "real_estate_taxes": {y: self.real_estate_taxes},
             "home_mortgage_interest": {y: self.mortgage_interest},
         }
+        if self.care_expenses:  # the engine's own default is the SPM unit's
+            person["care_expenses"] = {y: self.care_expenses}
+        if self.dependent_care_benefits:
+            person["dependent_care_employer_benefits"] = {
+                y: self.dependent_care_benefits
+            }
         for k, v in self.other.items():
             person[k] = {y: v}
         for name in omit:
