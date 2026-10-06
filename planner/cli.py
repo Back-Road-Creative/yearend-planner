@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 import typer
 from typer.core import TyperGroup
 
+from planner.goals import PROTECT
 from planner.paths import CloudSyncedPathError, Layout, WriterBusyError, layout
 
 if TYPE_CHECKING:
@@ -1003,6 +1004,128 @@ def account(
         raise typer.Exit(code=2) from exc
     typer.echo(
         f"account {number}: " + ", ".join(f"{k}={v}" for k, v in sorted(entry.items()))
+    )
+
+
+def _goals_done(fn: Any) -> None:
+    """Run one goals.yaml change; a refusal leaves the file as it was."""
+    from planner import goals
+
+    try:
+        g = fn()
+    except goals.GoalsError as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(
+        f"goals.yaml: {len(g.goals)} goal(s), {len(g.debts)} debt(s), "
+        f"{len(g.protect)} protected line(s), target mix "
+        + ("set" if g.target_mix else "not chosen")
+    )
+
+
+@app.command()
+def goal(
+    name: str | None = typer.Argument(None, help="the goal's name"),
+    amount: str | None = typer.Option(None, help="dollars needed"),
+    date_: str | None = typer.Option(None, "--date", help="needed by, YYYY-MM-DD"),
+    rank: int | None = typer.Option(None, help="1 is the most important"),
+    owner: str | None = typer.Option(None, help="self, spouse or joint"),
+    flexibility: str | None = typer.Option(
+        None, help="fixed, flexible (the date can move) or optional"
+    ),
+    purchase: bool = typer.Option(False, "--purchase", help="a planned purchase"),
+    remove: bool = typer.Option(False, "--remove", help="drop this goal"),
+) -> None:
+    """Add or change a goal in data/profile/goals.yaml; with no name, list them."""
+    from planner import goals
+
+    lay = layout()
+    if name is None:
+        for g in goals.load(lay).ranked():
+            amount = "?" if g.amount is None else f"{g.amount:,.2f}"
+            typer.echo(
+                f"{g.rank:>2}. {g.name:30} {amount:>12}  {g.date or '?':10}  "
+                f"{g.owner} {g.flexibility} {g.kind}"
+            )
+        return
+    if remove:
+        _goals_done(lambda: goals.remove(lay, "goals", name))
+        return
+    fields: dict[str, Any] = {
+        "amount": amount,
+        "date": date_,
+        "rank": rank,
+        "owner": owner,
+        "flexibility": flexibility,
+        "kind": "purchase" if purchase else None,
+    }
+    _goals_done(lambda: goals.save_goal(lay, name, **fields))
+
+
+@app.command()
+def debt(
+    name: str | None = typer.Argument(None, help="the debt's name"),
+    balance: str | None = typer.Option(None, help="dollars owed"),
+    rate: str | None = typer.Option(None, help="yearly interest rate, percent"),
+    payment: str | None = typer.Option(None, help="monthly payment, dollars"),
+    owner: str | None = typer.Option(None, help="self, spouse or joint"),
+    remove: bool = typer.Option(False, "--remove", help="drop this debt"),
+) -> None:
+    """Add or change a debt in data/profile/goals.yaml; with no name, list them."""
+    from planner import goals
+
+    lay = layout()
+    if name is None:
+        for d in goals.load(lay).debts:
+            typer.echo(f"{d.name:30} {d.balance:>12,.2f} {d.rate:g}% {d.payment:,.2f}")
+        return
+    if remove:
+        _goals_done(lambda: goals.remove(lay, "debts", name))
+        return
+    fields = {"balance": balance, "rate": rate, "payment": payment, "owner": owner}
+    _goals_done(lambda: goals.save_debt(lay, name, **fields))
+
+
+@app.command()
+def protect(
+    lines: list[str] = typer.Argument(
+        None, help="income lines to keep: " + ", ".join(PROTECT)
+    ),
+    clear: bool = typer.Option(False, "--clear", help="protect none"),
+) -> None:
+    """Name the income lines (the MAGI panel's) to keep; with none, list them."""
+    from planner import goals
+
+    lay = layout()
+    if not lines and not clear:
+        for key in goals.load(lay).protect:
+            typer.echo(f"{key:12} {goals.PROTECT[key]}")
+        return
+    _goals_done(lambda: goals.save_protect(lay, [] if clear else list(lines)))
+
+
+@app.command()
+def mix(
+    pairs: list[str] = typer.Argument(
+        None,
+        help="class=percent, adding to 100: stocks, bonds, cash, real_estate, other",
+    ),
+    clear: bool = typer.Option(False, "--clear", help="no target mix"),
+) -> None:
+    """Choose the target mix across asset classes; with none, show it."""
+    from planner import goals
+
+    lay = layout()
+    if not pairs and not clear:
+        chosen = goals.load(lay).target_mix
+        typer.echo(
+            ", ".join(f"{k} {v:g}%" for k, v in chosen.items())
+            if chosen
+            else "no target mix chosen"
+        )
+        return
+    _goals_done(
+        lambda: goals.save_mix(lay, None if clear else goals.parse_mix(list(pairs)))
     )
 
 
