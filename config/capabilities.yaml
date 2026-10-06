@@ -64,6 +64,11 @@ child_dependent_care_credit:
   evidence: implemented
   tests: ["tests/test_form_2441.py"]
   note: "Form 2441 (unit 3c-1): Part II credit for care of a dependent under 13 (the line 8 decimal checked at every table edge) and Part III employer benefits from W-2 box 10, with the i2441 line 14 and line 16 examples as tests; the excluded benefits (line 25) lower the $3,000/$6,000 limit, the care paid with them leaves the credit (line 30) and the excess is wages on Form 1040 line 1e (the engine taxes none of it, so planner.engine.tax.dependent_care works Part III out first). Not counted: a dependent 13 or over, or a spouse, who cannot care for themselves; line 9b (prior-year care) and benefits from your own business (lines 22, 24) are not drafted"
+education_credits:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_form_8863.py"]
+  note: "Form 8863 (unit 3c-2): the American opportunity credit per student (Part III lines 27-30), its refundable 40% (line 8, none when the line 7 conditions apply), the lifetime learning credit (lines 10-12) and the shared $80,000-$90,000 ($160,000-$180,000 joint) phase-out, with the i8863 adjusted-expenses examples (a Pell grant applied) and the recapture example as tests; the nonrefundable part goes on Schedule 3 line 3 through the Credit Limit Worksheet. Each student, the expenses paid and the aid are typed per student from the 1098-T; whether a student meets the American opportunity tests (first four years, half time, a credential, no felony drug conviction, not claimed four times) is the filer's answer. Not drafted: Part III lines 20-26 (school names and EINs), recapture of a credit taken in an earlier year, and expenses paid by someone else"
 aca_slcsp_county:
   status: verified
   evidence: implemented
