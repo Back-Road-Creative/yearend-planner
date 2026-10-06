@@ -1961,7 +1961,7 @@ Pub. 527 Worksheet 5-1 lines 7a and 7b. `planner/taxprep/sche.py` drafts lines 3
     loss, taxable Social Security, the IRA deduction or the deductible part of SE tax.
   - The allowed loss is split by each property's share of the losses (line 22). The
     disallowed part carries to next year (a note).
-  - When the answer is no, `rental_loss_allowed` takes the Form 8582 figure. Until
+  - When the answer is no, `passive_loss_allowed` takes the Form 8582 figure. Until
     either is answered, only passive income is allowed.
   - A royalty or home loss is not passive.
 - **Totals.** Lines 23a-23e, 24 and 25 are drafted. Line 26 goes to Schedule 1 line 5,
