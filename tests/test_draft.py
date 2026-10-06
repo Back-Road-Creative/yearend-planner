@@ -708,6 +708,28 @@ def test_schedule_se_line_8a_reads_w2_boxes_3_and_7(lay: Layout) -> None:
     )
 
 
+def test_schedule_se_line_8a_leaves_out_the_spouses_w2(lay: Layout) -> None:
+    """Schedule SE is the head's: a W-2 marked the spouse's (unit 3a-4) is
+    their wage base, not the head's."""
+    _answers(lay, wages="150,000")
+    _w2_boxes(lay, **{"1": 150_000.0, "3": 170_000.0, "7": 2_000.0})
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    db.add_document(
+        conn,
+        fingerprint="synthetic-w2-spouse",
+        file_name="spouse-w2.pdf",
+        kind="pdf",
+        pages=1,
+        batch="b3",
+        owner="spouse",
+        facts=[
+            db.Fact("W-2", YEAR, "Example Employer (synthetic)", "3", "3", 90_000.0, 1)
+        ],
+    )
+    conn.close()
+    assert _need(draft.build(lay, YEAR), "Sch SE", "8a") == 172_000.0
+
+
 def test_schedule_se_line_8a_without_w2_boxes_says_box_1_stands_in(
     lay: Layout,
 ) -> None:

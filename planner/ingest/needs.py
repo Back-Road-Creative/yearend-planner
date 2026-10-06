@@ -20,13 +20,14 @@ import math
 import re
 import sqlite3
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from planner.config import ASSUMPTION_FIELDS, load_assumptions
+from planner.engine.household import PERSON_INPUTS
 from planner.ingest.derive import county_from_zip
 from planner.ledger import db, portfolio
 from planner.paths import Layout
@@ -79,6 +80,9 @@ class Need:
     # Asked only when this holds for the values so far (Schedule B's Part III
     # only when Schedule B is required); None = always asked.
     asked: Callable[[dict[str, Any]], bool] | None = None
+    # Whose documents the boxes sum: "you" or "spouse" for a per-person line
+    # (db.OWNERS), None for the household's.
+    owner: str | None = None
 
     def __post_init__(self) -> None:
         if self.doc and self.doc not in DOCS:
@@ -943,6 +947,47 @@ NEEDS: tuple[Need, ...] = (
     ),
 )
 
+SPOUSE = "spouse_"  # a joint spouse's own line: the head's key behind this
+
+
+def _spouse_asked(
+    head: Callable[[dict[str, Any]], bool] | None, key: str
+) -> Callable[[dict[str, Any]], bool]:
+    def asked(s: dict[str, Any]) -> bool:
+        if s.get("filing_status") != "married_joint" or not s.get("spouse_birth_date"):
+            return False
+        if key == "tipped_occupation_code":  # moot without the spouse's own tips
+            return float(s.get(SPOUSE + "qualified_tips") or 0) > 0
+        return head is None or head(s)
+
+    return asked
+
+
+def _with_spouse(needs: tuple[Need, ...]) -> tuple[Need, ...]:
+    """Each per-person line (PERSON_INPUTS) is the head's, summed from the
+    head's documents, followed by a joint spouse's twin summed from theirs
+    (``data/inbox/spouse/``, or ``planner owner``)."""
+    out: list[Need] = []
+    for n in needs:
+        if n.key not in PERSON_INPUTS:
+            out.append(n)
+            continue
+        out.append(replace(n, owner="you"))
+        out.append(
+            replace(
+                n,
+                key=SPOUSE + n.key,
+                label=f"Spouse's {n.label[0].lower()}{n.label[1:]}",
+                source=f"the spouse's own: {n.source}",
+                owner="spouse",
+                asked=_spouse_asked(n.asked, n.key),
+            )
+        )
+    return tuple(out)
+
+
+NEEDS = _with_spouse(NEEDS)
+
 
 @dataclass
 class Group:
@@ -1315,13 +1360,16 @@ def _mortgage_pi(conn: sqlite3.Connection, year: int) -> tuple[float, str] | Non
 
 
 def _sum_boxes(
-    conn: sqlite3.Connection, boxes: tuple[tuple[str, str], ...], year: int | None
+    conn: sqlite3.Connection,
+    boxes: tuple[tuple[str, str], ...],
+    year: int | None,
+    owner: str | None = None,
 ) -> tuple[float, str] | None:
     total = 0.0
     origins: list[str] = []
     for form, box in boxes:
         for f in db.facts_for(conn, year, form):
-            if f.box == box:
+            if f.box == box and owner in (None, f.owner):
                 total += f.value
                 origins.append(_origin(f))
     if not origins:
@@ -1369,14 +1417,18 @@ def _needed(conn: sqlite3.Connection, lay: Layout, year: int) -> NeedsReport:
                 report.items.append(Status(need, "actual", word[0], word[1]))
                 continue
         hit = (
-            _sum_boxes(conn, need.boxes, fact_year)
+            _sum_boxes(conn, need.boxes, fact_year, need.owner)
             if need.boxes and need.kind not in ("enum", "str")
             else None
         )
         if hit is not None:
             report.items.append(Status(need, "actual", hit[0], hit[1]))
             continue
-        est = _sum_boxes(conn, need.estimate, fact_year) if need.estimate else None
+        est = (
+            _sum_boxes(conn, need.estimate, fact_year, need.owner)
+            if need.estimate
+            else None
+        )
         if est is not None:
             report.items.append(Status(need, "estimate", est[0], est[1]))
             continue

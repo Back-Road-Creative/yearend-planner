@@ -41,9 +41,10 @@ person and tagged **Not handled** first in the alerts, in the draft return's not
 `planner magi` and in the tax pack. Once they are named the household is priced as the
 whole tax unit (the spouse's age, the child tax credit, the household size for the ACA
 credit), and the draft return carries the spouse's senior deduction and a Schedule 8812
-for the dependents; every income figure is still priced as the first person's until each document
-names its owner, so the draft return and the estimated-tax figures stay tagged for the
-per-person lines (Schedule SE, IRA and HSA limits). Married filing separately stays
+for the dependents. The spouse's documents go in `data/inbox/spouse/` (or
+`planner owner <file> spouse`), so their wages, IRA and Social Security are theirs; the
+draft and estimated tax stay tagged only for the spouse's own Schedule SE and HSA.
+Married filing separately stays
 **Not handled**. The state return drafted is NC's D-400; another state
 gets the engine's estimate and a **Not handled** line saying to have a preparer draft it.
 A document no template reads is named the same way. Each panel and drafted form is tagged
