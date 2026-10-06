@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import date
 
+from planner import goals as goals_
 from planner import states
 from planner.engine.household import MissingInputError
 from planner.ingest.needs import needed
@@ -41,7 +42,9 @@ SECTIONS = (
     "esttax",
     "washsales",
     "calendar",
+    "goals",
 )
+MARRIED = ("married_joint", "married_separate")
 
 
 @dataclass(frozen=True)
@@ -96,8 +99,14 @@ def _needed(lay: Layout, year: int, _today: date, _ov: Overrides) -> Section:
     return Section("needed", True, lines)
 
 
-def _magi(lay: Layout, year: int, _today: date, ov: Overrides) -> Section:
-    pj = magi.project(lay, year, ov)
+def _magi(
+    lay: Layout,
+    year: int,
+    _today: date,
+    ov: Overrides,
+    pj: magi.Projection | None = None,
+) -> Section:
+    pj = pj or magi.project(lay, year, ov)
     res = pj.result
     lines = [
         f"AGI {res.agi:,.2f}  taxable income {res.taxable_income:,.2f}  "
@@ -443,7 +452,35 @@ def _calendar(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
     return Section("calendar", True, lines, notes)
 
 
-BUILDERS = {
+def _goals(
+    lay: Layout,
+    year: int,
+    today: date,
+    ov: Overrides,
+    pj: magi.Projection | None = None,
+    why_no_lines: str = "",
+) -> Section:
+    """Unit 4a: the ranked goals, debts, protected income lines and the target
+    mix, from data/profile/goals.yaml."""
+    from planner.ingest.needs import load_profile
+
+    try:
+        g = goals_.load(lay)
+    except goals_.GoalsError as exc:
+        return Section("goals", False, [f"goals refused: {exc}"])
+    if pj is None and not why_no_lines and g.protect:
+        try:
+            pj = magi.project(lay, year, ov)
+        except (MissingInputError, OverrideError) as exc:
+            why_no_lines = str(exc)
+    married = load_profile(lay).get("filing_status") in MARRIED
+    lines, notes = goals_.summary(
+        g, today, married, pj.lines if pj else None, why_no_lines
+    )
+    return Section("goals", True, lines or ["none entered"], notes)
+
+
+BUILDERS: dict[str, Callable[[Layout, int, date, Overrides], Section]] = {
     "needed": _needed,
     "magi": _magi,
     "conversion": _conversion,
@@ -455,6 +492,7 @@ BUILDERS = {
     "esttax": _esttax,
     "washsales": _washsales,
     "calendar": _calendar,
+    "goals": _goals,
 }
 
 
@@ -514,6 +552,27 @@ def assemble(
             raise got
         return got
 
+    # the MAGI section and the goals section's protected lines read one projection
+    projected: dict[str, magi.Projection | MissingInputError | OverrideError] = {}
+
+    def shared_magi(lay_: Layout, y: int, o: Overrides) -> magi.Projection:
+        if "m" not in projected:
+            try:
+                projected["m"] = magi.project(lay_, y, o)
+            except (MissingInputError, OverrideError) as exc:
+                projected["m"] = exc
+        got = projected["m"]
+        if isinstance(got, Exception):
+            raise got
+        return got
+
+    def goals(lay_: Layout, y: int, t: date, o: Overrides) -> Section:
+        try:
+            pj, why = shared_magi(lay_, y, o), ""
+        except (MissingInputError, OverrideError) as exc:
+            pj, why = None, str(exc)
+        return _goals(lay_, y, t, o, pj, why)
+
     def cash(lay_: Layout, y: int, t: date, o: Overrides) -> Section:
         try:
             g, why = shared_glide(lay_, y, t, o), ""
@@ -528,6 +587,8 @@ def assemble(
             lay_, y, t, o, shared_glide(lay_, y, t, o)
         ),
         "cash": cash,
+        "magi": lambda lay_, y, t, o: _magi(lay_, y, t, o, shared_magi(lay_, y, o)),
+        "goals": goals,
     }
     plan = YearPlan(year, today.isoformat())
     for name in SECTIONS:
