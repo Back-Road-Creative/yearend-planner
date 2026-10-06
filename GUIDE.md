@@ -1153,7 +1153,7 @@ checks its own folder first with `findstr` and prints the same warning before
 it downloads or runs anything, so a double-click in a synced folder explains
 itself in the window it keeps open.
 
-## Scope guard and the household's people (Phase 10, units 0b, 3a-2 and 3a-3)
+## Scope guard and the household's people (Phase 10, units 0b, 3a-2, 3a-3 and 3a-4)
 
 The profile names the household's people: `spouse_birth_date` (asked when the filing
 status is married_joint) and `dependents` (asked for married_joint and
@@ -1178,11 +1178,29 @@ Until they are named, `planner.coverage.HOUSEHOLD` holds one line per status:
 
 The line leads the dashboard's alerts (kind `scope`), reaches the draft return's notes,
 `planner magi` and the tax pack's notes. Once the people are named it is replaced by
-`coverage.PEOPLE`, which touches only the draft and the estimated tax: income is priced
-as the first person's until each document names its owner (unit 2c), so Schedule SE's
-wage base and the IRA and HSA limits are that person's. The draft lays out the
-spouse's Schedule 1-A line 36b and the dependents' Schedule 8812 (unit 3a-3). A
-single filer has none.
+`coverage.PEOPLE`, which touches only the draft and the estimated tax: the draft lays
+out Schedule SE and Form 8889 for the first person only, and a spouse's own HSA is not
+modeled. The draft lays out the spouse's Schedule 1-A line 36b and the dependents'
+Schedule 8812 (unit 3a-3). A single filer has none.
+
+Each document is one person's (unit 3a-4). Drop the spouse's W-2, 1099-R, SSA-1099,
+5498 and 1099-NEC in `data/inbox/spouse/` (any case); everything else is yours. A
+document dropped in the wrong place is moved with
+
+    planner owner theirs-w2.pdf spouse
+
+(its file name from `planner facts`, or its archived path when two share a name). A
+corrected form replaces only its owner's copy, so two W-2s from one employer both
+count. On a joint return the Needed panel then asks for the spouse's own lines
+(`spouse_wages`, `spouse_se_income`, `spouse_ira_distributions`,
+`spouse_roth_conversion`, `spouse_social_security`,
+`spouse_traditional_ira_contribution`, `spouse_qualified_tips`,
+`spouse_tipped_occupation_code` only with their tips, `spouse_qualified_overtime`),
+each summed from the spouse's documents or typed, and the head's from the head's
+alone, and the engine prices each as that person's.
+A typed `total_income` is the couple's: the head's wages are what is left after the
+spouse's own income. The ledger is schema 5 (`documents.owner`); an older one is
+copied aside and brought up as the head's.
 
 ## Coverage gate (Phase 10, unit 2a)
 

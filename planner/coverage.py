@@ -62,9 +62,9 @@ HOUSEHOLD_NEEDED = {
 }
 # Once the people are named, what is still per person (units 2c and 3a-3).
 PEOPLE = (
-    "Not handled: every income figure is priced as the first person's until each "
-    "document names its owner, so the per-person lines (Schedule SE and its "
-    "Social Security wage base, the IRA and HSA limits) are that person's"
+    "Not handled: the draft lays out Schedule SE and Form 8889 for the first person "
+    "only; a spouse's self-employment income is priced but their Schedule SE is not "
+    "drafted, and a spouse's own HSA is not modeled"
 )
 PEOPLE_TOUCH = ("draft", "esttax")
 

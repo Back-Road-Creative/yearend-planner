@@ -18,7 +18,13 @@ from datetime import date
 from typing import Any
 
 from planner import coverage
-from planner.engine.household import Dependent, Household, MissingInputError, Person
+from planner.engine.household import (
+    PERSON_INPUTS,
+    Dependent,
+    Household,
+    MissingInputError,
+    Person,
+)
 from planner.ingest.derive import CountyError, resolve_county
 from planner.ingest.needs import _needed
 from planner.ledger import db
@@ -249,7 +255,14 @@ def build(
     out.tax_age = tax_age(str(value["birth_date"]), year)
     if fields["filing_status"] == "JOINT" and value.get("spouse_birth_date"):
         spouse = str(value["spouse_birth_date"])
-        fields["spouse"] = Person(age=age_at_year_end(spouse, year))
+        fields["spouse"] = Person(
+            age=age_at_year_end(spouse, year),
+            **{
+                k: int(round(float(value[f"spouse_{k}"])))
+                for k in PERSON_INPUTS
+                if value.get(f"spouse_{k}") is not None
+            },
+        )
         out.spouse_tax_age = tax_age(spouse, year)
     fields["dependents"] = tuple(
         Dependent(
@@ -297,6 +310,10 @@ def build(
         others = sum(int(fields.get(k, 0)) for k in TOTAL_INCOME_LINES) + max(
             net, -limit
         )
+        if (sp := fields.get("spouse")) is not None:  # a joint total is the couple's
+            others += sp.wages + sum(
+                getattr(sp, k) for k in TOTAL_INCOME_LINES if k in PERSON_INPUTS
+            )
         wages = int(round(ov.total_income)) - others
         if wages < 0:
             raise OverrideError(

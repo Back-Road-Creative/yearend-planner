@@ -401,8 +401,8 @@ def test_a_v3_ledger_migrates_to_text_facts(tmp_path: Path) -> None:
     old.commit()
     old.close()
     conn = db.connect(path)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 4
-    assert db.SCHEMA_VERSION == 4
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 5
+    assert db.SCHEMA_VERSION == 5
     (kept,) = db.facts_for(conn, 2024, "1099-INT")
     assert (kept.box, kept.value, kept.text) == ("1", 1234.56, None)
     db.add_document(

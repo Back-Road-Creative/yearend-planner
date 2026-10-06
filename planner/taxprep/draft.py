@@ -348,10 +348,10 @@ def build(lay: Layout, year: int) -> Draft:
     # Schedule SE line 8a is W-2 boxes 3 and 7, which pre-tax 401(k) deferrals
     # put above box 1. The engine takes box 1 as the wage base's earnings unless
     # told: give it the form's figure so its SE tax is the line 12 below.
+    # The schedule is the head's, so only the head's W-2s (a spouse's: unit 3a-4).
+    mine = [f for f in facts if f.owner == "you"]
     ss_wages = (
-        _sum(facts, SS_WAGES)
-        if any((f.form, f.box) in SS_WAGES for f in facts)
-        else None
+        _sum(mine, SS_WAGES) if any((f.form, f.box) in SS_WAGES for f in mine) else None
     )
     if ss_wages is not None:
         cap = tax.self_employment_parameters(year)["wage_base"]

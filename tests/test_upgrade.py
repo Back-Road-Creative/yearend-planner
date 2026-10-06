@@ -110,7 +110,7 @@ def test_an_older_ledger_is_copied_aside_then_brought_up(tmp_path: Path) -> None
         assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 3
     conn.close()
     with sqlite3.connect(ledger) as conn:
-        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 4
+        assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 5
         cols = {r[1] for r in conn.execute("PRAGMA table_info(facts)")}
     conn.close()
     assert "value_text" in cols
