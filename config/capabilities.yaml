@@ -99,6 +99,11 @@ schedule_e_k1:
   evidence: implemented
   tests: ["tests/test_schedule_k1.py"]
   note: "Schedule E Parts II and III (unit 3e-3a) from the typed k1s answer: lines 28-37 per K-1 of Form 1065, 1120-S and 1041 (business and rental boxes, guaranteed payments, section 179, 1041 boxes 5 and 9) and line 41 onto Schedule 1 line 5; each K-1's passive boxes one Form 8582 activity with Part I, active for a box 2 rental in Part IV, and prior-year losses; the engine's partnership_income, s_corp_income, estate income, passive pass-through income and box 14 code A on Schedule SE line 2; QBI only from a typed section 199A statement; the portfolio boxes (unit 3e-3b) onto Schedule B rows per K-1, 1040 lines 2b, 3a and 3b, Schedule E line 4 royalty columns and Schedule D lines 5 and 12"
+schedule_f:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_schedule_f.py"]
+  note: "Schedule F (unit 3e-5) from the typed farms answer: Part I (cash) or Part III (accrual, with inventory) to line 9, Part II lines 10-33 with line 12 capped at 25% of gross income from farming and the excess carried, line 34 after Form 8582 for a farm without material participation (with its prior-year loss), onto Schedule 1 line 6, the owner's Schedule SE line 1a and the engine's farm_operations_income; 1099-PATR and 1099-G expected; Form 6198, Form 461, Schedule J, the SE farm optional method and Form 4835 named, not drafted"
 aca_slcsp_county:
   status: verified
   evidence: implemented
