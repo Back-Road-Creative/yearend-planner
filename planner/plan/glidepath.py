@@ -26,6 +26,7 @@ from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import calendar, esttax, spending, withdraw
 from planner.plan.inputs import Overrides, age_at_year_end
+from planner.taxprep import schedule_c
 
 HORIZON_AGE = 95
 SS_AGES = (62, 67, 70)
@@ -68,11 +69,14 @@ class MonthRow:
     actual: bool  # income columns from rows (True) or run-rate (False)
     planned_in: float = 0.0  # proceeds of the planned sales, at year-end settlement
     balance_due: float = 0.0  # tax the installments leave unpaid, due with the return
+    # deposits that are not business income: pay, refunds, loans, unclassed
+    other_in: float = 0.0
 
     @property
     def net(self) -> float:
         return r(
             self.se
+            + self.other_in
             + self.dividends
             + self.cash_in
             + self.planned_in
@@ -202,6 +206,99 @@ def _by_month(
         if row.date and row.amount_cents is not None and pick(row):
             out[int(row.date[5:7])] += row.amount_cents
     return {m: db.from_cents(c) for m, c in out.items()}
+
+
+PAY = "pay"  # wages paid into the account: cash in each month, never business income
+
+
+def _deposits(
+    conn: sqlite3.Connection, lay: Layout, year: int, notes: list[str]
+) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
+    """The year's bank deposits by month, each counted once by its category
+    (``planner categorize``): receipts are business income, pay recurs, a
+    transfer between your own accounts is no cash in at all, and everything else
+    (a refund, a loan, an unclassed deposit) is cash in that month only."""
+    rules, assigned = schedule_c.load_rules(lay)
+    se: dict[int, int] = defaultdict(int)
+    pay: dict[int, int] = defaultdict(int)
+    once: dict[int, int] = defaultdict(int)
+    moved = loose = 0
+    for row in db.rows_for(conn, year, kind="bank"):
+        if not row.date or not row.amount_cents or row.amount_cents <= 0:
+            continue
+        month, cents = int(row.date[5:7]), row.amount_cents
+        category = schedule_c.category_of(row, rules, assigned)
+        if category == schedule_c.RECEIPTS:
+            se[month] += cents
+        elif category == PAY:
+            pay[month] += cents
+        elif category == "transfer":
+            moved += cents
+        else:
+            once[month] += cents
+            loose += cents if category is None else 0
+    if loose:
+        notes.append(
+            f"{db.from_cents(loose):,.2f} of bank deposits have no category: counted "
+            "as cash in the month they came, not business income and not repeated "
+            f"(planner categorize --year {year})"
+        )
+    if moved:
+        notes.append(
+            f"{db.from_cents(moved):,.2f} of deposits classed transfer (between your "
+            "own accounts): not cash in"
+        )
+
+    def dollars(d: dict[int, int]) -> dict[int, float]:
+        return {m: db.from_cents(c) for m, c in d.items()}
+
+    return dollars(se), dollars(pay), dollars(once)
+
+
+def _anchor(
+    rows: list[MonthRow], start: float, since: date | None, year: int
+) -> tuple[list[MonthRow], str]:
+    """End-of-month cash from a balance dated ``since``: that month's flows after
+    the date run forward from it (by the share of the month left), later months
+    add their net, earlier months are worked back from it so no flow the
+    balance already holds is counted twice. Undated, or dated outside the year,
+    the balance starts the line on January 1."""
+    nets = [row.net for row in rows]
+    ends: list[float] = []
+    i0 = -1 if since is None else (since.year - year) * 12 + since.month - 1
+    if since is None or not 0 <= i0 < len(rows):
+        cash = start
+        for n in nets:
+            cash = r(cash + n)
+            ends.append(cash)
+        note = (
+            f"cash balance {start:,.2f} has no date: the line starts from it on "
+            f"January 1 {year} (set the account's balance_date)"
+            if since is None
+            else f"cash balance {start:,.2f} is dated {since}, outside {year}: the "
+            f"line starts from it on January 1 {year}"
+        )
+        return [replace(row, cash=c) for row, c in zip(rows, ends, strict=True)], note
+    days = _month_days(since)
+    after = (days - since.day) / days
+    ends = [0.0] * len(rows)
+    ends[i0] = r(start + nets[i0] * after)
+    for i in range(i0 + 1, len(rows)):
+        ends[i] = r(ends[i - 1] + nets[i])
+    back = r(start - nets[i0] * (1 - after))
+    for i in range(i0 - 1, -1, -1):
+        ends[i] = back
+        back = r(back - nets[i])
+    note = (
+        f"cash starts from the {since} balance {start:,.2f}; months before it are "
+        "worked back from it, so deposits it already holds are not counted twice"
+    )
+    return [replace(row, cash=c) for row, c in zip(rows, ends, strict=True)], note
+
+
+def _month_days(d: date) -> int:
+    nxt = date(d.year + d.month // 12, d.month % 12 + 1, 1)
+    return (nxt - date(d.year, d.month, 1)).days
 
 
 def _income_by_month(conn: sqlite3.Connection, year: int) -> dict[int, float]:
@@ -334,20 +431,24 @@ def months(
     cash_in: dict[str, float],
     overrides: Overrides | None,
     notes: list[str],
+    cash_since: date | None = None,
 ) -> list[MonthRow]:
     profile = load_profile(lay)
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
-        se_act = _by_month(conn, year, "bank", lambda rw: rw.amount_cents > 0)
+        se_act, pay_act, once_act = _deposits(conn, lay, year, notes)
         div_act = _income_by_month(conn, year)
         div_last = _income_by_month(conn, year - 1)
     finally:
         conn.close()
     done = [m for m in range(1, 13) if date(year, m, 1) <= as_of]
     se_rate = sum(se_act.get(m, 0.0) for m in done) / len(done) if done else 0.0
+    pay_rate = sum(pay_act.get(m, 0.0) for m in done) / len(done) if done else 0.0
     div_rate = sum(div_act.get(m, 0.0) for m in done) / len(done) if done else 0.0
     if not se_act:
-        notes.append("no bank deposits in the ledger: SE income by month is unknown")
+        notes.append(
+            "no bank deposit is classed receipts: SE income by month is unknown"
+        )
     if not div_act:
         notes.append("no dividend or interest rows in the ledger for the year")
     taxes = _tax_by_month(lay, year, as_of, overrides, notes)
@@ -362,13 +463,13 @@ def months(
             )
     irregular = _irregular(profile, notes)
     rows: list[MonthRow] = []
-    cash = cash_start
     for y in (year, year + 1):
         for m in range(1, 13):
             actual = y == year and m in done
             se = se_act.get(m, 0.0) if actual else se_rate
             div = div_act.get(m, 0.0) if actual else div_last.get(m, div_rate)
             irr = sum(a for yy, mm, a, _ in irregular if mm == m and yy in (None, y))
+            other = pay_act.get(m, 0.0) + once_act.get(m, 0.0) if actual else pay_rate
             ym = (y, m)
             row = MonthRow(
                 y,
@@ -385,9 +486,11 @@ def months(
                 actual,
                 planned.get(ym, 0.0),
                 taxes.get(ym, (0.0, 0.0))[1],
+                r(other),
             )
-            cash = r(cash + row.net)
-            rows.append(replace(row, cash=cash))
+            rows.append(row)
+    rows, note = _anchor(rows, cash_start, cash_since, year)
+    notes.append(note)
     return rows
 
 
@@ -471,9 +574,25 @@ def glide(
         g.stresses.append(Stress(name, runs_out(rows), rows[-1].balance_real))
         if name == "floor returns":
             g.floor_rows = rows  # the comfort-floor line is the floor-returns run
-    cash_start = r(sum(p.value for p in st.positions if p.type == "cash"))
+    held = [p for p in st.positions if p.type == "cash"]
+    cash_start = r(sum(p.value for p in held))
+    dated = sorted(p.as_of[:10] for p in held if p.as_of)
+    since = date.fromisoformat(dated[-1]) if held and len(dated) == len(held) else None
+    if since is not None and dated[0] != dated[-1]:
+        g.notes.append(
+            f"cash balances are dated {dated[0]} to {dated[-1]}: the line starts "
+            f"from {dated[-1]}; update the older balance for an exact start"
+        )
     g.months = months(
-        lay, year, today, sp.spending, cash_start, cash_in or {}, overrides, g.notes
+        lay,
+        year,
+        today,
+        sp.spending,
+        cash_start,
+        cash_in or {},
+        overrides,
+        g.notes,
+        since,
     )
     target = float(profile.get("cash_target") or 0)
     for row in g.months:
