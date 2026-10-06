@@ -17,6 +17,7 @@ from __future__ import annotations
 import dataclasses
 import math
 from dataclasses import dataclass, field
+from datetime import date
 
 from planner import NOTICE, coverage
 from planner.engine import tax
@@ -389,6 +390,13 @@ def build(lay: Layout, year: int) -> Draft:
         statuses=coverage.statuses(lay),
     )
     d.missing = [f"{e.form} from {e.issuer}" for e in inventory(lay, year).outstanding]
+    if inp.spouse_death:  # 2025 Form 1040 instructions, Death of a Taxpayer
+        died = date.fromisoformat(inp.spouse_death).strftime("%m/%d/%Y")
+        d.notes.append(
+            f"Form 1040: check the spouse's Deceased box and enter {died}; write "
+            '"Filing as surviving spouse" where you sign (a personal representative '
+            "other than you signs too)"
+        )
     sheet = _Sheet(d)
     add = sheet.add
 

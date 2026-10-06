@@ -318,14 +318,18 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("MAGI headroom", "Roth conversion", "Levers", "Draft 1040"),
     ),
     Need(
-        "spouse_death_year",
-        "Year your spouse died",
-        "a qualifying surviving spouse files at joint rates only for the two years "
-        "after the year of death, while a dependent child lives at home",
-        _NONE,
-        "int",
+        "spouse_death_date",
+        "Date your spouse died (or none)",
+        "a spouse who died during the year is on a joint return with income to the "
+        "date of death and counts as 65 only if 65 at death; a qualifying surviving "
+        "spouse files at joint rates only for the two years after the year of "
+        "death, while a dependent child lives at home",
+        "the date as YYYY-MM-DD, or none",
+        "date_or_none",
         PROFILE,
-        asked=lambda s: s.get("filing_status") == "qualifying_surviving_spouse",
+        asked=lambda s: (
+            s.get("filing_status") in ("married_joint", "qualifying_surviving_spouse")
+        ),
         unlocks=("MAGI headroom", "Roth conversion", "Levers", "Draft 1040"),
     ),
     Need(
@@ -1154,7 +1158,6 @@ INT_RANGE = {
     "ss_claim_age": (62, 70),
     "hsa_months": (0, 12),
     "hsa_family_share": (0, 100),
-    "spouse_death_year": (1900, 2100),
     "tipped_occupation_code": (0, 999),
 }
 MONEY_MAX = 100_000_000
@@ -1237,6 +1240,8 @@ def parse_value(need: Need, text: str) -> Any:
     s = text.strip()
     if need.kind == "date":
         return _date(need.key, s)
+    if need.kind == "date_or_none":
+        return "none" if s.lower() == "none" else _date(need.key, s)
     if need.kind == "dependents":
         return _dependents(need.key, s)
     if need.kind == "money":
