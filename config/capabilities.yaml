@@ -59,6 +59,11 @@ aca_premium_tax_credit:
   evidence: implemented
   tests: ["tests/test_tax.py::test_fpl_boundaries", "tests/test_tax.py::test_aca_400_cliff", "tests/test_tax.py::test_aca_400_line_is_cut_in_dollars_in_a_sweep", "tests/test_draft.py::test_form_8962_line_5_is_401_past_four_times_the_guideline", "tests/test_marriage_year.py"]
   note: "credit hand-worked from Rev. Proc. 2025-25 at 138%, 150%, just under 400%, exactly 400.00% and over it; the credit's FPL is the prior year's (Form 8962 line 4); the 400% line is cut in dollars per IRC 36B(c)(1)(A) and i8962 Worksheet 2 (the engine's own 4.00 edge is corrected: planner.engine.tax.ACA_PTC_LINE), in sweeps and the draft Form 8962 line 5 = 401; a couple married in the year gets the alternative calculation for the year of marriage when it lowers the repayment (unit 3b-4, Pub. 974 Worksheets I-V, its Oak/Cedar example as the test)"
+child_dependent_care_credit:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_form_2441.py"]
+  note: "Form 2441 (unit 3c-1): Part II credit for care of a dependent under 13 (the line 8 decimal checked at every table edge) and Part III employer benefits from W-2 box 10, with the i2441 line 14 and line 16 examples as tests; the excluded benefits (line 25) lower the $3,000/$6,000 limit, the care paid with them leaves the credit (line 30) and the excess is wages on Form 1040 line 1e (the engine taxes none of it, so planner.engine.tax.dependent_care works Part III out first). Not counted: a dependent 13 or over, or a spouse, who cannot care for themselves; line 9b (prior-year care) and benefits from your own business (lines 22, 24) are not drafted"
 aca_slcsp_county:
   status: verified
   evidence: implemented

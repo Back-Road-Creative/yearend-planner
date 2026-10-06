@@ -55,6 +55,13 @@ ENGINE = (
     "alternative_minimum_tax",
     "non_refundable_ctc",
     "income_tax_non_refundable_credits",
+    "cdcc",
+    "cdcc_rate",
+    "cdcc_limit",
+    "cdcc_relevant_expenses",
+    "count_cdcc_eligible",
+    "head_earned",
+    "spouse_earned",
     "self_employment_tax",
     "additional_medicare_tax",
     "net_investment_income_tax",
@@ -510,6 +517,7 @@ def build(lay: Layout, year: int) -> Draft:
     priced = hh
     if hh.filing_status == "SEPARATE" and year in SCH_1A_YEARS:
         priced = dataclasses.replace(hh, qualified_tips=0, qualified_overtime=0)
+    _, care = tax.dependent_care(year, priced)  # Form 2441 Part III
     v = tax.values(year, priced, (*ENGINE, *d400.ENGINE), PRIOR, OWN)
     d = Draft(
         year,
@@ -730,20 +738,15 @@ def build(lay: Layout, year: int) -> Draft:
         "4 + 11 + 12 + 18" if s2_18 else "4 + 11 + 12",
     )
 
-    # Schedule 3
-    s3_8 = add(
-        "Sch 3",
-        "8",
-        "Nonrefundable credits (other than the child credit)",
-        v["income_tax_non_refundable_credits"] - v["non_refundable_ctc"],
-        "engine income_tax_non_refundable_credits less the child credit",
-    )
-    s3_9 = add("Sch 3", "9", "Net premium tax credit", net_ptc, "Form 8962 line 26")
-    s3_15 = add("Sch 3", "15", "Other payments and refundable credits", s3_9, "line 9")
-
     # Form 1040 income
     f = "1040"
-    l1z = add(f, "1z", "Wages", v["employment_income"], origin("wages"))
+    wage_src = origin("wages")
+    if care is not None and care.line26 > 0:
+        add(
+            f, "1e", "Taxable dependent care benefits", care.line26, "Form 2441 line 26"
+        )
+        wage_src += "; line 1e"
+    l1z = add(f, "1z", "Wages", v["employment_income"], wage_src)
     add(f, "2a", "Tax-exempt interest", exempt, origin("tax_exempt_interest"))
     l2b = add(
         f, "2b", "Taxable interest", v["taxable_interest_income"], origin("interest")
@@ -876,6 +879,24 @@ def build(lay: Layout, year: int) -> Draft:
         )
     l17 = add(f, "17", "Amount from Schedule 2, line 3", s2_3, "Sch 2 line 3")
     l18 = add(f, "18", "Lines 16 and 17", l16 + l17, "16 + 17")
+
+    # Form 2441 and Schedule 3
+    s3_2 = _form_2441(sheet, d, v, hh, care, l11, l18)
+    if s3_2 is not None:
+        add("Sch 3", "2", "Child and dependent care credit", s3_2, "Form 2441 line 11")
+    s3_8 = add(
+        "Sch 3",
+        "8",
+        "Nonrefundable credits (other than the child credit)",
+        v["income_tax_non_refundable_credits"]
+        - v["non_refundable_ctc"]
+        - v["cdcc"]
+        + (s3_2 or 0.0),
+        "engine income_tax_non_refundable_credits less the child credit"
+        + (", with line 2 from Form 2441" if s3_2 is not None else ""),
+    )
+    s3_9 = add("Sch 3", "9", "Net premium tax credit", net_ptc, "Form 8962 line 26")
+    s3_15 = add("Sch 3", "15", "Other payments and refundable credits", s3_9, "line 9")
     ctc_14, ctc_27 = _schedule_8812(sheet, d, v, hh, l11, max(l18 - s3_8, 0.0))
     l19 = add(
         f,
@@ -978,6 +999,124 @@ def build(lay: Layout, year: int) -> Draft:
             "taxation and ACA MAGI"
         )
     return d
+
+
+def _form_2441(
+    sheet: _Sheet,
+    d: Draft,
+    v: dict[str, float],
+    hh: Household,
+    care: tax.DependentCare | None,
+    agi: float,
+    l18: float,
+) -> float | None:
+    """Form 2441 (2025 Form 2441 and its instructions; unit 3c-1): Part III
+    (dependent care benefits) when W-2 box 10 shows any, then Part II (the
+    credit). Returns line 11, Schedule 3 line 2; None when the return has
+    neither care nor benefits. The engine counts the qualifying persons (a
+    dependent under 13) and the line 8 decimal; Part III's lines come from
+    ``tax.dependent_care``, which the engine was priced on."""
+    if care is None and not hh.care_expenses:
+        return None
+    add = sheet.add
+    f = "2441"
+    count = add(
+        f,
+        "2",
+        "Qualifying persons (dependents under 13)",
+        v["count_cdcc_eligible"],
+        "engine count_cdcc_eligible",
+    )
+    claim = count > 0 and (care.line16 if care is not None else hh.care_expenses) > 0
+    if care is not None:
+        add(f, "12", "Dependent care benefits", care.line12, "W-2 box 10, both spouses")
+        add(f, "13", "Grace-period carryover used", care.line13, "dependent_care_grace")
+        add(
+            f,
+            "14",
+            "Forfeited or carried forward",
+            care.line14,
+            "dependent_care_forfeited",
+        )
+        add(f, "15", "Lines 12 and 13 less line 14", care.line15, "12 + 13 - 14")
+        add(f, "16", "Qualified expenses incurred", care.line16, "care_expenses")
+        add(f, "17", "Smaller of line 15 or 16", care.line17, "min(15, 16)")
+        add(f, "18", "Your earned income", care.line18, "engine head_earned")
+        add(
+            f,
+            "19",
+            "Spouse's earned income" if hh.filing_status == "JOINT" else "Line 18",
+            care.line19,
+            "engine spouse_earned" if hh.filing_status == "JOINT" else "line 18",
+        )
+        add(f, "20", "Smallest of line 17, 18 or 19", care.line20, "min(17, 18, 19)")
+        add(f, "21", "Exclusion limit", care.line21, "IRC 129(a)(2)(A)")
+        add(f, "22", "Benefits from your sole proprietorship", 0.0, "taken as none")
+        add(f, "23", "Line 15 less line 22", care.line15, "15 - 22")
+        add(f, "24", "Deductible benefits", 0.0, "none: line 22 is 0")
+        add(f, "25", "Excluded benefits", care.line25, "min(20, 21)")
+        add(f, "26", "Taxable benefits", care.line26, "23 - 25; Form 1040 line 1e")
+        if claim:
+            add(f, "27", "$3,000, or $6,000 for two or more", care.line27, "line 2")
+            add(f, "28", "Lines 24 and 25", care.line25, "24 + 25")
+            add(f, "29", "Line 27 less line 28", care.line29, "27 - 28")
+            add(f, "30", "Care paid, not counting line 28", care.line30, "16 - 28")
+            add(f, "31", "Smaller of line 29 or 30", care.line31, "min(29, 30)")
+    if not claim:
+        if hh.care_expenses and not count:
+            d.notes.append(
+                "Form 2441: care was typed but no dependent is under 13, so "
+                "no one qualifies for the credit (a dependent or spouse who "
+                "cannot care for themselves also qualifies: the draft does not "
+                "count them; see your preparer)"
+            )
+        return 0.0 if care is not None else None
+    if care is not None:
+        l3 = add(f, "3", "Qualified expenses", care.line31, "line 31")
+    else:
+        l3 = add(
+            f,
+            "3",
+            "Qualified expenses, up to $3,000 ($6,000 for two or more)",
+            min(float(hh.care_expenses), v["cdcc_limit"]),
+            "care_expenses; engine cdcc_limit",
+        )
+    l4 = add(f, "4", "Your earned income", v["head_earned"], "engine head_earned")
+    joint = hh.filing_status == "JOINT"
+    l5 = add(
+        f,
+        "5",
+        "Spouse's earned income" if joint else "Line 4",
+        v["spouse_earned"] if joint else l4,
+        "engine spouse_earned" if joint else "line 4",
+    )
+    l6 = add(f, "6", "Smallest of line 3, 4 or 5", min(l3, l4, l5), "min(3, 4, 5)")
+    add(f, "7", "Adjusted gross income", agi, "Form 1040 line 11")
+    l8 = add(
+        f, "8", "Decimal amount", v["cdcc_rate"], "engine cdcc_rate (line 8 table)"
+    )
+    l9a = add(f, "9a", "Line 6 times line 8", l6 * l8, "6 x 8")
+    l9c = add(f, "9c", "Lines 9a and 9b", l9a, "9a + 9b (9b not drafted)")
+    l10 = add(f, "10", "Tax limit", l18, "Credit Limit Worksheet: 1040 line 18")
+    allowed = hh.filing_status != "SEPARATE"
+    l11 = add(f, "11", "Credit", min(l9c, l10) if allowed else 0.0, "min(9c, 10)")
+    if not allowed:
+        d.notes.append(
+            "Form 2441: a married person filing separately takes the credit only "
+            "if they lived apart from their spouse the last 6 months of the year "
+            "(2025 i2441, Married Persons Filing Separately); the draft takes none"
+        )
+    if abs(l6 - v["cdcc_relevant_expenses"]) > TOLERANCE:
+        d.notes.append(
+            f"CHECK: Form 2441 line 6 against the engine's cdcc_relevant_expenses: "
+            f"{l6:,.2f} vs {v['cdcc_relevant_expenses']:,.2f}"
+        )
+    d.notes.append(
+        "Form 2441: Part I (each care provider's name, address, taxpayer ID and "
+        "amount paid) is filled in from the providers' receipts; line 9b (2024 "
+        "care paid in 2025, Worksheet A) is not drafted"
+    )
+    return l11
 
 
 def _schedule_8812(
@@ -1595,6 +1734,7 @@ ORDER = (
     "Sch SE",
     SCH_SE_SPOUSE,
     "8949",
+    "2441",
     "8889",
     hsa.SPOUSE_FORM,
     "8962",
@@ -1607,6 +1747,7 @@ HEADINGS = {
     "8889": "Form 8889 (health savings accounts)",
     hsa.SPOUSE_FORM: "Form 8889 (health savings accounts), the spouse's",
     "8962": "Form 8962",
+    "2441": "Form 2441 (child and dependent care expenses)",
     d400.FORM: "NC Form D-400",
     d400.SCHED: "NC D-400 Schedule S (additions and deductions)",
     "Carryover": "Capital loss carryover to next year",
@@ -1623,6 +1764,7 @@ FORM_CAPABILITY = {
     "8889": "form_8889",
     hsa.SPOUSE_FORM: "form_8889",
     "8962": "aca_premium_tax_credit",
+    "2441": "child_dependent_care_credit",
     d400.FORM: "nc_d400_draft",
     d400.SCHED: "nc_d400_draft",
     "Carryover": "schedule_d",
