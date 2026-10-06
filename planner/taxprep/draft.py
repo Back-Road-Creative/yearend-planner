@@ -1135,7 +1135,7 @@ def build(lay: Layout, year: int) -> Draft:
     if cg.lots or cg.lines:
         limit = 1500.0 if hh.filing_status == "SEPARATE" else 3000.0
         _schedule_d(sheet, d, cg, l7, l11 - l14, limit)
-    _schedule_b(sheet, d, facts, l2b, l3b, typed["foreign_accounts"])
+    _schedule_b(sheet, d, facts, l2b, l3b, typed["foreign_accounts"], inp.k1_portfolio)
     if ret is not None:
         ret.lay(add, d.notes, v, facts, state_paid, year, l11, typed, hh.filing_status)
 
@@ -2282,14 +2282,18 @@ def _payers(
     pairs: tuple[tuple[str, str], ...],
     total: float,
     origin: str,
+    k1s: list[tuple[str, float, str]],
 ) -> float:
-    """One Schedule B row per payer from its forms' boxes; a figure the forms
-    do not show (typed on the Needed panel) is one more row to name."""
+    """One Schedule B row per payer from its forms' boxes and per K-1 (payer,
+    amount, source); a figure neither shows (typed on the Needed panel) is one
+    more row to name."""
     payers = sorted({f.issuer for f in facts if (f.form, f.box) in pairs})
     shown = 0.0
     for name in payers:
         mine = [f for f in facts if f.issuer == name]
         shown += sheet.add("Sch B", line, name, _sum(mine, pairs), _cited(mine, pairs))
+    for name, amount, src in k1s:
+        shown += sheet.add("Sch B", line, f"{name}: write its name", amount, src)
     rest = round(total - shown, 2)
     if abs(rest) > TOLERANCE:
         sheet.add(
@@ -2310,6 +2314,7 @@ def _schedule_b(
     l2b: float,
     l3b: float,
     foreign: object,
+    k1s: list[tuple[str, str, float, str]],
 ) -> None:
     """Schedule B when interest or ordinary dividends are over $1,500: a row
     per payer, lines 4 and 6 tied to 1040 lines 2b and 3b, Part III from the
@@ -2321,7 +2326,13 @@ def _schedule_b(
         )
         return
     add = sheet.add
-    l1 = _payers(sheet, "1", facts, INTEREST_BOXES, l2b, "1040 line 2b")
+
+    def mine(word: str) -> list[tuple[str, float, str]]:
+        return [(p, a, s) for w, p, a, s in k1s if w == word]
+
+    l1 = _payers(
+        sheet, "1", facts, INTEREST_BOXES, l2b, "1040 line 2b", mine("interest")
+    )
     l2 = add("Sch B", "2", "Total interest", l1, "sum of line 1")
     l3 = add(
         "Sch B",
@@ -2331,7 +2342,9 @@ def _schedule_b(
         "Form 8815 is not drafted: no education exclusion is taken",
     )
     add("Sch B", "4", "Taxable interest", l2 - l3, "2 - 3; to 1040 line 2b")
-    l5 = _payers(sheet, "5", facts, DIVIDEND_BOXES, l3b, "1040 line 3b")
+    l5 = _payers(
+        sheet, "5", facts, DIVIDEND_BOXES, l3b, "1040 line 3b", mine("dividends")
+    )
     add("Sch B", "6", "Total ordinary dividends", l5, "sum of line 5; to 1040 line 3b")
     if foreign not in ("yes", "no"):
         d.unknown.append("foreign_accounts")

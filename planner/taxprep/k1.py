@@ -17,6 +17,13 @@ Shareholder's and Beneficiary's Instructions:
   column (e), or a passive one in column (c).
 - Net earnings from self-employment (1065 box 14, code A) go to Schedule SE
   line 2.
+- Portfolio income is never passive (IRC 469(e)(1)) and stays off Schedule E
+  Parts II and III: interest (1065 box 5, 1120-S box 4, 1041 box 1) goes to
+  Schedule B line 1, ordinary and qualified dividends (1065 6a-6b, 1120-S
+  5a-5b, 1041 2a-2b) to Schedule B line 5 and Form 1040 line 3a, royalties
+  (1065 box 7, 1120-S box 6) to Schedule E line 4, and the net short- and
+  long-term capital gains (1065 boxes 8 and 9a, 1120-S 7 and 8a, 1041 3 and 4a)
+  to Schedule D lines 5 and 12 (unit 3e-3b).
 - The section 199A statement (1065 box 20 code Z, 1120-S box 17 code V, 1041
   box 14 code I) gives the qualified business income, W-2 wages and UBIA.
 
@@ -49,6 +56,12 @@ BOXES = {
         "guaranteed": "4c",
         "section179": "12",
         "se": "14A",
+        "interest": "5",
+        "dividends": "6a",
+        "qualified": "6b",
+        "royalties": "7",
+        "stgain": "8",
+        "ltgain": "9a",
         "qbi": "20Z",
         "w2wages": "20Z",
         "ubia": "20Z",
@@ -58,6 +71,12 @@ BOXES = {
         "rental": "2",
         "otherrental": "3",
         "section179": "11",
+        "interest": "4",
+        "dividends": "5a",
+        "qualified": "5b",
+        "royalties": "6",
+        "stgain": "7",
+        "ltgain": "8a",
         "qbi": "17V",
         "w2wages": "17V",
         "ubia": "17V",
@@ -68,12 +87,24 @@ BOXES = {
         "rental": "7",
         "otherrental": "8",
         "deductions": "9",
+        "interest": "1",
+        "dividends": "2a",
+        "qualified": "2b",
+        "stgain": "3",
+        "ltgain": "4a",
         "qbi": "14I",
         "w2wages": "14I",
         "ubia": "14I",
     },
 }
-SIGNED = ("ordinary", "rental", "otherrental", "se", "qbi")  # may be a loss
+SIGNED = ("ordinary", "rental", "otherrental", "se", "qbi", "stgain", "ltgain")
+# The boxes Schedule E Parts II and III take; the portfolio boxes go elsewhere
+PART_E = (
+    *("ordinary", "rental", "otherrental", "guaranteed"),
+    *("section179", "portfolio", "deductions"),
+)
+PORTFOLIO = ("interest", "dividends", "qualified", "royalties", "stgain", "ltgain")
+ORDINALS = ("1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th")
 ALWAYS_PASSIVE = ("rental", "otherrental")
 LETTERS = "ABCDEFGHI"
 MONEY_MAX = 100_000_000
@@ -123,6 +154,11 @@ def parse(key: str, s: str) -> list[dict[str, Any]]:
             got[word] = int(round(v))
         if len(got) == 3:
             raise ValueError(f"{key}: {entry!r} has no amounts (like {EXAMPLE})")
+        if got.get("qualified", 0) > got.get("dividends", 0):
+            raise ValueError(
+                f"{key}: qualified dividends are part of the ordinary dividends; "
+                f"{entry!r} has more qualified than dividends"
+            )
         if spouse and "se" not in got:
             raise ValueError(
                 f"{key}: spouse marks whose Schedule SE takes box 14 code A; "
@@ -168,6 +204,8 @@ def rows(entries: list[dict[str, Any]]) -> list[Row]:
     count = dict.fromkeys(FORMS, 0)
     for e in entries:
         kind = e["kind"]
+        if not any(w in e for w in PART_E):
+            continue  # portfolio boxes only: nothing on Schedule E Part II or III
         r = Row(LETTERS[count[kind]], kind, e)
         count[kind] += 1
         box = BOXES[kind]
@@ -341,6 +379,33 @@ def schedule(rs: list[Row], ratio: float, ratio_src: str) -> Result:
         "changes Part II (see its instructions)"
     )
     return Result(lines, part2, part3, by_kind, passive_pships, notes)
+
+
+def portfolio(entries: list[dict[str, Any]]) -> list[tuple[str, str, float, str]]:
+    """(word, payer, amount, source) for each portfolio box typed. A K-1 is
+    named by its kind and place in the order typed, for you to write the
+    entity's name."""
+    out = []
+    count = dict.fromkeys(FORMS, 0)
+    for e in entries:
+        kind = e["kind"]
+        payer = f"Schedule K-1 (Form {FORMS[kind]}), the {ORDINALS[count[kind]]} {kind}"
+        count[kind] += 1
+        out += [
+            (w, payer, float(e[w]), f"K-1 box {BOXES[kind][w]}")
+            for w in PORTFOLIO
+            if e.get(w)
+        ]
+    return out
+
+
+def royalties(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each K-1's royalties as a Schedule E Part I royalty column."""
+    return [
+        {"kind": "royalty", "royalties": a, "source": f"{payer}, {src}"}
+        for w, payer, a, src in portfolio(entries)
+        if w == "royalties"
+    ]
 
 
 def se_earnings(entries: list[dict[str, Any]]) -> tuple[float, float]:
