@@ -1169,7 +1169,7 @@ checks its own folder first with `findstr` and prints the same warning before
 it downloads or runs anything, so a double-click in a synced folder explains
 itself in the window it keeps open.
 
-## Scope guard and the household's people (Phase 10, units 0b, 3a-2 to 3a-7 and 3b-1)
+## Scope guard and the household's people (Phase 10, units 0b, 3a-2 to 3a-7, 3b-1 and 3b-2)
 
 The profile names the household's people: `spouse_birth_date` (asked when the filing
 status is married_joint), `spouse_death_year` (asked for qualifying_surviving_spouse)
@@ -1204,6 +1204,27 @@ The line leads the dashboard's alerts (kind `scope`), reaches the draft return's
 `planner magi` and the tax pack's notes. Once the people are named it goes: the draft lays out the spouse's Schedule 1-A line 36b and the dependents'
 Schedule 8812 (unit 3a-3), each spouse's own Schedule SE (unit 3a-5) and Form 8889
 (unit 3a-7).
+
+A married couple filing jointly can price the other way to file (unit 3b-2):
+
+    planner separate --year 2026
+
+prices the joint return and each spouse's married-filing-separately return, and says
+which costs less (cost as in `planner levers`). Each separate return takes that
+spouse's own lines: their wages, SE income, IRA, Social Security, tips and overtime,
+their own Form 8889 line 13, and the interest, dividends, gains and deductions on
+their own documents. What no document places (a typed mortgage interest figure, a
+planned sale) is split equally, and a note names it. The rules applied:
+
+- If one spouse itemizes the other must (2025 Form 1040 instructions); both returns
+  are priced with the standard deduction and both itemized, and the cheaper pair is shown.
+- The health plan's premiums and advance credit go 50% to each return and neither
+  takes the premium credit (2025 Form 8962 instructions, Allocation Situation 2), so
+  each repays its half against its own income. The domestic-abuse and abandonment
+  exceptions are not handled.
+- The children are claimed on one return, priced both ways.
+- A community property state (AZ, CA, ID, LA, NV, NM, TX, WA, WI; Pub. 555) is refused:
+  each spouse reports half the community income, which the ledger cannot tell apart.
 
 Each document is one person's (unit 3a-4). Drop the spouse's W-2, 1099-R, SSA-1099,
 5498 and 1099-NEC in `data/inbox/spouse/` (any case); everything else is yours. A
