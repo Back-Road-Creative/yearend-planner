@@ -380,6 +380,8 @@ def build(
         dependents=len(fields["dependents"]),
         death_year=coverage.death_year(value.get("spouse_death_date")),
         year=year,
+        residency=value.get("state_residency"),
+        local=value.get("local_income_tax"),
     )
     out.scope = [g.reason for g in out.coverage if g.area == "household"]
     out.notes.extend(g.reason for g in out.coverage)

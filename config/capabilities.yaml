@@ -403,8 +403,8 @@ stale_banner:
 coverage_gate:
   status: verified
   evidence: implemented
-  tests: ["tests/test_coverage.py"]
-  note: "household, state and unread-document gaps found after intake, each with a Needed line; panels and drafted forms tagged verified/estimated/not handled from the gaps and these rows; coverage.csv in the tax pack"
+  tests: ["tests/test_coverage.py", "tests/test_residency_local.py"]
+  note: "household, state and unread-document gaps found after intake, each with a Needed line (a part-year move, income from another state and a local income tax among them, unit 3d-5); panels and drafted forms tagged verified/estimated/not handled from the gaps and these rows; coverage.csv in the tax pack"
 readiness_answers:
   status: verified
   evidence: implemented
