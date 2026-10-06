@@ -206,8 +206,8 @@ def test_glide_comfort_floor_line_and_band(lay: Layout) -> None:
 def test_glide_ss_fallback_and_accessible_shortfall(lay: Layout) -> None:
     enter(lay, 2026, "ss_claim_age", "70")
     g = glidepath.glide(lay, 2026, AS_OF, balance=300_000.0)
-    assert any("ss_estimate_67 stands in for 70" in n for n in g.notes)
-    assert next(rw for rw in g.rows if rw.age == 70).ss == 30_000.0
+    assert any("the age-70 benefit 3,100.00/month" in n for n in g.notes)
+    assert next(rw for rw in g.rows if rw.age == 70).ss == 37_200.0  # 24% credits
     # the holdings snapshot owns the taxable balance; retype the account instead
     portfolio.save_account(lay, "11111111", type="trad_ira")
     g = glidepath.glide(lay, 2026, AS_OF)
@@ -251,8 +251,7 @@ def test_a_balance_above_the_ledger_peak_is_the_peak(lay: Layout) -> None:
         65_000.0,
         0.0,
         0.0,
-        0.0,
-        None,
+        {},
         drop_year1=0.3,
         peak=1_800_000.0,
     )
