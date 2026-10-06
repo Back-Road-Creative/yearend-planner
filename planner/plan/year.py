@@ -360,6 +360,7 @@ def _esttax(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
                 if short
                 else ""
             )
+            + (f"; Form 2210 penalty {ag.penalty:,.2f}" if ag.penalty else "")
         )
     notes = list(et.notes) + [n for ag in et.agencies for n in ag.notes]
     return Section("esttax", True, lines, notes)

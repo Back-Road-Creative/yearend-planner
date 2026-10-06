@@ -384,13 +384,18 @@ def test_planned_sales_and_conversion_tax_reach_the_cash_line(lots: Layout) -> N
         2,
     )
     # the year's whole tax, conversion included, reaches the line: installments
-    # through January plus the balance due with the return
+    # through January plus the balance due with the return, which carries the
+    # Form 2210 penalty on the installments the larger tax left short
     et = esttax.estimate(lots, 2026, AS_OF, ov)
     through_jan = sum(m.est_tax for m in g.months if (m.year, m.month) <= (2027, 1))
     due = sum(m.balance_due for m in g.months if m.year == 2027 and m.month == 4)
+    fed = et.agencies[0]
+    assert fed.penalty is not None and fed.penalty > 0
     assert through_jan + due == pytest.approx(
-        sum(ag.current_tax - ag.withheld for ag in et.agencies), abs=0.02
+        sum(ag.current_tax - ag.withheld for ag in et.agencies) + fed.penalty,
+        abs=0.02,
     )
+    assert any("Form 2210 penalty" in n for n in g.notes)
     base_et = esttax.estimate(lots, 2026, AS_OF)
     assert through_jan + due > sum(
         ag.current_tax - ag.withheld for ag in base_et.agencies
