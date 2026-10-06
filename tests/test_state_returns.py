@@ -5,6 +5,7 @@ Synthetic households only."""
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,9 @@ def test_each_entry_has_its_filed_template(code: str) -> None:
     assert (TEMPLATES / f"{ret.template.lower()}.yaml").exists()
     assert pages and all(tpl["issuer"] == code for tpl in pages)
     boxes = {b: spec for tpl in pages for b, spec in tpl["boxes"].items()}
-    assert {ret.tax_line, *ret.boxes, *ret.prior} <= set(boxes)
+    assert {ret.tax_line, *ret.boxes, *(p.removeprefix("-") for p in ret.prior)} <= set(
+        boxes
+    )
     assert boxes[ret.tax_line].get("required") is True
     assert ret.form in ret.forms
 
@@ -64,6 +67,17 @@ def test_another_states_prior_tax_carries_as_an_estimate() -> None:
     need = need_for("prior_state_tax")
     assert need.estimate == (("CARRY-EST", "state_tax"),)
     assert "state_tax" in rollover.LABELS  # a drafted state's carry key
+
+
+def test_a_minus_prior_line_subtracts_it() -> None:
+    # NY's safe harbor (unit 3d-7) is lines 46 and 58 less its refundable credits
+    ret = dataclasses.replace(_fake([]), prior=("64", "-71"))
+    laid = {("CA-540", "64"): 100.0, ("CA-540", "71"): 30.0}
+    assert statereturn.signed("-71") == ("71", -1.0)
+    assert statereturn.signed("64") == ("64", 1.0)
+    assert statereturn.carried(lambda f, line: laid.get((f, line)), ret) == 70.0
+    assert statereturn.carried(lambda f, line: None, ret) is None
+    assert statereturn.carried(lambda f, line: laid.get((f, line)), _fake([])) == 100.0
 
 
 def _fake(calls: list[dict[str, Any]]) -> statereturn.StateReturn:
