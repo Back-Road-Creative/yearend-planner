@@ -1,6 +1,7 @@
 """Estimated tax: the safe harbor, the four installments, what was paid and
 when, the next due date and amount. Federal and the household's state (when
-it taxes income) separately, each on its own installment rules (``states``;
+it taxes income) separately, each on its own installment rules (``states``:
+the dates, shares, de minimis and safe harbor from the state's instructions;
 a state without its own rules in the planner is on the federal ones, and says
 so). A payment is
 credited to the installment whose window it falls in, so a late payment never
@@ -22,7 +23,7 @@ from planner.ledger import db
 from planner.paths import Layout
 from planner.plan.calendar import shift
 from planner.plan.inputs import UNKNOWN, Overrides
-from planner.plan.magi import HIGH_INCOME_AGI, project
+from planner.plan.magi import project
 
 PAYMENTS = "payments"  # top-level list in the year's manual file
 FED = "fed"
@@ -52,10 +53,29 @@ def prior_key(agency: str) -> str:
     return {FED: "prior_total_tax", "nc": "prior_nc_tax"}.get(agency, "prior_state_tax")
 
 
+def schedule(year: int, agency: str = FED) -> list[tuple[int, date, float]]:
+    """(number, due date, cumulative share) of the agency's installments for
+    tax year ``year``, each date moved to the next business day when it falls
+    on a weekend or a federal holiday; an installment with no share of its own
+    (CA's September) is left out."""
+    return [
+        (n, shift(date(year + off, m, d)), share)
+        for n, (off, m, d), share in rules(agency)[0].installments()
+    ]
+
+
 def due_dates(year: int, agency: str = FED) -> list[date]:
-    """The agency's installment due dates for tax year ``year``, each moved to
-    the next business day when it falls on a weekend or a federal holiday."""
-    return [shift(date(year + off, m, d)) for off, m, d in rules(agency)[0].due]
+    """The agency's installment due dates for tax year ``year``."""
+    return [due for _, due, _ in schedule(year, agency)]
+
+
+def de_minimis(agency: str, owe: float, separate: bool = False) -> bool:
+    """True when the tax after withholding is too small for installments: under
+    the agency's figure, or not over it where its rule says "more than"."""
+    rule = rules(agency)[0]
+    limit = rule.threshold(separate)
+    owe = r(owe)
+    return owe <= limit if rule.over else owe < limit
 
 
 @dataclass(frozen=True)
@@ -67,14 +87,14 @@ class Payment:
 
     @property
     def installment(self) -> int:
-        """1-4: the first installment whose due date is on or after the date."""
+        """1-4: the first installment whose due date is on or after the date
+        (the last one after them all)."""
         paid = date.fromisoformat(self.date)
-        for n, due in enumerate(
-            due_dates(paid.year if paid.month > 1 else paid.year - 1, self.agency), 1
-        ):
+        dated = schedule(paid.year if paid.month > 1 else paid.year - 1, self.agency)
+        for n, due, _ in dated:
             if paid <= due:
                 return n
-        return 4
+        return dated[-1][0]
 
 
 @dataclass(frozen=True)
@@ -102,6 +122,7 @@ class Agency:
     next_amount: float = 0.0
     penalty: float | None = None  # Form 2210: unavailable
     notes: list[str] = field(default_factory=list)
+    separate: bool = False  # married filing separately: the halved AGI lines
 
 
 @dataclass
@@ -169,22 +190,43 @@ def payments(conn: sqlite3.Connection, lay: Layout, year: int) -> list[Payment]:
 
 
 def safe_harbor(
-    name: str, current: float, prior: float | None, prior_agi: float | None
+    name: str,
+    current: float,
+    prior: float | None,
+    prior_agi: float | None,
+    *,
+    separate: bool = False,
+    agi: float | None = None,
 ) -> tuple[float, str]:
-    """The lesser of 90% of this year's tax and 100% of last year's (110% when
-    last year's AGI topped 150,000); 90% of current when last year is unknown."""
-    cur = r(0.9 * current)
+    """The lesser of the agency's share of this year's tax (90%; NJ 80%, GA 70%)
+    and 100% of last year's (110% where the agency steps up once last year's
+    AGI topped 150,000, 75,000 married filing separately: IRC 6654(d)(1)(C));
+    this year's share alone when last year is unknown, or when this year's
+    ``agi`` reaches the agency's line for it (CA: 1,000,000)."""
+    rule = rules(name)[0]
+    half = 2 if separate else 1
+    cur = r(rule.current_factor * current)
+    pct = f"{rule.current_factor:.0%} of this year's projected tax"
     if prior is None:
-        return cur, "90% of this year's projected tax (prior year unknown)"
+        return cur, f"{pct} (prior year unknown)"
+    if (
+        rule.current_only_agi is not None
+        and agi is not None
+        and agi >= rule.current_only_agi / half
+    ):
+        return cur, (
+            f"{pct} (this year's AGI is over the line past which last year's "
+            "tax is not a safe harbor)"
+        )
     factor = (
-        rules(name)[0].high_income_factor
-        if prior_agi is not None and prior_agi > HIGH_INCOME_AGI
+        rule.high_income_factor
+        if prior_agi is not None and prior_agi > rule.high_income_agi / half
         else 1.0
     )
     pri = r(factor * prior)
     if pri <= cur:
         return pri, f"{factor:.0%} of last year's tax"
-    return cur, "90% of this year's projected tax"
+    return cur, pct
 
 
 def _quarters(conn: sqlite3.Connection, year: int) -> list[float]:
@@ -205,17 +247,20 @@ def _agency(
     paid: list[Payment],
     year: int,
     as_of: date,
+    separate: bool = False,
+    agi: float | None = None,
 ) -> Agency:
     rule, own = rules(name)
-    annual, basis = safe_harbor(name, current, prior, prior_agi)
+    annual, basis = safe_harbor(
+        name, current, prior, prior_agi, separate=separate, agi=agi
+    )
     required = r(max(annual - withheld, 0.0))
-    de_minimis = r(current - withheld) < rule.de_minimis
-    ag = Agency(name, current, prior, prior_agi, required, basis, withheld, de_minimis)
+    small = de_minimis(name, current - withheld, separate)
+    ag = Agency(name, current, prior, prior_agi, required, basis, withheld, small)
+    ag.separate = separate
     ag.payments = [p for p in paid if p.agency == name]
-    for n, (due, share) in enumerate(
-        zip(due_dates(year, name), rule.shares, strict=True), 1
-    ):
-        req = r(required * share) if not de_minimis else 0.0
+    for n, due, share in schedule(year, name):
+        req = r(required * share) if not small else 0.0
         by_due = r(
             sum(p.amount for p in ag.payments if date.fromisoformat(p.date) <= due)
         )
@@ -234,10 +279,17 @@ def _agency(
             "planner; the federal dates, shares, de minimis and safe harbor "
             "stand in"
         )
-    if de_minimis:
+    ag.notes.extend(f"{name}: {note}" for note in rule.notes)
+    if name != FED and states.payee(name) is None:
         ag.notes.append(
-            f"{name}: tax after withholding under {rule.de_minimis:,.0f}; "
-            "no estimated payments required"
+            f"{name}: bank payments to the state are not matched by name; type "
+            f"each with planner paid --agency {name}"
+        )
+    if small:
+        word = "not over" if rule.over else "under"
+        ag.notes.append(
+            f"{name}: tax after withholding {word} "
+            f"{rule.threshold(separate):,.0f}; no estimated payments required"
         )
     missed = [
         i for i in ag.installments if i.shortfall and date.fromisoformat(i.due) < as_of
@@ -272,9 +324,11 @@ def next_year_required(ag: Agency, agi: float) -> float:
     legs) less the same withholding, floored at zero (IRC 6654(d)(1)(B): no
     installment is due when withholding covers it), and zero under the de
     minimis test. ``cash_flows`` and the year plan's calendar both read it."""
-    if r(ag.current_tax - ag.withheld) < rules(ag.name)[0].de_minimis:
+    if de_minimis(ag.name, ag.current_tax - ag.withheld, ag.separate):
         return 0.0
-    annual, _ = safe_harbor(ag.name, ag.current_tax, ag.current_tax, agi)
+    annual, _ = safe_harbor(
+        ag.name, ag.current_tax, ag.current_tax, agi, separate=ag.separate, agi=agi
+    )
     return r(max(annual - ag.withheld, 0.0))
 
 
@@ -316,9 +370,9 @@ def cash_flows(et: EstTax) -> tuple[list[Flow], list[str]]:
         required = next_year_required(ag, et.agi)
         before = 0.0
         rule = rules(ag.name)[0]
-        dated = zip(rule.due, due_dates(et.year + 1, ag.name), rule.shares, strict=True)
+        dated = zip(rule.installments(), schedule(et.year + 1, ag.name), strict=True)
         # the installments that fall inside the following year (not January's)
-        for n, ((off, _month, _day), due, share) in enumerate(dated, 1):
+        for (n, (off, _month, _day), _), (_, due, share) in dated:
             if off:
                 continue
             cum = r(required * share)
@@ -348,6 +402,7 @@ def estimate(
         paid = payments(conn, lay, year)
         quarters = _quarters(conn, year)
         names = agencies(pj.inputs.household.state)
+        separate = pj.inputs.household.filing_status == "SEPARATE"
         prior_agi = need_value(conn, lay, year, "prior_agi")
         prior: dict[str, Any] = {
             a: need_value(conn, lay, year, prior_key(a)) for a in names
@@ -384,6 +439,8 @@ def estimate(
                 paid,
                 year,
                 today,
+                separate,
+                res.agi,
             )
         )
     if lumpy:
