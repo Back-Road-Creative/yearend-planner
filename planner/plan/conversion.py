@@ -128,8 +128,8 @@ def size(
     hh = base.inputs.household
     profile = load_profile(lay)
     st = portfolio.status(lay, year)
-    trad = [p.value for p in st.positions if p.type == "trad_ira"]
-    balance = r(sum(trad)) if trad else None
+    trad = [p.value for p in st.positions if p.type in portfolio.CONVERTIBLE]
+    balance = st.convertible if trad else None
     margin = float(profile.get("conversion_margin") or 0)
     cap_profile = profile.get("conversion_cap")
     already = float(hh.roth_conversion)

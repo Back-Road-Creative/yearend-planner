@@ -784,7 +784,7 @@ def _roomed(c: _Ctx, available: float) -> tuple[float, str]:
 
 def _conversion(c: _Ctx) -> Lever:
     key, label, due = "conversion", "Roth conversion", _year_end(c.year)
-    balance = c.balance("trad_ira")
+    balance = c.st.convertible
     if not balance:
         return _none(key, ROOM, label, due, "no traditional IRA balance")
     if c.profile.get("conversion_objective") is None:
