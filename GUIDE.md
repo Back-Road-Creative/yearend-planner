@@ -844,7 +844,8 @@ and its Schedule S. It uses the same engine run as the federal return.
   counts as taxable interest on 1040 line 2b. Before, it was missed.
 - **Not drafted, and named.** Part-year and nonresident returns (line 13,
   Schedule PN), D-400TC credits, penalties and interest (lines 26b-26e,
-  Form D-422), and the amended-return lines.
+  Form D-422), and the amended-return lines. A move or another state's
+  income answered under **Where you lived** is a gap (unit 3d-5).
 
 ## The tax pack: one folder for the preparer (Phase 4l)
 
@@ -1490,6 +1491,16 @@ every fact the planner cannot answer correctly. Each gap has a reason (starting
   Touches only the state return, so the federal draft stays ready. A state with no
   income tax has no gap; a value that is not a state's code is one that touches every
   priced panel.
+- **Where you lived** (unit 3d-5): `state_residency` and `local_income_tax` are
+  asked in every state. The planner prices a full-year resident of one state with
+  no local income tax. `moved` (into or out of the state this year) and
+  `other_state` (wages or other income earned in, or taxed by, another state) are
+  each a gap: the part-year return, the other state's nonresident return and the
+  credit for tax paid to another state are not priced. `local_income_tax yes` (a
+  city, county or school district tax: W-2 box 19, or a local return last year,
+  such as an Ohio school district's SD 100, Pennsylvania's earned income tax or New
+  York City's) is a gap too. These touch every planner section and the state
+  return, not the federal draft.
 - **Document**: each file in `data/inbox/UNMATCHED/`. Anything on it is left out, so it
   touches every priced panel and the draft until its figures are typed with
   `planner enter` or the file is moved out because it holds no tax figures.

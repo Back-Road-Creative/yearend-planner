@@ -30,6 +30,9 @@ PRICED = (
     "cash",
     "draft",
 )
+# A state or local tax left out of every figure (unit 3d-5): each planner
+# section and the state return, never the federal draft, which it leaves alone.
+STATE_PRICED = (*PRICED[:-1], STATE_RETURN)
 
 # A status whose answer turns on a second person, until the profile names that
 # person (unit 3a-2: the spouse's birth date, the dependents), is priced as the
@@ -153,12 +156,15 @@ def gate(
     dependents: int = 0,
     death_year: int | None = None,
     year: int | None = None,
+    residency: str | None = None,
+    local: str | None = None,
 ) -> list[Gap]:
     """Every gap for this household, in a fixed order: household, state, documents.
     ``filing_status`` is the engine's (SINGLE, JOINT, ...); None when not yet known.
     ``spouse`` and ``dependents`` are the people the profile names; ``death_year``
     the spouse's year of death, checked against the tax ``year`` for a surviving
-    spouse and a joint return."""
+    spouse and a joint return; ``residency`` and ``local`` the Needed answers
+    state_residency and local_income_tax (unit 3d-5)."""
     out = []
     unnamed = (
         filing_status == "SEPARATE"
@@ -212,7 +218,51 @@ def gate(
                 (STATE_RETURN,),
             )
         )
+    if state in states.STATES:
+        out.extend(_where(state, residency, local))
     return out + _documents(lay)
+
+
+def _where(state: str, residency: str | None, local: str | None) -> list[Gap]:
+    """The planner prices a full-year resident of one state with no local
+    income tax; anything else is named, never priced as though it were that."""
+    out = []
+    taxing = states.get(state).income_tax
+    if residency == "moved":
+        out.append(
+            Gap(
+                "state",
+                f"Not handled: a part-year resident: {state} is priced as if you "
+                "lived there all year, and the other state you lived in is left out",
+                f"have a preparer draft the part-year {state} return and the other "
+                "state's, if it taxes income",
+                STATE_PRICED,
+            )
+        )
+    elif residency == "other_state":
+        credit = f", and so is the {state} credit for tax paid to it" if taxing else ""
+        out.append(
+            Gap(
+                "state",
+                "Not handled: income earned in or taxed by another state: that "
+                f"state's nonresident return is left out{credit}",
+                "have a preparer draft the other state's nonresident return"
+                + (f" and the {state} credit for tax paid to it" if taxing else ""),
+                STATE_PRICED,
+            )
+        )
+    if local == "yes":
+        out.append(
+            Gap(
+                "state",
+                "Not handled: a city, county or school district income tax: no "
+                "figure here includes it, and its return is not drafted",
+                "have a preparer draft the local return; set aside its tax, which "
+                "no figure here includes",
+                STATE_PRICED,
+            )
+        )
+    return out
 
 
 def tag(gaps: list[Gap], section: str, status: str | None) -> str:

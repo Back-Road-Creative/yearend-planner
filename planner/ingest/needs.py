@@ -286,6 +286,30 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("MAGI headroom", "Levers", "Draft 1040", "Expected forms"),
     ),
     Need(
+        "state_residency",
+        "Where you lived and earned this year",
+        "a part-year or nonresident state return the plan does not price",
+        "full_year: lived in the state all year with no income from another "
+        "state; moved: moved into or out of it this year; other_state: wages or "
+        "other income earned in, or taxed by, another state",
+        "enum",
+        choices=("full_year", "moved", "other_state"),
+        unlocks=("Estimated tax", "NC D-400 draft"),
+        asked=lambda s: _known_state(s),
+    ),
+    Need(
+        "local_income_tax",
+        "City, county or school district income tax",
+        "a local income tax the plan does not price",
+        "yes when a city, county or school district taxes your income: local "
+        "tax withheld on a W-2 (box 19, the locality in box 20) or a local "
+        "return filed last year",
+        "enum",
+        choices=("no", "yes"),
+        unlocks=("Estimated tax",),
+        asked=lambda s: _known_state(s),
+    ),
+    Need(
         "county",
         "County",
         "the ACA benchmark (SLCSP) premium",
@@ -1495,6 +1519,13 @@ def _education(key: str, s: str) -> list[dict[str, Any]]:
     if len(out) > DEPENDENTS_MAX + 2:
         raise ValueError(f"{key}: at most {DEPENDENTS_MAX + 2} students")
     return out
+
+
+def _known_state(so_far: dict[str, Any]) -> bool:
+    """The state is typed as a state's code: where you lived and whether a
+    locality taxes your income are asked in every state (unit 3d-5)."""
+    code = so_far.get("state")
+    return isinstance(code, str) and code in states.STATES
 
 
 def _other_taxing_state(so_far: dict[str, Any]) -> bool:
