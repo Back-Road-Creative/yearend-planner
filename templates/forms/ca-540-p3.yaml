@@ -1,0 +1,18 @@
+# California Form 540, Side 3 (credits, other taxes, payments, use tax).
+# Merges with Side 2 (ca-540.yaml) as form CA-540; line 64 is required here.
+# Lines 48, 61 and 62 are next year's 540-ES worksheet line 19b.
+form: CA-540
+years: [2024, 2025, 2026]
+match: ["Form 540 20", "This is your total tax"]
+year_pattern: 'Form 540\s+(20\d\d)'
+issuer: CA
+boxes:
+  "48": {label: "Tax after credits", pattern: 'Subtract line 47 from line 35\. If less than zero, enter -0-[\s.•]*48\s+AMOUNT'}
+  "61": {label: "Alternative minimum tax", pattern: 'Alternative Minimum Tax\. Attach Schedule P \(540\)[\s.•]*61\s+AMOUNT'}
+  "62": {label: "Behavioral health services tax", pattern: '(?:Behavioral|Mental) Health Services Tax\. See instructions[\s.•]*62\s+AMOUNT'}
+  "63": {label: "Other taxes and credit recapture", pattern: 'Other taxes and credit recapture\. See instructions[\s.•]*63\s+AMOUNT'}
+  "64": {label: "Total tax", pattern: 'This is your total tax\.?[\s.•]*64\s+AMOUNT', required: true}
+  "71": {label: "California income tax withheld", pattern: 'California income tax withheld\. See instructions[\s.•]*71\s+AMOUNT'}
+  "72": {label: "California estimated tax and other payments", pattern: 'California estimated tax and other payments\. See instructions[\s.•]*72\s+AMOUNT'}
+  "78": {label: "Total payments", pattern: 'These are your total payments\.?[\s.•]*78\s+AMOUNT'}
+  "97": {label: "Overpaid tax", pattern: 'subtract line 64 from line 95\.?[\s.•]*97\s+AMOUNT'}
