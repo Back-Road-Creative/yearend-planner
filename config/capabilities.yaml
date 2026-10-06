@@ -335,6 +335,11 @@ ca_540_draft:
   evidence: implemented
   tests: ["tests/test_ca540.py", "tests/test_state_returns.py"]
   note: "planner draft; CA Form 540 lines 13-19, 31-48, 61-64, 71-78, 91-115 for a full-year resident (unit 3d-6, 2025 Form 540 and booklet): Tax Table to $100,000 (schedule at the row midpoint) and Schedules X/Y/Z above, 2025 scales pinned to the booklet; filed 540 Sides 2-5 read by templates ca-540*.yaml; 540NR, Schedule G-1, credits 43-45, lines 63, 73, 74, 92, 110, 112-113 named, not drafted"
+ny_it201_draft:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_ny201.py", "tests/test_state_returns.py"]
+  note: "planner draft; NY Form IT-201 lines 19-46, 59-65, 67-68, 72, 75-80 for a full-year resident (unit 3d-7, 2025 IT-201 and IT-201-I): Tax Table below $65,000 (schedule at the row midpoint, the joint column's 5.25% bracket from its unrounded base), rate schedule above, tax computation worksheets over $107,650 NYAGI, 529 subtraction capped, use tax chart; filed IT-201 pages 2-4 read by templates ny-it201*.yaml; next year's safe harbor 46 + 58 less credits 63-71; IT-203, NYC/Yonkers/MCTMT 47-58, lines 41, 45, 60, 66, 69-71, 73-74, 78a, 81-82 named, not drafted"
 taxpack:
   status: verified
   evidence: implemented

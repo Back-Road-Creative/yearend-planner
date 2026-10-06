@@ -133,7 +133,7 @@ what differs).
 The same inbox reads last year's filed return and the rest of the year-end paperwork.
 Templates in `templates/forms/` now cover Form 1040 (both pages merge into one form,
 issuer `self`), Schedules 1, 2, 3, C, D and SE, NC Form D-400 (issuer `NC`), CA Form 540 (issuer
-`CA`; Sides 2-5 merge into one form), the Social
+`CA`; Sides 2-5 merge into one form), NY Form IT-201 (issuer `NY`; pages 2-4 merge), the Social
 Security Statement (monthly estimates at 62, 67 and 70, tax year = statement year),
 1099-NEC, 1099-K, 1098, 5498, 5498-SA and 1099-SA. A template may name a literal
 `issuer` for the taxpayer's own documents instead of a payer regex, and the line
@@ -854,6 +854,56 @@ same engine run as the federal return.
   Schedule G-1 and FTB 5870A (line 34), the other credits (43-45), other taxes
   (63), 592-B and 593 withholding (73), the film credit (74), the health coverage
   penalty (92, FTB 3853), contributions (110) and penalties and interest (112-113).
+
+## The NY return: Form IT-201 (unit 3d-7)
+
+For a New York State full-year resident (`state: NY`), `planner draft` adds Form
+IT-201 from the same engine run as the federal return.
+
+- **Lines.** Line numbers, the Tax Table, the rate schedules, the tax computation
+  worksheets, the standard deduction ($8,000 single or separate, $16,050 joint or
+  surviving spouse, $11,200 head of household) and the sales and use tax chart
+  follow the 2025 Form IT-201 and its instructions (IT-201-I). Lines 1-18 copy the
+  federal return; the draft starts at line 19, federal AGI.
+- **Additions and subtractions.**
+  - Line 23 (additions, lines 20-23 and Form IT-225): `ny_additions` you type;
+    the engine models none.
+  - Lines 25-30: a state refund, NY and federal government pensions, taxable
+    Social Security, US bond interest (1099-INT box 3), the pension and annuity
+    exclusion and the 529 deduction, priced by the engine. Line 30 is held to
+    $5,000 ($10,000 joint), as IT-201-I says.
+  - Line 31 (other subtractions, Form IT-225): `ny_subtractions` you type.
+- **Line 39.** Below $65,000 of taxable income, the Tax Table: the rate
+  schedule at the middle of the table's row, in whole dollars. The 2025 table
+  prices the joint column's 5.25% bracket ($23,600-$27,900, married filing
+  jointly and qualifying surviving spouse) from the unrounded base of $976.25
+  where the schedule prints $976, and the draft follows the table; a test pins
+  every one of its rows. From $65,000, the rate schedule. When NY AGI (line 33)
+  is over $107,650, the tax computation worksheets: the first phases line 38 into
+  the flat rate of its bracket, each later one adds its recapture base and a
+  fraction of its incremental benefit (rounded to four places); over $25 million
+  NY AGI, 10.9% of line 38.
+- **Credits.** The household credit (line 40), the solar and geothermal credits
+  (line 42) and the refundable credits (Empire State child, child and dependent
+  care, earned income, real property tax and college tuition, lines 63-68) are
+  the engine's.
+- **Payments.**
+  - Line 72: NYS withholding from W-2 box 17 and 1099-R box 14 (`state_withheld`).
+  - Line 75: the NY estimated payments from the bank export or typed.
+- **Use tax.** Line 59 is `ny_use_tax` when typed; until then, the chart's figure
+  for your federal AGI, and the draft says so. The line is never left blank.
+- **The end.** The draft ends on line 77/78 (refund) or line 80 (owed).
+- **Safe harbor.** Next year's NY safe harbor (IT-2105.9-I line 16 worksheet) is
+  lines 46 and 58 less the credits on lines 63-71, from the draft and from a filed
+  IT-201 alike (a `-` before a registry `prior` line subtracts it). A STAR credit
+  check received in the year also comes off; the draft does not see it and says so.
+- **Check.** Line 37 is compared with the engine's NY taxable income, with the
+  typed items and the 529 cap put back. A gap is printed as `CHECK:`.
+- **Not drafted, and named.** Part-year and nonresident returns (Form IT-203), the
+  resident credit (41), net other NYS taxes (45), New York City and Yonkers taxes
+  and the MCTMT (47-58), voluntary contributions (60), the noncustodial parent EIC
+  (66), the New York City credits (69-70a), other refundable credits (71), NYC and
+  Yonkers withholding (73-74), the 529 deposit (78a) and the penalties (81-82).
 
 ## The tax pack: one folder for the preparer (Phase 4l)
 
