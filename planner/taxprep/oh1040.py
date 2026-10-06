@@ -71,7 +71,7 @@ DEDUCTIONS = (
 ENGINE = (
     *(var for _, _, var in DEDUCTIONS),
     "self_employment_income",
-    "farm_income",
+    "farm_operations_income",
     "oh_additions",
     "oh_agi",
     "oh_personal_exemptions_eligible_person",
@@ -163,7 +163,9 @@ def lay_lines(
     sch_c = add(
         BUS, "2", "Schedule C", dollars(v["self_employment_income"]), "Sch C line 31"
     )
-    sch_f = add(BUS, "6", "Schedule F", dollars(v["farm_income"]), "Sch F line 34")
+    sch_f = add(
+        BUS, "6", "Schedule F", dollars(v["farm_operations_income"]), "Sch F line 34"
+    )
     other, other_src = _given(typed, "oh_business_income")
     b10 = add(
         BUS,
