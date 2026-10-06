@@ -1,0 +1,9 @@
+# Form 1099-C (Rev. April 2025), IRS box labels.
+form: 1099-C
+years: [2025, 2026]
+match: ["1099-C", "Cancellation of Debt"]
+issuer_pattern: "creditor'?s name:?\\s*([^\\n]+)"
+boxes:
+  "2": {label: "Amount of debt discharged", pattern: "\\b2 Amount of debt discharged\\s+AMOUNT", required: true}
+  "3": {label: "Interest, if included in box 2", pattern: "\\b3 Interest, if included in box 2\\s+AMOUNT"}
+  "7": {label: "Fair market value of property", pattern: "\\b7 Fair market value of property\\s+AMOUNT"}

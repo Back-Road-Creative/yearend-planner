@@ -140,7 +140,7 @@ merge as form `PA-PA40`), IL Form IL-1040 (issuer `IL`; front and back merge as 
 pages 2-4 merge as form `GA-500`), MI-1040 (issuer `MI`; pages 1-3 merge as
 form `MI-1040`), the Social
 Security Statement (monthly estimates at 62, 67 and 70, tax year = statement year),
-1099-NEC, 1099-K, 1098, 5498, 5498-SA and 1099-SA. A template may name a literal
+1099-NEC, 1099-K, 1098, 5498, 5498-SA, 1099-SA, 1099-G and 1099-C. A template may name a literal
 `issuer` for the taxpayer's own documents instead of a payer regex, and the line
 patterns tolerate the dot leaders the IRS prints. The D-400 template is verified on the
 lines the planner relies on (6, 12b, 15, 20a); the payment lines follow the printed form
@@ -1888,6 +1888,35 @@ than half the year; married filing separately with a child, the draft notes the 
 rule for separated spouses. Rental or passive income (Pub. 596 Worksheet 1), clergy pay,
 excluded Medicaid waiver payments and nontaxable combat pay are not drafted: a CHECK note
 appears when the engine's credit differs.
+
+## 1099-G and 1099-C (Phase 10, unit 3e-1)
+
+Form 1099-G (templates `1099-g.yaml`, the Rev. March 2024 layout used for 2024 and 2025)
+gives unemployment compensation (box 1), a state or local income tax refund (box 2),
+federal withholding (box 4, onto 1040 line 25b) and state withholding (box 11, onto the
+state return's withholding line). Form 1099-C (`1099-c.yaml`, Rev. April 2025) gives the
+canceled debt (box 2) and the creditor. The Needed panel asks `unemployment`,
+`state_refund` and `cancelled_debt`, each read from those boxes when the form is in.
+
+- **Schedule 1 line 7.** Unemployment compensation, 1099-G box 1. Subtract anything you
+  repaid this year by typing the net in `unemployment`.
+- **Schedule 1 line 1.** Only part of a state refund may be taxable: the instructions'
+  State and Local Income Tax Refund Worksheet. When last year's 1040 line 12 is in the
+  ledger and is no more than last year's standard deduction (plus $1,950 single or head
+  of household, $1,550 otherwise, for each spouse born before January 2 of 65 years
+  earlier), you did not itemize, so none of it is taxable and `state_refund_taxable` is
+  filled with 0. Otherwise the panel asks `state_refund_taxable` and names the most that
+  can be taxable (the refund, capped at what you itemized past the standard deduction);
+  finish the worksheet with last year's Schedule A lines 5d and 5e and type line 9.
+  Married filing separately, the worksheet skips lines 5-7 when the spouse itemized, so
+  it is always asked. Blindness is not asked, so the short path errs toward asking.
+- **Schedule 1 line 8c.** Canceled debt, 1099-C box 2. Insolvency, bankruptcy, qualified
+  principal residence and farm debt can be excluded on Form 982 (Pub. 4681): type the
+  taxable part in `cancelled_debt`. Line 9 adds line 8c to line 8f; line 10 adds lines
+  1, 3, 7 and 9, and the engine prices the same three amounts.
+- **Expected forms.** A 1099-G is expected from the state agency when unemployment or a
+  refund is entered, a 1099-C from the creditor when canceled debt is; last year's
+  1099-G predicts this year's, last year's 1099-C does not (debt is canceled once).
 
 ## Coverage gate (Phase 10, unit 2a)
 

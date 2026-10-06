@@ -47,6 +47,8 @@ INFO = (
     "1099-DIV",
     "1099-B",
     "1099-SA",
+    "1099-G",
+    "1099-C",
     "5498",
     "5498-SA",
     "1095-A",
@@ -54,6 +56,8 @@ INFO = (
     "1098-T",
     "SSA-1099",
 )
+# A one-time event: last year's form does not mean another this year.
+ONCE = ("1099-C",)
 # Month and day the issuer must furnish it (IRC 6041-6050 and the 1095-A rule
 # in 36B(f)(3)); a broker's consolidated statement has until February 15 (IRC
 # 6045(b)), so dividends and interest use the later date and nothing is called
@@ -76,6 +80,9 @@ WHERE = {
     "1098": DOCS["f1098"].path,
     "1098-T": DOCS["f1098t"].path,
     "SSA-1099": DOCS["ssa_1099"].path,
+    "1099-G": "the state agency's website (unemployment or tax department: "
+    "1099-G lookup)",
+    "1099-C": "the creditor's mail or online account (a settled or forgiven debt)",
 }
 INSTITUTION = "the institution's tax center (Vanguard: My Accounts > Tax center)"
 # A placeholder issuer matches any issuer of that form.
@@ -87,6 +94,8 @@ ANY = (
     "your HSA custodian",
     "each payer",
     "each school",
+    "the state agency",
+    "the creditor",
 )
 TRANSACTION_FORMS = (
     (re.compile(r"dividend|capital gain", re.I), "1099-DIV"),
@@ -228,7 +237,8 @@ def _add(out: list[Expected], year: int, form: str, issuer: str, reason: str) ->
 def _from_last_year(conn: sqlite3.Connection, year: int, out: list[Expected]) -> None:
     seen = {(f.form, f.issuer) for f in db.facts_for(conn, year - 1) if f.form in INFO}
     for form, issuer in sorted(seen):
-        _add(out, year, form, issuer, f"sent one for {year - 1}")
+        if form not in ONCE:
+            _add(out, year, form, issuer, f"sent one for {year - 1}")
 
 
 def _from_accounts(
@@ -289,6 +299,12 @@ def _from_answers(
         )
     if _positive(conn, lay, year, "interest"):
         _add(out, year, "1099-INT", "each payer", "interest income")
+    if _positive(conn, lay, year, "unemployment"):
+        _add(out, year, "1099-G", "the state agency", "unemployment compensation")
+    if _positive(conn, lay, year, "state_refund"):
+        _add(out, year, "1099-G", "the state agency", "a state or local tax refund")
+    if _positive(conn, lay, year, "cancelled_debt"):
+        _add(out, year, "1099-C", "the creditor", "canceled debt")
     if _positive(conn, lay, year, "ordinary_dividends"):
         _add(out, year, "1099-DIV", "each payer", "dividend income")
     if any(_positive(conn, lay, year, k) for k in ("premium_monthly", "slcsp_monthly")):

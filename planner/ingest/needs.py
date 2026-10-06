@@ -32,7 +32,7 @@ from planner.engine.household import PERSON_INPUTS, PERSON_SAVERS
 from planner.ingest.derive import county_from_zip
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.taxprep import statereturn
+from planner.taxprep import refund, statereturn
 
 PROFILE = "profile"
 PRIOR = "prior"  # the year before the plan year (the filed return)
@@ -73,15 +73,16 @@ class Need:
     # An estimate computed from the ledger when the boxes give nothing:
     # (conn, plan year) -> (value, origin) or None.
     derive: Callable[[sqlite3.Connection, int], tuple[float, str] | None] | None = None
-    # Words worked out from other answers and the ledger (the county from the
-    # return's ZIP): (config folder, conn, plan year, values so far) ->
+    # Words or amounts worked out from other answers and the ledger (the county
+    # from the return's ZIP, a refund's taxable part from last year's return):
+    # (config folder, conn, plan year, values so far) ->
     # (value or None, origin or the reason there is none), or None for no lead.
     # A value is an actual answer; a None value leaves the item missing, with
     # the origin as its note.
     derive_text: (
         Callable[
             [Path, sqlite3.Connection, int, dict[str, Any]],
-            tuple[str | None, str] | None,
+            tuple[str | float | None, str] | None,
         ]
         | None
     ) = None
@@ -682,9 +683,9 @@ NEEDS: tuple[Need, ...] = (
         "fed_withheld",
         "Federal income tax withheld",
         "credited evenly to the four installments",
-        "W-2 box 2, 1099-R box 4 (zero when nothing withholds)",
+        "W-2 box 2, 1099-R box 4, 1099-G box 4 (zero when nothing withholds)",
         "money",
-        boxes=(("W-2", "2"), ("1099-R", "4")),
+        boxes=(("W-2", "2"), ("1099-R", "4"), ("1099-G", "4")),
         doc="w2",
         unlocks=("Estimated tax",),
     ),
@@ -692,9 +693,9 @@ NEEDS: tuple[Need, ...] = (
         "nc_withheld",
         "NC income tax withheld",
         "credited evenly to the four installments",
-        "W-2 box 17, 1099-R box 14 (zero when nothing withholds)",
+        "W-2 box 17, 1099-R box 14, 1099-G box 11 (zero when nothing withholds)",
         "money",
-        boxes=(("W-2", "17"), ("1099-R", "14")),
+        boxes=(("W-2", "17"), ("1099-R", "14"), ("1099-G", "11")),
         doc="w2",
         unlocks=("Estimated tax", "State return draft"),
         asked=lambda s: s.get("state") == "NC",
@@ -703,9 +704,9 @@ NEEDS: tuple[Need, ...] = (
         "state_withheld",
         "State income tax withheld (a state other than NC)",
         "credited to the state's installments",
-        "W-2 box 17, 1099-R box 14 (zero when nothing withholds)",
+        "W-2 box 17, 1099-R box 14, 1099-G box 11 (zero when nothing withholds)",
         "money",
-        boxes=(("W-2", "17"), ("1099-R", "14")),
+        boxes=(("W-2", "17"), ("1099-R", "14"), ("1099-G", "11")),
         doc="w2",
         unlocks=("Estimated tax", "State return draft"),
         asked=lambda s: _other_taxing_state(s),
@@ -1314,6 +1315,51 @@ NEEDS: tuple[Need, ...] = (
         estimate=(("YTD", "interest"),),
         doc="vg_tax",
         unlocks=("MAGI headroom", "Glide path", "Draft 1040", "State return draft"),
+    ),
+    Need(
+        "unemployment",
+        "Unemployment compensation",
+        "ordinary income (Schedule 1 line 7)",
+        "Form 1099-G box 1, from the state's unemployment agency; less any you "
+        "repaid this year; type 0 if none",
+        "money",
+        boxes=(("1099-G", "1"),),
+        unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
+    ),
+    Need(
+        "state_refund",
+        "State or local income tax refund received",
+        "taxable only as far as last year's itemized deduction of it cut your tax",
+        "Form 1099-G box 2, from the state or city tax department (a refund "
+        "applied to this year's estimated tax counts); type 0 if none",
+        "money",
+        boxes=(("1099-G", "2"),),
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "state_refund_taxable",
+        "Taxable part of the state or local income tax refund",
+        "Schedule 1 line 1",
+        "line 9 of the State and Local Income Tax Refund Worksheet in the Form "
+        "1040 instructions (Schedule 1, line 1); Pub. 525's Itemized Deduction "
+        "Recoveries when one of the instructions' exceptions applies",
+        "money",
+        derive_text=lambda config, conn, year, values: _refund_taxable(
+            conn, year, values
+        ),
+        unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
+        asked=lambda s: bool(s.get("state_refund")),
+    ),
+    Need(
+        "cancelled_debt",
+        "Canceled debt",
+        "ordinary income (Schedule 1 line 8c) unless an exclusion applies",
+        "Form 1099-C box 2; the insolvency, bankruptcy and qualified principal "
+        "residence exclusions (Form 982, Pub. 4681) take out what is not "
+        "taxable, so type the taxable part; type 0 if none",
+        "money",
+        boxes=(("1099-C", "2"),),
+        unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
     ),
     Need(
         "tax_exempt_interest",
@@ -2079,6 +2125,28 @@ def _county_from_return(
         return None
     name, note = county_from_zip(config, held[0], values.get("state"))
     return name, f"{note} on {held[1]}" if name else note
+
+
+def _refund_taxable(
+    conn: sqlite3.Connection, year: int, values: dict[str, Any]
+) -> tuple[float | None, str] | None:
+    """The refund worksheet from last year's filed Form 1040 line 12 and this
+    year's filing status and birth dates (planner.taxprep.refund); no lead
+    without that return."""
+    from planner.plan.inputs import FILING  # inputs imports this module
+
+    held = _sum_boxes(conn, (("1040", "12"),), year - 1, None)
+    status = FILING.get(str(values.get("filing_status")))
+    if held is None or status is None:
+        return None
+    births = [values.get("birth_date")]
+    if status in ("JOINT", "SEPARATE"):
+        births.append(values.get("spouse_birth_date"))
+    boxes = sum(refund.aged(b, year - 1) for b in births)
+    value, why = refund.taxable_part(
+        float(values.get("state_refund") or 0.0), held[0], status, year - 1, boxes
+    )
+    return value, f"{why} ({held[1]}; this year's filing status)"
 
 
 def _mortgage_pi(conn: sqlite3.Connection, year: int) -> tuple[float, str] | None:

@@ -63,6 +63,9 @@ Schedule 3 line 4 (unit 3c-3).
 The draft works the earned income credit on 1040 line 27a by the EIC worksheet and the
 EIC Table, with Schedule EIC for each qualifying child (unit 3c-4), and Schedule 8812's
 additional child tax credit line by line, Part II-B included (unit 3c-5).
+Form 1099-G and Form 1099-C are read onto Schedule 1: unemployment (line 7), the taxable
+part of a state refund by the instructions' worksheet (line 1) and canceled debt (line
+8c), with their withholding (unit 3e-1).
 `planner separate` prices a joint couple's two married-filing-separately returns, each
 on that spouse's own documents, against the joint return (unit 3b-2; not in a
 community property state). Filing as married filing separately stays
