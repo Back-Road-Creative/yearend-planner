@@ -1,0 +1,23 @@
+# Illinois Form IL-1040, back (payments, refundable credits, the refund or the
+# amount owed). Merges with the front (il-il1040.yaml) as form IL-IL1040. The
+# back prints no tax year, only its revision date (R-12/25), which is read as
+# the year: IDOR revises the form each December for that tax year.
+form: IL-IL1040
+years: [2025]
+match: ["IL-1040 Back", "Total tax from Page 1, Line 23"]
+year_pattern: 'IL-1040 Back \(R-\d\d/(\d\d)\)'
+issuer: IL
+boxes:
+  "24": {label: "Total tax from Page 1", pattern: 'Total tax from Page 1, Line 23\.[\s.]*24\s+(?:\*\w+\*\s+)?AMOUNT'}
+  "25": {label: "Illinois Income Tax withheld", pattern: 'Illinois Income Tax withheld\. Attach Sch\. IL-WIT\.[\s.]*25\s+AMOUNT'}
+  "26": {label: "Estimated payments", pattern: 'overpayment applied from a prior year return\.[\s.]*26\s+AMOUNT'}
+  "27": {label: "Pass-through withholding", pattern: 'Pass-through withholding\. Attach Sch\. K-1-P or K-1-T\.[\s.]*27\s+AMOUNT'}
+  "28": {label: "Pass-through entity tax credit", pattern: 'Pass-through entity tax credit\. Attach Sch\. K-1-P or K-1-T\.[\s.]*28\s+AMOUNT'}
+  "29": {label: "Earned Income Tax credit", pattern: 'Step 4, Line 9\. Attach Sch\. IL-E/EITC\.[\s.]*29\s+AMOUNT'}
+  "30": {label: "Child Tax credit", pattern: 'Step 5, Line 12\. Attach Sch\. IL-E/EITC\.[\s.]*30\s+AMOUNT'}
+  "31": {label: "Total payments and refundable credit", pattern: 'Total payments and refundable credit\. Add Lines 25 through 30\.[\s.]*31\s+AMOUNT'}
+  "32": {label: "Overpayment", pattern: 'If Line 31 is greater than Line 24, subtract Line 24 from Line 31\.[\s.]*32\s+AMOUNT'}
+  "33": {label: "Underpayment", pattern: 'If Line 24 is greater than Line 31, subtract Line 31 from Line 24\.[\s.]*33\s+AMOUNT'}
+  "34": {label: "Late-payment penalty", pattern: 'Late-payment penalty for underpayment of estimated tax\.[\s.]*34\s+AMOUNT'}
+  "38": {label: "Refund", pattern: 'Check one box on Line 39\. See instructions\.[\s.]*38\s+AMOUNT'}
+  "41": {label: "Amount you owe", pattern: 'This is the amount you owe\. See instructions\.[\s.]*41\s+AMOUNT'}

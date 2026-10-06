@@ -100,7 +100,12 @@ class Template:
 
     def find_year(self, text: str) -> int | None:
         m = self.year_pattern.search(text)
-        return int(m.group(1)) if m else None
+        if not m:
+            return None
+        # A two-digit year is a revision date's (the IL-1040 back page prints
+        # only "R-12/25"), 20xx.
+        year = int(m.group(1))
+        return year + 2000 if year < 100 else year
 
     def find_issuer(self, text: str) -> str:
         if self.issuer is not None:
