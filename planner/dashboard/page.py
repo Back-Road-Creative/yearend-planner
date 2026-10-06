@@ -42,6 +42,7 @@ TITLES = {
     "forms": "Tax prep: forms",
     "esttax": "Estimated tax",
     "cash": "Cash buffer",
+    "goals": "Goals",
     "washsales": "Wash sales",
     "calendar": "Deadlines",
 }
@@ -57,6 +58,7 @@ PANEL_CAPABILITY = {
     "forms": "expected_forms",
     "esttax": "estimated_tax",
     "cash": "glide_path_and_monthly_cash",
+    "goals": "goals_model",
     "washsales": "wash_sales",
     "calendar": "deadline_calendar",
 }
@@ -70,6 +72,7 @@ ORDER = (
     "forms",
     "esttax",
     "cash",
+    "goals",
     "washsales",
     "calendar",
 )

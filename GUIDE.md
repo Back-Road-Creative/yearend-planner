@@ -2353,3 +2353,31 @@ its reasons (the first five, then a count):
 Marking an item *don't have* or waiving a form empties the list but never makes the plan
 ready to act or to hand to a preparer.
 
+## Goals, debts and the target mix (Phase 10, unit 4a)
+
+What the plan works toward is typed once in `data/profile/goals.yaml`, by
+command or by hand; a malformed file or change is refused and the file is left
+as it was.
+
+- `planner goal "Roof" --amount 18,000 --date 2027-06-01` adds a goal or changes
+  one by name. `--rank` (1 is the most important; a new goal goes last),
+  `--owner self|spouse|joint`, `--flexibility fixed|flexible|optional` (flexible:
+  the date can move; optional: it can be dropped), `--purchase` for a planned
+  purchase, `--remove` to drop it. With no name it lists them.
+- `planner debt "Auto loan" --balance 10,000 --rate 6 --payment 200` (yearly
+  percent, monthly payment). The plan shows the payoff month by the standard
+  amortization count, or says the payment never pays it off when it does not
+  cover the month's interest.
+- `planner protect aca_cliff irmaa` names the income lines to keep, from the
+  MAGI panel: `medicaid`, `aca_csr`, `aca_cliff`, `irmaa`, `ltcg_zero`,
+  `bracket_12`, `niit`, `ss_half`, `ss_most`. `--clear` protects none.
+- `planner mix stocks=60 bonds=30 cash=10` is your own target split
+  (`stocks`, `bonds`, `cash`, `real_estate`, `other`; it must add to 100). The
+  planner never picks one; with none chosen it proposes no rebalancing.
+
+The plan page and the dashboard carry a **Goals** section: the goals by rank
+with the months left and the amount a month that reaches each, the total dated
+inside 12 months, each debt's payoff, each protected line's room (under or over,
+from the same projection as the MAGI panel; "does not apply this year" when the
+line is not watched for you, such as IRMAA before 63), and the target mix. A goal
+with no amount or date is listed and named in the notes; it is never counted as 0.
