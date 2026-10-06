@@ -632,10 +632,12 @@ example `W-2 box 2 (Employer; w2-2025.pdf p.1)`.
 
 Schedule 1-A (tax years 2025 to 2028) is its own sheet, and its line 38 is
 1040 line 13b. Part I takes AGI from line 11b. Part V, the $6,000 senior
-deduction, is drawn for a filer 65 by year end (6% of the AGI over $75,000,
-$150,000 joint); a filer born January 1 counts as 65 for the year before
-(Pub. 501: 65 on the day before the birthday), which also gives the extra
-standard deduction. Parts II to IV (tips, overtime, car loan interest) are
+deduction, is drawn for a filer or a joint return's spouse 65 by year end (6%
+of the AGI over $75,000, $150,000 joint, off each $6,000): line 36a is the
+filer's, 36b the spouse's, 37 their sum; a joint return with no
+`spouse_birth_date` on file draws no 36b and a note says so. A person born
+January 1 counts as 65 for the year before (Pub. 501: 65 on the day before the
+birthday), which also gives the extra standard deduction. Parts II to IV (tips, overtime, car loan interest) are
 drawn from four Needed-panel items, each naming its document: `qualified_tips`
 with its Treasury `tipped_occupation_code`, `qualified_overtime` and
 `car_loan_interest` (`planner enter` takes 0 for none). An item still unanswered
@@ -645,6 +647,19 @@ cuts the tips and overtime deductions by $100 for each whole $1,000 of income
 over the start and the car loan interest by $200 for each $1,000 or part of
 one; the engine cuts tips and overtime smoothly, so the draft follows the form
 and a note gives the gap (up to $100).
+
+Schedule 8812 is drawn when dependents are named (tax years 2025 and 2026,
+whose amounts are on file: $2,200 a child under 17 at year end, $1,700 of it
+refundable; $500 another dependent). Lines 4 to 12 count them and cut $50 for
+each $1,000 or part of one over $200,000 ($400,000 joint). Line 13, the tax
+limit (Credit Limit Worksheet A), is 1040 line 18 less Schedule 3 line 8, line
+14 the smaller of 12 and 13, and it is 1040 line 19. Part II-A draws 16a, 16b
+and 17; lines 18a to 26 (earned income, and Social Security tax with three or
+more children) are not drafted, so line 27, 1040 line 28, is the engine's, and
+a `CHECK:` flags it over line 17. Line 12 is checked against the engine's
+credit, line 4 against its child count. The notes list each dependent's age and
+credit for the 1040 dependents table; the names, SSNs and relationships are
+typed from the cards (each SSN is assumed valid).
 
 Schedule B is drawn when taxable interest or ordinary dividends are over
 $1,500, and left out (with a note saying so) when both are $1,500 or less.
@@ -1129,7 +1144,7 @@ checks its own folder first with `findstr` and prints the same warning before
 it downloads or runs anything, so a double-click in a synced folder explains
 itself in the window it keeps open.
 
-## Scope guard and the household's people (Phase 10, units 0b and 3a-2)
+## Scope guard and the household's people (Phase 10, units 0b, 3a-2 and 3a-3)
 
 The profile names the household's people: `spouse_birth_date` (asked when the filing
 status is married_joint) and `dependents` (asked for married_joint and
@@ -1156,8 +1171,9 @@ The line leads the dashboard's alerts (kind `scope`), reaches the draft return's
 `planner magi` and the tax pack's notes. Once the people are named it is replaced by
 `coverage.PEOPLE`, which touches only the draft and the estimated tax: income is priced
 as the first person's until each document names its owner (unit 2c), so Schedule SE's
-wage base and the IRA and HSA limits are that person's, and the draft does not yet lay
-out the spouse or the dependents table (unit 3a-3). A single filer has none.
+wage base and the IRA and HSA limits are that person's. The draft lays out the
+spouse's Schedule 1-A line 36b and the dependents' Schedule 8812 (unit 3a-3). A
+single filer has none.
 
 ## Coverage gate (Phase 10, unit 2a)
 

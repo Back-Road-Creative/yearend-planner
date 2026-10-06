@@ -40,7 +40,8 @@ birth date, and a joint or head-of-household filer for the dependents (birth dat
 person and tagged **Not handled** first in the alerts, in the draft return's notes, in
 `planner magi` and in the tax pack. Once they are named the household is priced as the
 whole tax unit (the spouse's age, the child tax credit, the household size for the ACA
-credit); every income figure is still priced as the first person's until each document
+credit), and the draft return carries the spouse's senior deduction and a Schedule 8812
+for the dependents; every income figure is still priced as the first person's until each document
 names its owner, so the draft return and the estimated-tax figures stay tagged for the
 per-person lines (Schedule SE, IRA and HSA limits). Married filing separately stays
 **Not handled**. The state return drafted is NC's D-400; another state
