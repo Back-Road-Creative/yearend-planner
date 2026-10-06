@@ -18,6 +18,7 @@ import dataclasses
 import math
 from dataclasses import dataclass, field
 
+from planner import NOTICE
 from planner.engine import tax
 from planner.engine.household import Household
 from planner.ingest.needs import need_values, schedule_b_required
@@ -210,7 +211,9 @@ def _form_8962(
             box[f.box] = box.get(f.box, 0.0) + f.value
     src = "1095-A " + ", ".join(sorted({f.issuer for f in facts if f.form == "1095-A"}))
     fpl = v["tax_unit_fpg@prior"]
-    pct = tax.poverty_percent(v["aca_magi_fraction"])
+    over = tax.over_ptc_line(d.year, v["aca_magi"], fpl)
+    # i8962 Worksheet 2: income more than 4 x the guideline is 401, not truncated
+    pct = 401 if over else tax.poverty_percent(v["aca_magi_fraction"])
     figure = round(v["aca_required_contribution_percentage"], 4)
     sheet.add(
         "8962", "1", "Tax family size", v["tax_unit_size"], "engine tax_unit_size"
@@ -226,8 +229,14 @@ def _form_8962(
     sheet.add("8962", "8a", "Annual contribution amount", annual, "3 x 7")
     monthly = round(annual / 12)
     sheet.add("8962", "8b", "Monthly contribution amount", monthly, "8a / 12")
-    eligible = v["is_aca_ptc_eligible"] > 0
-    if not eligible:
+    eligible = v["is_aca_ptc_eligible"] > 0 and not over
+    if over:
+        d.notes.append(
+            "Form 8962: household income is over 400% of the poverty line (more "
+            "than 4 x line 4), so line 5 is 401 and no credit is allowed; every "
+            "month's credit is 0 and the advance is repaid"
+        )
+    elif not eligible:
         d.notes.append(
             "Form 8962: the engine finds no premium tax credit eligibility this year "
             "(income under the poverty line or in the Medicaid band, or Medicare "
@@ -1232,7 +1241,8 @@ def render(d: Draft) -> str:
         "a filing.",
     ]
     if d.not_ready:
-        out.append(d.not_ready)
+        out.append(d.not_ready)  # the blocker first, then the standing notice
+    out.append(NOTICE)
     for form in (*ORDER, "Carryover"):
         lines = [ln for ln in d.lines if ln.form == form]
         if not lines:

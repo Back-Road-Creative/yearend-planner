@@ -72,6 +72,23 @@ def _single_writer(ctx: typer.Context) -> None:
     except WriterBusyError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=BUSY_EXIT) from exc
+    _refuse_newer_ledger()
+
+
+def _refuse_newer_ledger() -> None:
+    """A writing command stops before any step when the ledger was written by a
+    newer planner, rather than failing partway through."""
+    from planner.ledger import db
+
+    try:
+        conn = db.connect_readonly(layout().data / "ledger" / "planner.db")
+    except db.LedgerTooNew as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except db.LedgerOutOfDate:
+        return  # older: the command's own open brings it up to date
+    if conn is not None:
+        conn.close()
 
 
 def _open_ledger_readonly() -> sqlite3.Connection | None:
@@ -510,7 +527,8 @@ def needed(
     finally:
         conn.close()
     loose = len(sc.uncategorised) if sc.business or sc.receipts_forms else 0
-    late = inventory(layout(), year, date.fromisoformat(as_of) if as_of else None).late
+    inv = inventory(layout(), year, date.fromisoformat(as_of) if as_of else None)
+    late = inv.late
     for g in group_by_document(rep.by_state("missing")):
         typer.echo(f"document  {g.title} ({len(g.items)} open)")
         if g.doc:
@@ -546,7 +564,15 @@ def needed(
         typer.echo("          why: Schedule C counts only categorised rows")
         typer.echo(f"          type: planner categorize --year {year}")
     n = len(rep.by_state("missing")) + len(late) + (1 if loose else 0)
-    typer.echo("nothing needed" if n == 0 else f"{n} needed")
+    aside = len(rep.by_state("dont_have")) + len(inv.waived)
+    typer.echo(
+        f"{n} needed"
+        if n
+        else f"nothing left to answer, {aside} set aside: not ready "
+        "(the figures that rest on them are estimates)"
+        if aside
+        else "nothing needed"
+    )
 
 
 @app.command()
@@ -1696,6 +1722,8 @@ def dashboard(
     typer.echo(
         f"{pg.needed_count} needed, {len(pg.alerts)} alert(s)"
         if pg.needed_count or pg.alerts
+        else f"nothing left to answer, {pg.set_aside} set aside: not ready, no alerts"
+        if pg.set_aside
         else "nothing needed, no alerts"
     )
 

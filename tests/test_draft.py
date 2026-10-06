@@ -76,6 +76,30 @@ def test_repayment_cap_table() -> None:
     assert draft.repayment_cap(2024, "SINGLE", 150) is None  # not tabled: repay all
 
 
+def test_form_8962_line_5_is_401_past_four_times_the_guideline() -> None:
+    """i8962 Worksheet 2: 2026 income more than 4 x the guideline is line 5 = 401 and
+    no credit, though line 5's truncation alone reads 400 (62,750 / 15,650 =
+    400.96%). The draft holds the line itself whatever eligibility it is handed.
+    Synthetic figures."""
+    v = {
+        "tax_unit_fpg@prior": 15_650.0,
+        "aca_magi": 62_750.0,
+        "aca_magi_fraction": 4.0,
+        "aca_required_contribution_percentage": 0.0996,
+        "tax_unit_size": 1.0,
+        "is_aca_ptc_eligible": 1.0,
+    }
+    facts = [
+        db.FactRow("1095-A", 2026, "NC-synthetic", f"{box}_01", box, value, 1)
+        for box, value in (("premium", 800.0), ("slcsp", 800.0), ("aptc", 0.0))
+    ]
+    d = draft.Draft(2026, "synthetic")
+    draft._form_8962(draft._Sheet(d), d, v, facts, "SINGLE")
+    assert d.get("8962", "5") == 401
+    assert d.get("8962", "24") == 0
+    assert any("over 400%" in n for n in d.notes), d.notes
+
+
 def test_draft_return_ties_out(lay: Layout) -> None:
     d = draft.build(lay, YEAR)
 
@@ -727,6 +751,16 @@ def test_line_36b_note_reaches_a_joint_return_whose_filer_is_under_65(
     assert d.get("Sch 1-A", "36a") is None
     (note,) = [n for n in d.notes if "line 36b" in n]
     assert "born before January 2, 1962" in note
+
+
+def test_a_joint_draft_says_the_spouse_is_not_handled(planner_home: Path) -> None:
+    lay = Layout(planner_home)
+    lay.ensure()
+    d = _joint(lay, 2026, "1980-06-01")
+    assert [n for n in d.notes if n.startswith("Not handled:")] == inputs.build(
+        lay, 2026
+    ).scope
+    assert "Not handled:" in draft.render(d)
 
 
 def _sched_b_lay(planner_home: Path, banks: tuple[float, float], div: float) -> Layout:
