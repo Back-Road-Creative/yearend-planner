@@ -219,6 +219,57 @@ def _sdtw_tax(system: Any) -> None:
     )
 
 
+# Form 6251 line 2i (unit 3e-8): a tax unit input the engine does not define.
+ISO = "amt_iso_adjustment"
+SENIOR = "additional_senior_deduction"  # Schedule 1-A line 37
+
+
+def _amt_iso(system: Any) -> None:
+    """Form 6251 line 2i, the exercise of incentive stock options: for the AMT
+    the shares' value over the exercise price is income (Pub. 525), which the
+    engine does not model. A tax unit input joins AMT income (line 4), so the
+    exemption's phase-out, the 26% and 28% tax and Part III all see it. So does
+    the enhanced deduction for seniors (Schedule 1-A line 37), which the 2025
+    instructions add back as a personal exemption (section 56(b)(5)(D), lines
+    1a and 1b) and the engine leaves deducted. The married filing separately
+    addition (line 4's instruction: over the separate limit, 25% of the
+    excess, up to the exemption) is figured on line 4 with both."""
+    from policyengine_us.model_api import USD, YEAR, TaxUnit, Variable, max_, min_
+
+    system.add_variable(
+        type(
+            ISO,
+            (Variable,),
+            {
+                "value_type": float,
+                "entity": TaxUnit,
+                "definition_period": YEAR,
+                "unit": USD,
+                "label": "Form 6251 line 2i: exercise of incentive stock options",
+            },
+        )
+    )
+    adds = [*system.variables["amt_income"].adds, ISO, SENIOR]
+    system.update_variable(type("amt_income", (Variable,), {"adds": adds}))
+
+    def separate(tax_unit: Any, period: Any, parameters: Any) -> Any:
+        line4 = (
+            tax_unit("taxable_income", period)
+            + tax_unit("amt_excluded_deductions", period)
+            + tax_unit(ISO, period)
+            + tax_unit(SENIOR, period)
+        )
+        p = parameters(period).gov.irs.income.amt.exemption
+        fs = tax_unit("filing_status", period)
+        excess = max_(0, line4 - p.separate_limit)
+        cap = min_(p.amount[fs], p.phase_out.rate * excess)
+        return max_(0, cap) * (fs == fs.possible_values.SEPARATE)
+
+    system.update_variable(
+        type("amt_separate_addition", (Variable,), {"formula": separate})
+    )
+
+
 @lru_cache(maxsize=1)
 def _system() -> Any:
     from policyengine_us import CountryTaxBenefitSystem
@@ -226,6 +277,7 @@ def _system() -> Any:
     system = CountryTaxBenefitSystem()
     _aca_400_edge(system)
     _sdtw_tax(system)
+    _amt_iso(system)
     return system
 
 

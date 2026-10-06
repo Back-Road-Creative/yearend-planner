@@ -241,6 +241,12 @@ DOCS: dict[str, Doc] = {
             "billing or invoices",
         ),
         Doc(
+            "equity",
+            "Forms 3921 and 3922 from your employer",
+            "your employer's stock plan website > tax documents (Form 3921 for "
+            "incentive stock options exercised, Form 3922 for ESPP shares bought)",
+        ),
+        Doc(
             "bank_csv",
             "Bank transaction export (CSV)",
             "your bank's website > the account > download transactions (CSV)",
@@ -1612,6 +1618,54 @@ NEEDS: tuple[Need, ...] = (
         asked=lambda s: foreign_form_needed(s),
     ),
     Need(
+        "iso_amt_adjustment",
+        "Incentive stock options exercised (AMT)",
+        "Form 6251 line 2i: the shares' value over the price paid is income for "
+        "the alternative minimum tax, not the regular tax (Pub. 525)",
+        "each Form 3921: (box 4 - box 3) x box 5; leave out shares sold the same "
+        "year (their spread is wages or line 8k instead)",
+        "money",
+        doc="equity",
+        unlocks=("Draft 1040",),
+        derive_text=lambda config, conn, year, s: iso_spread(conn, year),
+    ),
+    Need(
+        "stock_option_income",
+        "Stock option and ESPP income not on a W-2",
+        "Schedule 1 line 8k: a sale of incentive stock option shares within 2 "
+        "years of the grant or 1 year of the exercise, or any sale of ESPP shares, "
+        "makes part of the gain ordinary income (Pub. 525)",
+        "your W-2 (box 1 may already include it) and the Forms 3921 and 3922 "
+        "behind the shares sold; 0 when it is all on the W-2",
+        "money",
+        doc="equity",
+        unlocks=("Draft 1040",),
+        derive_text=lambda config, conn, year, s: equity_lead(conn, year, "8k"),
+    ),
+    Need(
+        "equity_basis_short",
+        "Short-term: compensation left out of the 1099-B basis",
+        "Form 8949 box A, code B: for options granted from 2014 on, the broker's "
+        "basis leaves out the income already taxed as wages (Pub. 525)",
+        "the stock plan's supplemental cost basis statement, or the W-2 income "
+        "on the shares sold within a year of buying them; 0 when none",
+        "money",
+        doc="equity",
+        unlocks=("Draft 1040", "Schedule D"),
+        derive_text=lambda config, conn, year, s: equity_lead(conn, year, "basis"),
+    ),
+    Need(
+        "equity_basis_long",
+        "Long-term: compensation left out of the 1099-B basis",
+        "Form 8949 box D, code B: the same, for shares held over a year",
+        "the stock plan's supplemental cost basis statement, or the W-2 or "
+        "line 8k income on the shares held over a year; 0 when none",
+        "money",
+        doc="equity",
+        unlocks=("Draft 1040", "Schedule D"),
+        derive_text=lambda config, conn, year, s: equity_lead(conn, year, "basis"),
+    ),
+    Need(
         "short_term_gains",
         "Short-term gain or loss",
         "ordinary income",
@@ -2038,6 +2092,66 @@ def foreign_form_needed(so_far: dict[str, Any]) -> bool:
     limit = 600 if so_far.get("filing_status") == "married_joint" else 300
     paid = _money(so_far, "foreign_tax_paid")
     return paid > limit or (paid > 0 and _money(so_far, "foreign_tax_carryover") > 0)
+
+
+EQUITY_FORMS = ("3921", "3922")
+
+
+def iso_spread(conn: sqlite3.Connection, year: int) -> tuple[float | None, str]:
+    """Form 6251 line 2i from the year's Forms 3921: per form, (FMV on the
+    exercise date, box 4, less the exercise price, box 3) x shares, box 5
+    (Pub. 525, "Incentive Stock Options")."""
+    forms: dict[tuple[int, str], dict[str, db.FactRow]] = {}
+    for f in db.facts_for(conn, year, "3921"):  # one PDF can hold several
+        forms.setdefault((f.document_id, f.issuer), {})[f.box] = f
+    total, parts = 0.0, []
+    for boxes in forms.values():
+        if not {"3", "4", "5"} <= boxes.keys():
+            continue
+        spread = max(boxes["4"].value - boxes["3"].value, 0.0) * boxes["5"].value
+        total += spread
+        parts.append(f"{boxes['5'].issuer} {spread:,.2f} ({boxes['5'].file_name})")
+    if not parts:  # asked, like any rare item: type 0 if none
+        return None, (
+            "no Form 3921 on file for the year; type 0 if you exercised no "
+            "incentive stock options"
+        )
+    return round(total, 2), (
+        "Form 3921 (box 4 - box 3) x box 5: " + "; ".join(parts) + "; type a "
+        "smaller figure if some of these shares were sold this year"
+    )
+
+
+def equity_lead(
+    conn: sqlite3.Connection, year: int, what: str
+) -> tuple[float | None, str]:
+    """Left to you, with what to look for; with no Form 3921 or 3922 (any year
+    to this one) and no W-2 box 12 code V on file, type 0 if you have none."""
+    held = [
+        f
+        for form in EQUITY_FORMS
+        for f in db.facts_for(conn, None, form)
+        if f.tax_year <= year
+    ]
+    nso = [f for f in db.facts_for(conn, year, "W-2") if f.box == "12V"]
+    lead = ""
+    if not held and not (nso and what == "basis"):
+        lead = (
+            "no Form 3921 or 3922"
+            + (" and no W-2 box 12 code V" if what == "basis" else "")
+            + " on file: type 0 if you have no employee stock; otherwise "
+        )
+    if what == "8k":
+        return None, lead + (
+            "a disqualifying sale of incentive stock option shares: the lesser of "
+            "the exercise-date spread and the gain; ESPP shares: see Pub. 525 "
+            "(qualifying or not); type the part your W-2 box 1 leaves out, 0 when "
+            "none was sold"
+        )
+    return None, lead + (
+        "the broker's basis (box 1e) is the price paid; add the income taxed as "
+        "wages or line 8k (W-2 box 12 code V for nonstatutory options)"
+    )
 
 
 def schedule_b_required(interest: Any, dividends: Any) -> bool:
