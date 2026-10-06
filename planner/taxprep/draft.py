@@ -35,6 +35,7 @@ from planner.taxprep import (
     f4797,
     f6251,
     f8582,
+    f8606,
     hsa,
     sche,
     schedule_c,
@@ -990,17 +991,29 @@ def build(lay: Layout, year: int) -> Draft:
     ira_r = [f for f in facts if kinds.get(f.document_id, "ira") == "ira"]
     plan_r = [f for f in facts if kinds.get(f.document_id) == "plan"]
     qcd = sum(inp.qcd.values())
+    free = sum(x.lines.get("13", 0.0) for x in inp.f8606)  # Form 8606 line 13
     l4b = v["taxable_ira_distributions"] + v["taxable_roth_conversions"]
     gross_r = _sum(ira_r, box1)
-    add(f, "4a", "IRA distributions", gross_r or l4b + qcd, _cited(ira_r, box1))
+    add(
+        f,
+        "4a",
+        "IRA distributions",
+        gross_r or l4b + qcd + free,
+        _cited(ira_r, box1),
+    )
     l4b = add(
         f,
         "4b",
         "IRA distributions, taxable",
         l4b,
         f"{origin('ira_distributions')}; {origin('roth_conversion')}"
-        + (f"; less the QCD on 4c ({origin('qcd')})" if qcd else ""),
+        + (f"; less the QCD on 4c ({origin('qcd')})" if qcd else "")
+        + ("; Form 8606 lines 15c and 18" if inp.f8606 else ""),
     )
+    for x in inp.f8606:
+        form = f8606.FORM if x.who == "you" else f8606.SPOUSE_FORM
+        for ln, amount in x.lines.items():
+            add(form, ln, f8606.LABELS[ln], amount, f"ira_basis ({x.who})")
     if qcd:
         add(
             f,
@@ -2709,6 +2722,8 @@ ORDER = (
     f1116.W18,
     annuity.FORM,
     *(f"{annuity.FORM} {i}" for i in range(1, 10)),
+    f8606.FORM,
+    f8606.SPOUSE_FORM,
     "2441",
     "8863",
     "8880",
@@ -2742,6 +2757,8 @@ HEADINGS = {
         f"{annuity.FORM} {i}": f"Simplified Method Worksheet {i} (lines 5a and 5b)"
         for i in range(1, 10)
     },
+    f8606.FORM: "Form 8606 (nondeductible IRAs)",
+    f8606.SPOUSE_FORM: "Form 8606 (nondeductible IRAs), the spouse's",
 }
 # The capability row behind each form's tag; any other form is draft_return's.
 FORM_CAPABILITY = {
@@ -2756,6 +2773,8 @@ FORM_CAPABILITY = {
     f1116.W18: "foreign_tax_credit",
     annuity.FORM: "pensions_and_qcd",
     **{f"{annuity.FORM} {i}": "pensions_and_qcd" for i in range(1, 10)},
+    f8606.FORM: "ira_basis",
+    f8606.SPOUSE_FORM: "ira_basis",
     "Sch SE": "self_employment_tax",
     SCH_SE_SPOUSE: "self_employment_tax",
     "8889": "form_8889",

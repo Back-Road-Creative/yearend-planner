@@ -65,6 +65,9 @@ class Person:
     pension_income: int = 0
     social_security: int = 0
     traditional_ira_contribution: int = 0
+    # Form 8606 line 1 (unit 3f-3): the part of the traditional IRA contribution
+    # not deducted; Form 8880 still counts all of it
+    nondeductible_ira_contribution: int = 0
     qualified_tips: int = 0
     tipped_occupation_code: int = 0
     qualified_overtime: int = 0
@@ -193,6 +196,9 @@ class Household:
     pension_income: int = 0
     social_security: int = 0
     traditional_ira_contribution: int = 0
+    # Form 8606 line 1 (unit 3f-3): the part of the traditional IRA contribution
+    # not deducted; Form 8880 still counts all of it
+    nondeductible_ira_contribution: int = 0
     # Premiums for the year's self-employed health plan, before any premium tax
     # credit (1095-A column A summed). The engine settles the deduction itself
     # (planner.engine.tax, IRS Pub. 974): the credit comes off the premiums.
@@ -323,7 +329,10 @@ class Household:
             "taxable_roth_conversions": {y: self.roth_conversion},
             "taxable_private_pension_income": {y: self.pension_income},
             "social_security": {y: self.social_security},
-            "traditional_ira_contributions": {y: self.traditional_ira_contribution},
+            "traditional_ira_contributions": {
+                y: self.traditional_ira_contribution
+                - self.nondeductible_ira_contribution
+            },
             "self_employed_health_insurance_premiums": {y: self.se_health_premiums},
             "tip_income": {y: self.qualified_tips},
             "treasury_tipped_occupation_code": {y: self.tipped_occupation_code},
@@ -386,6 +395,11 @@ class Household:
                 "is_tax_unit_spouse": {y: True},
                 **{PERSON_INPUTS[k]: {y: getattr(sp, k)} for k in PERSON_INPUTS},
             }
+            if sp.nondeductible_ira_contribution:
+                people["s"]["traditional_ira_contributions"] = {
+                    y: sp.traditional_ira_contribution
+                    - sp.nondeductible_ira_contribution
+                }
             if sp.ss_wages is not None:
                 people["s"]["taxable_earnings_for_social_security"] = {y: sp.ss_wages}
             if sp.k1_se:
