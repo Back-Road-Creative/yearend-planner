@@ -1161,6 +1161,8 @@ def magi(
     pj = project(
         layout(), year, _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa)
     )
+    from planner import states
+
     res = pj.result
     hh = pj.inputs.household
     typer.echo(
@@ -1179,7 +1181,8 @@ def magi(
     )
     typer.echo(
         f"federal {res.fed_total_tax:,.2f} (SE {res.se_tax:,.2f}, on gains "
-        f"{res.ltcg_tax:,.2f})  NC {res.state_tax:,.2f}  ACA credit {res.aca_ptc:,.2f}"
+        f"{res.ltcg_tax:,.2f})  {states.label(hh.state)} {res.state_tax:,.2f}  "
+        f"ACA credit {res.aca_ptc:,.2f}"
     )
     for ln in pj.lines:
         state = "OVER" if ln.over else "under"
@@ -1207,8 +1210,9 @@ def conversions(
     step: int = typer.Option(500, help="sweep step ($)", min=1),
 ) -> None:
     """Size this year's Roth conversion: one engine sweep, a candidate per
-    watched line, each with its federal and NC tax, ACA credit change, Medicaid
+    watched line, each with its federal and state tax, ACA credit change, Medicaid
     effect and the cash needed from outside the IRA."""
+    from planner import states
     from planner.plan.conversion import size
 
     sz = size(
@@ -1219,11 +1223,12 @@ def conversions(
         f"{year}: already converted {sz.already:,.2f}; traditional IRA {bal}; "
         f"cap {sz.cap:,.2f}; margin {sz.margin:,.2f}"
     )
+    st = states.label(sz.base.inputs.household.state)
     for c in sz.candidates:
         mark = "*" if sz.recommendation is c else " "
         typer.echo(
             f"{mark} {c.name:15} {c.amount:>12,.2f}  federal +{c.fed_delta:,.2f}  "
-            f"NC +{c.state_delta:,.2f}  ACA credit {c.ptc_delta:+,.2f}  "
+            f"{st} +{c.state_delta:,.2f}  ACA credit {c.ptc_delta:+,.2f}  "
             f"cash needed {c.cash_needed:,.2f}  taxable income {c.taxable_income:,.2f}"
             f"{'  Medicaid month OVER' if c.medicaid_month_over else ''}"
             f"{'  WARNING: qualified/LTCG into 15%' if c.qualified_spill else ''}"
@@ -1447,7 +1452,7 @@ def withdraw(
     )
     typer.echo(
         f"ACA MAGI {w.magi_before:,.2f} -> {w.magi_after:,.2f}; "
-        f"federal + NC tax {w.tax_before:,.2f} -> {w.tax_after:,.2f}"
+        f"federal + state tax {w.tax_before:,.2f} -> {w.tax_after:,.2f}"
     )
     for note in w.notes:
         typer.echo(f"note: {note}")
@@ -1463,9 +1468,10 @@ def esttax(
     conversion: float = CONV,
     hsa: float | None = HSA,
 ) -> None:
-    """The safe harbor and the four installments, federal and NC: what was
-    paid (bank rows to the IRS or NCDOR, plus `planner paid`), each due
-    date's shortfall, and the next payment."""
+    """The safe harbor and the installments, federal and the household's
+    state: what was paid (bank rows to the IRS or a state revenue department
+    the planner knows by name, plus `planner paid`), each due date's
+    shortfall, and the next payment."""
     from datetime import date
 
     from planner.plan.esttax import estimate

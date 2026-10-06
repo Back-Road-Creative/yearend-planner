@@ -379,7 +379,7 @@ def _tax_by_month(
             added = r(total - sum(ag.current_tax for ag in without.agencies))
             notes.append(
                 f"the planned conversion {ov.planned_conversion:,.2f} adds "
-                f"{added:,.2f} of federal and NC tax to the year, paid through "
+                f"{added:,.2f} of federal and state tax to the year, paid through "
                 "the installments and the balance due above"
             )
     return {k: (r(v[0]), r(v[1])) for k, v in out.items()}

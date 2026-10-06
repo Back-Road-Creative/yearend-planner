@@ -12,7 +12,7 @@ inherited-IRA withdrawal, and a Roth contribution, which moves no income).
 They compete for the same room, so each is sized to the room under the next
 line, priced alone and ranked by what each dollar moved costs now.
 
-Net dollars are federal tax (income + SE) plus NC tax minus the ACA credit,
+Net dollars are federal tax (income + SE) plus state tax minus the ACA credit,
 against doing nothing. Friction is shown beside the number, never folded into
 it. A lever missing an input says what it needs; nothing is guessed.
 """
@@ -24,6 +24,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any
 
+from planner import states
 from planner.config import load_thresholds
 from planner.engine.household import Household, MissingInputError
 from planner.engine.tax import CONFIG_PARAMS, TaxResult, compute, engine_value, r
@@ -1190,7 +1191,8 @@ def summary(m: Menu, top: int | None = None) -> list[str]:
 
 def render_menu(m: Menu) -> str:
     out = [
-        f"Levers {m.year} (as of {m.as_of}); net = federal + NC tax - ACA credit, "
+        f"Levers {m.year} (as of {m.as_of}); net = federal + "
+        f"{states.label(m.inputs.household.state)} tax - ACA credit, "
         "saved (+) or spent (-) against doing nothing",
         "",
         *summary(m),
@@ -1215,7 +1217,7 @@ FIGURES = (
     ("ACA MAGI", "aca_magi"),
     ("FPL %", "aca_fpl_pct"),
     ("federal tax", "fed_total_tax"),
-    ("NC tax", "state_tax"),
+    ("state tax", "state_tax"),
     ("ACA credit", "aca_ptc"),
 )
 

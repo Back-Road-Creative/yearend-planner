@@ -4,7 +4,7 @@ A candidate is the largest (or, for landing over the Medicaid line, the
 smallest) conversion that keeps a watched line, less the profile's margin:
 the 0% LTCG ceiling, the 12% bracket top, the ACA 400% cliff, under or just
 over the Medicaid line, and the hard cap. Every candidate shows the federal
-and NC tax it adds, the ACA credit it costs, what happens to Medicaid in the
+and state tax it adds, the ACA credit it costs, what happens to Medicaid in the
 month it lands, and the cash needed from outside the IRA to pay for it. The
 recommendation is the candidate matching the profile's objective; the rest
 stay on the page. The source is a traditional IRA only.

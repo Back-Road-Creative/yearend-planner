@@ -30,7 +30,7 @@ FILES = {
     "schedule-b.csv": "Schedule B rows by part, line and payer (when required)",
     "carryforward.csv": "what carries to next year: capital losses",
     "basis.csv": "cost basis of the open lots, and each Roth conversion",
-    "estimated-payments.csv": "federal and NC estimated payments, with origin",
+    "estimated-payments.csv": "federal and state estimated payments, with origin",
     "forms.csv": "the expected forms, which arrived, and their source files",
     "coverage.csv": "each form verified, estimated or not handled, and each gap",
     "originals.zip": "the archived original documents for the year",

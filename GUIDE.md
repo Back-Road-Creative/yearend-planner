@@ -11,7 +11,7 @@ federal income tax after credits (line 22, which holds any excess advance premiu
 repaid when the household file gives `aptc`),
 SE tax, total tax (1040 line 24: line 22 plus Schedule 2 line 21, so it holds SE tax, the
 additional Medicare tax and NIIT; refundable credits are payments, not a cut in it), tax attributable to
-qualified dividends and long-term gains, NC tax, AGI, ACA MAGI, taxable income, QBI
+qualified dividends and long-term gains, state tax (named by the household's state), AGI, ACA MAGI, taxable income, QBI
 deduction, premium tax credit, FPL percentages, Medicaid eligibility, monthly Medicaid MAGI, and the headroom
 left under the 0% capital-gains ceiling and the top of the 12% bracket. All figures come
 from policyengine-us; the arithmetic written here is threshold minus taxable income and
@@ -330,7 +330,7 @@ lines, the Medicaid line, the conversion sizes and the levers all shrink by it.
 `planner conversions --year 2026` sizes this year's Roth conversion from a
 traditional IRA in one engine sweep: a candidate per line (fill to the 0% LTCG
 line, to the 12% top, under the ACA cliff, under or just over the Medicaid
-line in the month it lands, and the hard cap), each with the federal and NC
+line in the month it lands, and the hard cap), each with the federal and state
 tax it adds, the ACA credit it costs, a warning when qualified dividends spill
 into 15%, and the cash needed from outside the IRA. The profile's
 `conversion_margin` is kept below each line, `conversion_cap` is the hard cap
@@ -395,7 +395,7 @@ per dollar raised — loss lots, then the highest-basis long-term lots — never
 retirement account. A `--lot` list is specific-ID: those lots go first, in the
 order given. `--budget` caps the realized gain; what the budget cannot raise is
 reported as short, not quietly sold. Each run prices the sales through the
-engine and prints ACA MAGI and federal + NC tax before and after. A loss lot
+engine and prints ACA MAGI and federal + state tax before and after. A loss lot
 whose symbol was bought inside the last 30 days is flagged as a wash sale.
 
 `planner washsales [--year 2026] [--as-of 2026-06-30]` lists every loss sale
@@ -513,7 +513,7 @@ installments use the same shift.
 tax bill or the ACA credit, each sized from the ledger, priced through the
 engine and shown beside its deadline and friction (automatic, a trade, a
 trade inside a wash-sale window, needs outside cash, irreversible). Net is
-federal tax (income + SE) plus NC tax minus the ACA credit, saved or spent
+federal tax (income + SE) plus state tax minus the ACA credit, saved or spent
 against doing nothing; friction is never folded into the number.
 
 - **Get under a line**: pairing losses against the year's realized gains
@@ -827,7 +827,7 @@ something another command already prints:
 | `schedule-b.csv` | Schedule B by part, line and payer, written only when Schedule B is required (else a note says why) |
 | `carryforward.csv` | the capital loss carried to next year |
 | `basis.csv` | cost basis of each open lot, and each Roth conversion's basis and penalty-free date |
-| `estimated-payments.csv` | federal and NC estimated payments, the installment, and where each came from |
+| `estimated-payments.csv` | federal and state estimated payments, the installment, and where each came from |
 | `forms.csv` | the expected forms, which arrived and their source files (`planner forms`) |
 | `originals.zip` | the archived originals in `data/archive/<year>/` |
 

@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import date
 
+from planner import states
 from planner.engine.household import MissingInputError
 from planner.ingest.needs import needed
 from planner.ledger import db
@@ -101,7 +102,8 @@ def _magi(lay: Layout, year: int, _today: date, ov: Overrides) -> Section:
     lines = [
         f"AGI {res.agi:,.2f}  taxable income {res.taxable_income:,.2f}  "
         f"ACA MAGI {res.aca_magi:,.2f} ({res.aca_fpl_pct:.0f}% FPL)",
-        f"federal {res.fed_total_tax:,.2f}  NC {res.state_tax:,.2f}  "
+        f"federal {res.fed_total_tax:,.2f}  "
+        f"{states.label(pj.inputs.household.state)} {res.state_tax:,.2f}  "
         f"ACA credit {res.aca_ptc:,.2f}",
     ]
     for ln in pj.lines:
@@ -148,10 +150,11 @@ def _conversion(
             else "no recommendation (set conversion_objective in the profile)"
         )
     )
+    st = states.label(sz.base.inputs.household.state)
     for c in sz.candidates:
         lines.append(
             f"{c.name:15} {c.amount:>12,.2f}  federal +{c.fed_delta:,.2f}  "
-            f"NC +{c.state_delta:,.2f}  ACA credit {c.ptc_delta:+,.2f}"
+            f"{st} +{c.state_delta:,.2f}  ACA credit {c.ptc_delta:+,.2f}"
             f"{'  Medicaid month OVER' if c.medicaid_month_over else ''}"
             f"{'  ' + SPILL if c.qualified_spill else ''}"
         )
