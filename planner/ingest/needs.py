@@ -27,7 +27,7 @@ from typing import Any
 import yaml
 
 from planner.config import ASSUMPTION_FIELDS, load_assumptions
-from planner.engine.household import PERSON_INPUTS
+from planner.engine.household import PERSON_INPUTS, PERSON_SAVERS
 from planner.ingest.derive import county_from_zip
 from planner.ledger import db, portfolio
 from planner.paths import Layout
@@ -1007,6 +1007,61 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("Levers", "MAGI headroom"),
     ),
     Need(
+        "roth_ira_contribution",
+        "Roth IRA contributions for the year (and ABLE contributions as the beneficiary)",
+        "Form 8880 line 1, the saver's credit, with the traditional IRA contribution",
+        "box 10 or the custodian's confirmation, counting what goes in by the "
+        "filing deadline for this year; not rollovers or conversions; add what you "
+        "put in your own ABLE account; type 0 if none",
+        "money",
+        boxes=(("5498", "10"),),
+        doc="f5498",
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "elective_deferrals",
+        "Elective deferrals and voluntary contributions to workplace plans",
+        "Form 8880 line 2, the saver's credit",
+        "W-2 box 12 codes D, E, F, G, H, S, AA, BB and EE (401(k), 403(b), "
+        "governmental 457(b), SARSEP and SIMPLE deferrals, Roth ones included), "
+        "plus voluntary after-tax contributions to a qualified plan; not "
+        "414(h) contributions; type 0 if none",
+        "money",
+        boxes=tuple(
+            ("W-2", f"12{c}") for c in ["D", "E", "F", "G", "H", "S", "AA", "BB", "EE"]
+        ),
+        doc="w2",
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "savers_distributions",
+        "Retirement distributions in the saver's credit testing period",
+        "Form 8880 line 4: they come off the contributions before the credit",
+        "every distribution from an IRA, Roth IRA, ABLE account or workplace plan "
+        "in the two years before this one, this year, and next year up to the "
+        "filing deadline; on a joint return both spouses' (a spouse's from a year "
+        "you did not file jointly counts on their line only). Leave out rollovers, "
+        "trustee-to-trustee transfers, conversions to a Roth IRA, plan loans, "
+        "returned excess or same-year contributions, 404(k) dividends, military "
+        "retirement and an inherited IRA's. Type 0 if none",
+        "money",
+        asked=lambda s: _saves(s, ""),
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "savers_barred",
+        "Were you claimed as a dependent on another return, or a student (yes or no)",
+        "Form 8880: either one bars the saver's credit for that person's contributions",
+        "yes if someone else claims you on their return, or you were a full-time "
+        "student (or in a full-time on-farm training course) during some part of "
+        "five calendar months of the year; online-only, correspondence and "
+        "on-the-job courses do not count. Otherwise no",
+        "enum",
+        choices=("yes", "no"),
+        asked=lambda s: _saves(s, ""),
+        unlocks=("Draft 1040",),
+    ),
+    Need(
         "hsa_contribution",
         "HSA contribution you deduct (not through payroll)",
         "the HSA deduction",
@@ -1101,6 +1156,14 @@ NEEDS: tuple[Need, ...] = (
 )
 
 SPOUSE = "spouse_"  # a joint spouse's own line: the head's key behind this
+# Each spouse's own saver's credit lines (Form 8880 columns (a) and (b)).
+PERSON_8880 = (*PERSON_SAVERS, "savers_barred")
+SAVES = ("traditional_ira_contribution", "roth_ira_contribution", "elective_deferrals")
+
+
+def _saves(s: dict[str, Any], prefix: str) -> bool:
+    """The person made a contribution Form 8880 counts (lines 1 and 2)."""
+    return any(float(s.get(prefix + k) or 0) > 0 for k in SAVES)
 
 
 def _dependent_care(s: dict[str, Any]) -> bool:
@@ -1130,18 +1193,20 @@ def _spouse_asked(
             return False
         if key == "tipped_occupation_code":  # moot without the spouse's own tips
             return float(s.get(SPOUSE + "qualified_tips") or 0) > 0
+        if key in ("savers_distributions", "savers_barred"):
+            return _saves(s, SPOUSE)
         return head is None or head(s)
 
     return asked
 
 
 def _with_spouse(needs: tuple[Need, ...]) -> tuple[Need, ...]:
-    """Each per-person line (PERSON_INPUTS, PERSON_HSA) is the head's, summed from the
+    """Each per-person line (PERSON_INPUTS, PERSON_HSA, PERSON_8880) is the head's, summed from the
     head's documents, followed by a joint spouse's twin summed from theirs
     (``data/inbox/spouse/``, or ``planner owner``)."""
     out: list[Need] = []
     for n in needs:
-        if n.key not in PERSON_INPUTS and n.key not in PERSON_HSA:
+        if n.key not in (*PERSON_INPUTS, *PERSON_HSA, *PERSON_8880):
             out.append(n)
             continue
         out.append(replace(n, owner="you"))

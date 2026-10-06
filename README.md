@@ -57,6 +57,9 @@ benefits above the care or the lower earner's income on Form 1040 line 1e (unit 
 Each student's tuition, the aid applied and the credit taken are typed per student; the
 draft carries Form 8863, the American opportunity credit's refundable part on Form 1040
 line 29 and the nonrefundable credits on Schedule 3 line 3 (unit 3c-2).
+Roth IRA and ABLE contributions, W-2 box 12 elective deferrals and the testing period's
+distributions are typed per spouse; the draft carries Form 8880, the saver's credit, on
+Schedule 3 line 4 (unit 3c-3).
 `planner separate` prices a joint couple's two married-filing-separately returns, each
 on that spouse's own documents, against the joint return (unit 3b-2; not in a
 community property state). Filing as married filing separately stays
