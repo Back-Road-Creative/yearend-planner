@@ -1,0 +1,24 @@
+# Virginia Form 760, page 1 (income, VAGI, the deductions and exemptions,
+# taxable income). Merges with page 2 (va-760-p2.yaml) as form VA-760. The
+# year pattern refuses Form 760PY, the part-year return.
+form: VA-760
+years: [2025]
+match: ["Virginia Form 760", "Resident Income Tax Return", "Virginia Adjusted Gross Income (VAGI)"]
+year_pattern: '(20\d\d)\s+Virginia Form 760(?![A-Z])'
+issuer: VA
+boxes:
+  "1": {label: "Adjusted Gross Income from federal return", pattern: 'Not federal taxable income[\s.]*1\s+AMOUNT', required: true}
+  "2": {label: "Additions from Schedule ADJ, Line 3", pattern: 'Additions from enclosed Schedule ADJ, Line 3\.[\s.]*2\s+AMOUNT'}
+  "3": {label: "Add Lines 1 and 2", pattern: '3\. Add Lines 1 and 2[\s.]*3\s+AMOUNT'}
+  "4": {label: "Age Deduction", pattern: '=\s*4\s+AMOUNT'}
+  "5": {label: "Social Security and equivalent Tier 1 Railroad Retirement benefits", pattern: 'if taxable on federal return[\s.]*5\s+AMOUNT'}
+  "6": {label: "State Income Tax refund or overpayment credit", pattern: 'reported as income on federal return\)[\s.]*6\s+AMOUNT'}
+  "7": {label: "Subtractions from Schedule ADJ, Line 7", pattern: 'Subtractions from enclosed Schedule ADJ, Line 7[\s.]*7\s+AMOUNT'}
+  "8": {label: "Add Lines 4, 5, 6, and 7", pattern: 'Add Lines 4, 5, 6, and 7[\s.]*8\s+AMOUNT'}
+  "9": {label: "Virginia Adjusted Gross Income (VAGI)", pattern: 'your tax is \$0\.00[\s.]*9\s+AMOUNT', required: true}
+  "10": {label: "Itemized Deductions from Virginia Schedule A", pattern: 'from Virginia Schedule A\. See instructions\.[\s.]*10\s+AMOUNT'}
+  "11": {label: "Standard deduction", pattern: 'enter standard deduction\. See instructions\.[\s.]*11\s+AMOUNT'}
+  "12": {label: "Exemptions", pattern: 'Exemption Section A plus Exemption Section B[\s.]*12\s+AMOUNT'}
+  "13": {label: "Deductions from Schedule ADJ, Line 9", pattern: 'Deductions from Schedule ADJ, Line 9[\s.]*13\s+AMOUNT'}
+  "14": {label: "Add Lines 10, 11, 12, and 13", pattern: 'Add Lines 10, 11, 12, and 13[\s.]*14\s+AMOUNT'}
+  "15": {label: "Virginia Taxable Income", pattern: 'Subtract Line 14 from Line 9[\s.]*15\s+AMOUNT', required: true}
