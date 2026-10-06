@@ -30,6 +30,7 @@ import yaml
 
 from planner.config import safe_load
 from planner.ingest.needs import DOCS, load_profile, need_value
+from planner.ingest.pdf import base_issuer
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import calendar
@@ -48,6 +49,7 @@ INFO = (
     "1099-INT",
     "1099-DIV",
     "1099-B",
+    "1099-DA",
     "1099-SA",
     "1099-G",
     "1099-C",
@@ -70,6 +72,7 @@ ONCE = ("1099-C", "3921", "3922")
 # late early. The 5498 forms come after the filing deadline.
 DUE = {
     "1099-B": (2, 15),
+    "1099-DA": (2, 15),
     "1099-DIV": (2, 15),
     "1099-INT": (2, 15),
     "5498": (5, 31),
@@ -96,6 +99,8 @@ WHERE = {
     "1099-G lookup)",
     "3921": DOCS["equity"].path,
     "3922": DOCS["equity"].path,
+    "1099-DA": "the exchange's or broker's tax documents page (one form per "
+    "digital asset sale)",
     "1099-C": "the creditor's mail or online account (a settled or forgiven debt)",
     "1099-MISC": "the payer's mail or online account (a tenant's or licensee's "
     "rent or royalty, a prize or other payment)",
@@ -258,7 +263,11 @@ def _add(out: list[Expected], year: int, form: str, issuer: str, reason: str) ->
 
 
 def _from_last_year(conn: sqlite3.Connection, year: int, out: list[Expected]) -> None:
-    seen = {(f.form, f.issuer) for f in db.facts_for(conn, year - 1) if f.form in INFO}
+    seen = {
+        (f.form, base_issuer(f.issuer))
+        for f in db.facts_for(conn, year - 1)
+        if f.form in INFO
+    }
     for form, issuer in sorted(seen):
         if form not in ONCE:
             _add(out, year, form, issuer, f"sent one for {year - 1}")

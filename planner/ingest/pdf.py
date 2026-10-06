@@ -112,13 +112,14 @@ class Template:
         return year + 2000 if year < 100 else year
 
     def find_issuer(self, text: str) -> str:
+        """The issuer's name, with ``event`` in brackets after it."""
         if self.issuer is not None:
             return self.issuer
         m = self.issuer_pattern.search(text)
         name = " ".join(m.group(1).split()) if m else "unknown"
         found = [(label, p.search(text)) for label, p in self.event]
         said = ", ".join(f"{label} {e.group(1)}" for label, e in found if e)
-        return f"{name} ({said})" if said else name
+        return f"{name} [{said}]" if said else name
 
     def parse_boxes(self, text: str) -> tuple[dict[str, tuple[str, Value]], list[str]]:
         found: dict[str, tuple[str, Value]] = {}
@@ -166,6 +167,11 @@ def parse_amount(raw: str) -> float:
 
 def normalize(text: str) -> str:
     return text.replace("’", "'").replace("‘", "'").replace(" ", " ")
+
+
+def base_issuer(issuer: str) -> str:
+    """The issuer's name without the bracketed event a per-event form adds."""
+    return issuer.split(" [", 1)[0]
 
 
 def _compile(pattern: str) -> re.Pattern[str]:
