@@ -57,6 +57,7 @@ MONEY = {
     "long_term_gains": "long_term_gains",
     "ira_distributions": "ira_distributions",
     "roth_conversion": "roth_conversion",
+    "pension_income": "pension_income",
     "social_security": "social_security",
     "traditional_ira_contribution": "traditional_ira_contribution",
     "se_health_premiums": "se_health_premiums",
@@ -96,6 +97,7 @@ TOTAL_INCOME_LINES = (
     "qualified_dividends",
     "ira_distributions",
     "roth_conversion",
+    "pension_income",
     "unemployment",
     "salt_refund",
     "cancelled_debt",
@@ -108,6 +110,9 @@ TOTAL_INCOME_LINES = (
 CAPITAL_LOSS_LIMIT = 3000
 CAPITAL_LOSS_LIMIT_MFS = 1500
 CONVERSION_TARGETS = ("manual", "auto")
+# The most a person may exclude as qualified charitable distributions in a
+# year (Pub. 590-B for 2025: $108,000; for 2026: $111,000; indexed).
+QCD_LIMIT = {2025: 108_000, 2026: 111_000}
 # Needed-panel key -> Household field, a whole-number code rather than dollars.
 CODES = {"tipped_occupation_code": "tipped_occupation_code"}
 # The Needed-panel keys a tax figure reads (the others drive the plan, not the tax).
@@ -127,6 +132,7 @@ TAX_KEYS = (
     "rental_qbi",
     "aotc_refundable_barred",
     "savers_barred",
+    "qcd",
 )
 # A joint spouse's own Form 8880 column rests the credit on them as the head's does.
 TAX_KEYS = (*TAX_KEYS, *(f"spouse_{k}" for k in (*PERSON_SAVERS, "savers_barred")))
@@ -202,6 +208,7 @@ class Inputs:
     spouse_death: str | None = None  # a joint spouse who died in the year (3b-3)
     married: str | None = None  # a joint return's marriage date in the year (3b-4)
     spouse_kids: int = 0  # dependents on the spouse's side before the marriage
+    qcd: dict[str, float] = field(default_factory=dict)  # who -> excluded (3f-1)
     notes: list[str] = field(default_factory=list)
     overrides: Overrides = field(default_factory=Overrides)
     scope: list[str] = field(default_factory=list)  # Not handled lines (also notes)
@@ -230,6 +237,81 @@ class Inputs:
 def age_on(birth: str, day: date) -> int:
     b = date.fromisoformat(birth)
     return day.year - b.year - ((day.month, day.day) < (b.month, b.day))
+
+
+def half_birthday(birth: str, years: int) -> date:
+    """The day someone is ``years`` and a half: six calendar months after that
+    birthday, the month's last day when it is shorter (born August 31: 70 1/2
+    on the last day of February)."""
+    b = date.fromisoformat(birth)
+    month = b.month + 6
+    y, m = b.year + years + (month > 12), (month - 1) % 12 + 1
+    last = ((date(y + (m == 12), m % 12 + 1, 1)) - timedelta(days=1)).day
+    return date(y, m, min(b.day, last))
+
+
+def exclude_qcd(value: dict[str, Any], year: int, notes: list[str]) -> dict[str, float]:
+    """Take each person's qualified charitable distributions out of their
+    taxable IRA distributions (Pub. 590-B, Qualified Charitable Distributions):
+    only when they are 70 1/2 by year end, no more than the year's limit each,
+    the taxable IRA amount, or this year's IRA deduction once 70 1/2 (the QCD
+    Adjustment Worksheet). Returns who -> the amount left out."""
+    out: dict[str, float] = {}
+    for who, pre in (("you", ""), ("spouse", "spouse_")):
+        gift = float(value.get(pre + "qcd") or 0)
+        birth = value.get(pre + "birth_date")
+        if gift <= 0 or not birth:
+            continue
+        name = "you" if who == "you" else "your spouse"
+        taxable = float(value.get(pre + "ira_distributions") or 0)
+        limit = QCD_LIMIT.get(year)
+        half = half_birthday(str(birth), 70)
+        if half > date(year, 12, 31):
+            notes.append(
+                f"{pre}qcd: {name} reach 70 1/2 on {half.isoformat()}, after {year}; "
+                "a QCD needs 70 1/2 on the day the IRA pays the charity, so none is "
+                "left out of income (it may be an itemized gift instead)"
+            )
+            continue
+        if limit is None:
+            notes.append(
+                f"{pre}qcd: the {year} QCD limit is not in this planner "
+                f"(Pub. 590-B for {year}); nothing is left out of income"
+            )
+            continue
+        offset = float(value.get(pre + "traditional_ira_contribution") or 0)
+        cut = max(min(gift, limit, taxable) - offset, 0.0)
+        if cut:
+            value[pre + "ira_distributions"] = taxable - cut
+            out[who] = cut
+        if gift > limit:
+            notes.append(
+                f"{pre}qcd: {gift:,.0f} is over the {year} limit of {limit:,} for "
+                f"{name}; the rest stays in income"
+            )
+        if gift > taxable:
+            notes.append(
+                f"{pre}qcd: {gift:,.0f} is more than the {taxable:,.0f} taxable IRA "
+                "distributions; a QCD comes only out of the taxable part"
+            )
+        if offset:
+            notes.append(
+                f"{pre}qcd: the {offset:,.0f} IRA contribution deducted at 70 1/2 or "
+                "older reduces the QCD (Pub. 590-B, QCD Adjustment Worksheet); "
+                "deductions from earlier years at 70 1/2 or older reduce it too and "
+                "are not seen here"
+            )
+        if half.year == year:
+            notes.append(
+                f"{pre}qcd: {name} reach 70 1/2 on {half.isoformat()}; only gifts the "
+                "IRA paid on or after that day count"
+            )
+    if out:
+        notes.append(
+            "a QCD is not also an itemized gift: keep it out of planned_giving; "
+            "Form 1040 line 4c box 2 is checked (QCD)"
+        )
+    return out
 
 
 def age_at_year_end(birth: str, year: int) -> int:
@@ -324,6 +406,7 @@ def build(
         raise MissingInputError(
             f"the plan needs {', '.join(missing)} (planner needed --year {year})"
         )
+    out.qcd = exclude_qcd(value, year, out.notes)
     fields: dict[str, Any] = {
         "age": age_at_year_end(str(value["birth_date"]), year),
         "filing_status": FILING[str(value["filing_status"])],
