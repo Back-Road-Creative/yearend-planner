@@ -1,7 +1,8 @@
 # Form W-2, IRS box labels: wages, the withholding credited to the installments,
 # the Social Security wages and tips (boxes 3 and 7) Schedule SE line 8a takes,
-# the dependent care benefits (box 10) Form 2441 line 12 takes, and the box 12
-# elective deferrals Form 8880 line 2 takes.
+# the dependent care benefits (box 10) Form 2441 line 12 takes, the box 12
+# elective deferrals Form 8880 line 2 takes, and the Social Security and Medicare
+# tax withheld (boxes 4 and 6) Schedule 8812 line 21 takes.
 form: W-2
 years: [2024, 2025, 2026]
 match: ["W-2", "Wage and Tax Statement"]
@@ -11,6 +12,8 @@ boxes:
   "1": {label: "Wages, tips, other compensation", pattern: "\\b1 Wages, tips, other comp(?:ensation|\\.)\\s+AMOUNT", required: true}
   "2": {label: "Federal income tax withheld", pattern: "\\b2 Federal income tax withheld\\s+AMOUNT", required: true}
   "3": {label: "Social security wages", pattern: "\\b3 Social security wages\\s+AMOUNT"}
+  "4": {label: "Social security tax withheld", pattern: "\\b4 Social security tax withheld\\s+AMOUNT"}
+  "6": {label: "Medicare tax withheld", pattern: "\\b6 Medicare tax withheld\\s+AMOUNT"}
   "7": {label: "Social security tips", pattern: "\\b7 Social security tips\\s+AMOUNT"}
   "10": {label: "Dependent care benefits", pattern: "\\b10 Dependent care benefits\\s+AMOUNT"}
   "12D": {label: "Box 12 code D: 401(k) elective deferrals", pattern: '\b12[a-d]?\s+(?:Code\s+)?D\s+AMOUNT'}

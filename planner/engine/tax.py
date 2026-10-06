@@ -402,6 +402,20 @@ def eic_table(year: int, children: int, joint: bool, amount: float) -> int:
     return max(int(credit), 0)
 
 
+def actc_phase_in(year: int) -> tuple[float, float, int]:
+    """Schedule 8812 lines 19-20 and the gate to Part II-B (2025: earned income
+    over $2,500, at 15%; three or more qualifying children may use the Social
+    Security tax less the EIC instead; 26 U.S.C. 24(d)(1)(B)), from the
+    engine's parameters."""
+    p = _system().parameters.gov.irs.credits.ctc.refundable.phase_in
+    at = f"{year}-01-01"
+    return (
+        float(p.threshold(at)),
+        float(p.rate(at)),
+        int(p.min_children_for_ss_taxes_minus_eitc(at)),
+    )
+
+
 PREFERENTIAL = ("qualified_dividend_income", "long_term_capital_gains")
 PREMIUMS = "self_employed_health_insurance_premiums"
 
