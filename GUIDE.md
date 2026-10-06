@@ -658,9 +658,16 @@ refundable; $500 another dependent). Lines 4 to 12 count them and cut $50 for
 each $1,000 or part of one over $200,000 ($400,000 joint). Line 13, the tax
 limit (Credit Limit Worksheet A), is 1040 line 18 less Schedule 3 line 8, line
 14 the smaller of 12 and 13, and it is 1040 line 19. Part II-A draws 16a, 16b
-and 17; lines 18a to 26 (earned income, and Social Security tax with three or
-more children) are not drafted, so line 27, 1040 line 28, is the engine's, and
-a `CHECK:` flags it over line 17. Line 12 is checked against the engine's
+and 17, then line 18a by the Earned Income Chart (the EIC's earned income when
+the EIC is taken, else the Earned Income Worksheet: 1040 line 1z plus Schedule C
+line 31 less Schedule 1 line 15), and lines 19 and 20 (15% over $2,500 for 2025).
+With three or more children and line 20 under line 17, Part II-B draws lines 21
+to 26: W-2 boxes 4 and 6 (both spouses'; the engine's payroll tax on the wages
+when no box is on file), Schedule 1 line 15, less 1040 line 27a. Line 27 (unit
+3c-5), 1040 line 28, is checked against the engine. Forms 4137 and 8919, excess
+Social Security tax withheld (Schedule 3 line 11), the Additional Medicare Tax
+and RRTA Tax Worksheet, combat pay and the optional methods are not drafted.
+Line 12 is checked against the engine's
 credit, line 4 against its child count. The notes list each dependent's age and
 credit for the 1040 dependents table; the names, SSNs and relationships are
 typed from the cards (each SSN is assumed valid).
