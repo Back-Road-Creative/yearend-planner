@@ -317,6 +317,10 @@ def test_1040_filing_status_state_and_zip(tmp_path: Path) -> None:
             "head_of_household",
         ),
         ("[x] Head of household (HOH)", "head_of_household"),
+        (
+            "☐ Head of household (HOH) ☒ Qualifying surviving spouse (QSS)",
+            "qualifying_surviving_spouse",
+        ),
         ("☐ Single ☐ Married filing jointly", None),
     ],
 )

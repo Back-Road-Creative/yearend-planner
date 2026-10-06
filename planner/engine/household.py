@@ -13,7 +13,13 @@ from typing import Any
 
 import yaml
 
-FILING_STATUSES = ("SINGLE", "JOINT", "SEPARATE", "HEAD_OF_HOUSEHOLD")
+FILING_STATUSES = (
+    "SINGLE",
+    "JOINT",
+    "SEPARATE",
+    "HEAD_OF_HOUSEHOLD",
+    "SURVIVING_SPOUSE",  # joint rates, no spouse in the tax unit (unit 3b-1)
+)
 REQUIRED = ("age", "filing_status", "state")
 
 

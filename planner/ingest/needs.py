@@ -41,7 +41,13 @@ MANUAL_VALUES = "values"
 MANUAL_DONT_HAVE = "dont_have"
 ACCOUNT = "account:"  # dynamic keys: account:<number>, account:<number>:death
 SCHEDULE_B_OVER = 1500.0  # interest or ordinary dividends over this need Schedule B
-FILING = ("single", "married_joint", "married_separate", "head_of_household")
+FILING = (
+    "single",
+    "married_joint",
+    "married_separate",
+    "head_of_household",
+    "qualifying_surviving_spouse",  # unit 3b-1
+)
 
 
 # The Medicaid work requirement's first year (config/thresholds.yaml
@@ -306,8 +312,20 @@ NEEDS: tuple[Need, ...] = (
         "dependents",
         PROFILE,
         asked=lambda s: (
-            s.get("filing_status") in ("married_joint", "head_of_household")
+            s.get("filing_status")
+            in ("married_joint", "head_of_household", "qualifying_surviving_spouse")
         ),
+        unlocks=("MAGI headroom", "Roth conversion", "Levers", "Draft 1040"),
+    ),
+    Need(
+        "spouse_death_year",
+        "Year your spouse died",
+        "a qualifying surviving spouse files at joint rates only for the two years "
+        "after the year of death, while a dependent child lives at home",
+        _NONE,
+        "int",
+        PROFILE,
+        asked=lambda s: s.get("filing_status") == "qualifying_surviving_spouse",
         unlocks=("MAGI headroom", "Roth conversion", "Levers", "Draft 1040"),
     ),
     Need(
@@ -1136,6 +1154,7 @@ INT_RANGE = {
     "ss_claim_age": (62, 70),
     "hsa_months": (0, 12),
     "hsa_family_share": (0, 100),
+    "spouse_death_year": (1900, 2100),
     "tipped_occupation_code": (0, 999),
 }
 MONEY_MAX = 100_000_000
@@ -1231,7 +1250,9 @@ def parse_value(need: Need, text: str) -> Any:
         v = _number(need, s, "a whole number")
         if v != int(v):
             raise ValueError(f"{need.key}: a whole number, got {s}")
-        lo, hi = INT_RANGE.get(need.key.removeprefix(SPOUSE), (0, MONEY_MAX))
+        lo, hi = INT_RANGE.get(
+            need.key, INT_RANGE.get(need.key.removeprefix(SPOUSE), (0, MONEY_MAX))
+        )
         if not lo <= v <= hi:
             raise ValueError(f"{need.key}: between {lo} and {hi}, got {s}")
         return int(v)
