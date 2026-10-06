@@ -35,7 +35,7 @@ from planner.ingest.needs import _needed, undetermined
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import forecast
-from planner.taxprep import annuity, capgains, f8582, hsa, k1, sche, schf
+from planner.taxprep import annuity, capgains, f8582, f8606, hsa, k1, sche, schf
 
 FILING = {
     "single": "SINGLE",
@@ -138,6 +138,8 @@ TAX_KEYS = (
     "k1s",
     "farms",
     "annuities",
+    "ira_basis",
+    "spouse_ira_basis",
     "collectibles",
     "unrecaptured_1250",
     "rental_active",
@@ -232,6 +234,7 @@ class Inputs:
     spouse_kids: int = 0  # dependents on the spouse's side before the marriage
     qcd: dict[str, float] = field(default_factory=dict)  # who -> excluded (3f-1)
     annuities: list[annuity.Worksheet] = field(default_factory=list)  # 3f-2
+    f8606: list[f8606.Form8606] = field(default_factory=list)  # 3f-3
     notes: list[str] = field(default_factory=list)
     overrides: Overrides = field(default_factory=Overrides)
     forecast: list[forecast.Stream] = field(default_factory=list)
@@ -418,6 +421,65 @@ def tax_age(birth: str, year: int) -> int:
     ``age_at_year_end``."""
     b = date.fromisoformat(birth)
     return age_at_year_end(birth, year) + ((b.month, b.day) == (1, 1))
+
+
+BASIS_LINES = ("ira_distributions", "roth_conversion", "traditional_ira_contribution")
+
+
+def basis(
+    value: dict[str, Any], fields: dict[str, Any], notes: list[str]
+) -> list[f8606.Form8606]:
+    """Form 8606 for each person with basis in traditional IRAs: the tax-free
+    share comes off their taxable IRA distributions (line 12) and Roth
+    conversion (line 11), and this year's nondeductible contributions (line 1)
+    off their IRA deduction. Line 7 is the taxable IRA distributions after any
+    QCD; line 8 the conversion, planned and recorded ones included."""
+    out: list[f8606.Form8606] = []
+    for who, pre in (("you", ""), ("spouse", "spouse_")):
+        spouse = fields.get("spouse")
+        if who == "spouse" and spouse is None:
+            continue
+        have = {
+            k: (fields.get(k, 0) if who == "you" else getattr(spouse, k))
+            for k in BASIS_LINES
+        }
+        e = value.get(pre + "ira_basis")
+        name = "you" if who == "you" else "your spouse"
+        if e is None:
+            if have["ira_distributions"] or have["roth_conversion"]:
+                notes.append(
+                    f"{pre}ira_basis not given: every IRA distribution and conversion "
+                    f"of {name} is taxed in full, as if there were no basis (type "
+                    "none when there is none)"
+                )
+            continue
+        if not e:
+            continue  # none: every contribution was deducted
+        try:
+            f = f8606.figure(who, e, have["ira_distributions"], have["roth_conversion"])
+        except ValueError as err:
+            notes.append(f"{pre}{err}; taxed in full meanwhile")
+            continue
+        dist, conv = f.nontaxable
+        new = {
+            "ira_distributions": int(round(have["ira_distributions"] - dist)),
+            "roth_conversion": int(round(have["roth_conversion"] - conv)),
+            "nondeductible_ira_contribution": int(round(f.lines["1"])),
+        }
+        if f.lines["1"] > have["traditional_ira_contribution"]:
+            notes.append(
+                f"{pre}ira_basis: nondeductible {f.lines['1']:,.0f} is more than "
+                f"the {have['traditional_ira_contribution']:,} traditional IRA "
+                f"contribution of {name}; type the contribution in "
+                f"{pre}traditional_ira_contribution (all of it, deducted or not)"
+            )
+            new["nondeductible_ira_contribution"] = have["traditional_ira_contribution"]
+        if who == "you":
+            fields.update(new)
+        elif spouse is not None:
+            fields["spouse"] = replace(spouse, **new)
+        out.append(f)
+    return out
 
 
 def _recorded_conversions(conn: sqlite3.Connection, year: int) -> float:
@@ -669,6 +731,7 @@ def build(
         fields["roth_conversion"] = fields.get("roth_conversion", 0) + int(
             round(ov.planned_conversion)
         )
+    out.f8606 = basis(value, fields, out.notes)
     if ov.planned_hsa is not None:
         fields["hsa_contribution"] = int(round(ov.planned_hsa))
     if value.get("rentals") or value.get("k1s") or value.get("farms"):
