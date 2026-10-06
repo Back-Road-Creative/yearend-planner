@@ -58,6 +58,7 @@ def test_registry_keys_are_unique_and_every_box_names_a_template(
     forms["SCH-C"] = {}  # stored by planner categorize, not read from a PDF
     forms["SCH-D"] = {}  # stored by planner gains from the lots
     forms["8889"] = dict.fromkeys(hsa.LABELS)  # stored by planner hsa
+    forms[hsa.SPOUSE_FORM] = dict.fromkeys(hsa.LABELS)  # a joint spouse's (3a-7)
     forms[rollover.FILED] = dict.fromkeys(rollover.LABELS)  # planner rollover
     for n in NEEDS:
         for form, box in n.boxes:

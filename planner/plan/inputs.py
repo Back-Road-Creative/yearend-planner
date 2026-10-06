@@ -239,7 +239,8 @@ def build(
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
         capgains.store(conn, lay, year)  # typed carryovers reach Schedule D
-        hsa.store(conn, lay, year)  # and typed HSA answers reach Form 8889
+        for who in hsa.WHO:  # and typed HSA answers reach each Form 8889
+            hsa.store(conn, lay, year, who=who)
         report = _needed(conn, lay, year)
         recorded = _recorded_conversions(conn, year)
         through = forecast.ytd_through(conn, year)

@@ -319,6 +319,7 @@ def build(lay: Layout, year: int) -> Draft:
         typed = need_values(conn, lay, year, (*d400.KEYS, "foreign_accounts"))
         cg = capgains.build(conn, lay, year)
         h = hsa.build(conn, lay, year)
+        hs = hsa.build(conn, lay, year, "spouse")  # a joint spouse's own 8889
         sc = schedule_c.build(conn, lay, year)
     finally:
         conn.close()
@@ -333,14 +334,19 @@ def build(lay: Layout, year: int) -> Draft:
         hh = dataclasses.replace(
             hh, spouse=dataclasses.replace(hh.spouse, age=inp.spouse_tax_age)
         )
-    if h.lines:
+
+    def hsa_sum(line: str) -> float:  # both spouses' Forms 8889
+        return h.lines.get(line, 0.0) + hs.lines.get(line, 0.0)
+
+    hsa_src = " + the spouse's" if hs.lines else ""
+    if h.lines or hs.lines:
         other = dict(hh.other)
-        if h.lines.get("16"):
+        if hsa_sum("16"):
             other["miscellaneous_income"] = other.get("miscellaneous_income", 0) + int(
-                round(h.lines["16"])
+                round(hsa_sum("16"))
             )
         hh = dataclasses.replace(
-            hh, hsa_contribution=int(round(h.lines.get("13", 0.0))), other=other
+            hh, hsa_contribution=int(round(hsa_sum("13"))), other=other
         )
     exempt = float(hh.tax_exempt_interest)  # the Needed panel: boxes, then typed
     us = _sum(facts, d400.US_INTEREST)
@@ -468,9 +474,15 @@ def build(lay: Layout, year: int) -> Draft:
         f"{profit_src} + the spouse's {sp_src}" if sp_profit else profit_src,
     )
     s1_9 = 0.0
-    if h.lines.get("16"):
-        add("Sch 1", "8f", "Income from Form 8889", h.lines["16"], "Form 8889 line 16")
-        s1_9 = add("Sch 1", "9", "Total other income", h.lines["16"], "line 8f")
+    if hsa_sum("16"):
+        add(
+            "Sch 1",
+            "8f",
+            "Income from Form 8889",
+            hsa_sum("16"),
+            f"Form 8889 line 16{hsa_src}",
+        )
+        s1_9 = add("Sch 1", "9", "Total other income", hsa_sum("16"), "line 8f")
     s1_10 = add(
         "Sch 1", "10", "Additional income", s1_3 + s1_9, "3 + 9" if s1_9 else "line 3"
     )
@@ -479,7 +491,9 @@ def build(lay: Layout, year: int) -> Draft:
         "13",
         "HSA deduction",
         v["health_savings_account_ald"],
-        "Form 8889 line 13" if h.lines else "engine health_savings_account_ald",
+        f"Form 8889 line 13{hsa_src}"
+        if h.lines or hs.lines
+        else "engine health_savings_account_ald",
     )
     for ln, label, var in (
         ("15", "Deductible part of SE tax", "self_employment_tax_ald"),
@@ -548,15 +562,15 @@ def build(lay: Layout, year: int) -> Draft:
         "engine net_investment_income_tax",
     )
     s2_18 = 0.0
-    if h.lines.get("17b"):
+    if hsa_sum("17b"):
         add(
             "Sch 2",
             "17c",
             "Additional tax on HSA distributions",
-            h.lines["17b"],
-            "Form 8889 line 17b",
+            hsa_sum("17b"),
+            f"Form 8889 line 17b{hsa_src}",
         )
-        s2_18 = add("Sch 2", "18", "Total additional taxes", h.lines["17b"], "17c")
+        s2_18 = add("Sch 2", "18", "Total additional taxes", hsa_sum("17b"), "17c")
     s2_21 = add(
         "Sch 2",
         "21",
@@ -773,7 +787,10 @@ def build(lay: Layout, year: int) -> Draft:
 
     for line, value in h.lines.items():
         add("8889", line, hsa.LABELS[line], value, h.sources[line])
+    for line, value in hs.lines.items():
+        add(hsa.SPOUSE_FORM, line, hsa.LABELS[line], value, hs.sources[line])
     d.notes.extend(h.notes)
+    d.notes.extend(f"the spouse's Form 8889: {n}" for n in hs.notes)
     if cg.lots or cg.lines:
         limit = 1500.0 if hh.filing_status == "SEPARATE" else 3000.0
         _schedule_d(sheet, d, cg, l7, l11 - l14, limit)
@@ -1428,6 +1445,7 @@ ORDER = (
     SCH_SE_SPOUSE,
     "8949",
     "8889",
+    hsa.SPOUSE_FORM,
     "8962",
     d400.FORM,
     d400.SCHED,
@@ -1436,6 +1454,7 @@ HEADINGS = {
     "1040": "Form 1040",
     "8949": "Form 8949",
     "8889": "Form 8889 (health savings accounts)",
+    hsa.SPOUSE_FORM: "Form 8889 (health savings accounts), the spouse's",
     "8962": "Form 8962",
     d400.FORM: "NC Form D-400",
     d400.SCHED: "NC D-400 Schedule S (additions and deductions)",
@@ -1451,6 +1470,7 @@ FORM_CAPABILITY = {
     "Sch SE": "self_employment_tax",
     SCH_SE_SPOUSE: "self_employment_tax",
     "8889": "form_8889",
+    hsa.SPOUSE_FORM: "form_8889",
     "8962": "aca_premium_tax_credit",
     d400.FORM: "nc_d400_draft",
     d400.SCHED: "nc_d400_draft",
