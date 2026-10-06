@@ -1045,8 +1045,7 @@ def build(lay: Layout, year: int) -> Draft:
         _schedule_d(sheet, d, cg, l7, l11 - l14, limit)
     _schedule_b(sheet, d, facts, l2b, l3b, typed["foreign_accounts"])
     if ret is not None:
-        married = hh.filing_status == "JOINT"
-        ret.lay(add, d.notes, v, facts, state_paid, year, l11, typed, married)
+        ret.lay(add, d.notes, v, facts, state_paid, year, l11, typed, hh.filing_status)
 
     # The lines against the engine's own totals: a gap is a mapping the draft
     # missed, and is said, never hidden.

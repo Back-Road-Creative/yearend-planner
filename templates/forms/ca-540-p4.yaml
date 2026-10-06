@@ -1,0 +1,9 @@
+# California Form 540, Side 4 (overpayment available, tax due).
+form: CA-540
+years: [2024, 2025, 2026]
+match: ["Form 540 20", "Overpaid tax available this year"]
+year_pattern: 'Form 540\s+(20\d\d)'
+issuer: CA
+boxes:
+  "99": {label: "Overpaid tax available this year", pattern: 'Subtract line 98 from line 97[\s.•]*99\s+AMOUNT'}
+  "100": {label: "Tax due", pattern: 'subtract line 95 from line 64[\s.•]*100\s+AMOUNT'}
