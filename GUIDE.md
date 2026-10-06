@@ -136,7 +136,8 @@ issuer `self`), Schedules 1, 2, 3, C, D and SE, NC Form D-400 (issuer `NC`), CA 
 `CA`; Sides 2-5 merge into one form), NY Form IT-201 (issuer `NY`; pages 2-4 merge), PA Form PA-40 (issuer `PA`; Sides 1-2
 merge as form `PA-PA40`), IL Form IL-1040 (issuer `IL`; front and back merge as form
 `IL-IL1040`, the back's year read from its revision date R-12/25), OH Form IT 1040
-(issuer `OH`; pages 1 and 2 merge as form `OH-IT1040`), the Social
+(issuer `OH`; pages 1 and 2 merge as form `OH-IT1040`), GA Form 500 (issuer `GA`;
+pages 2-4 merge as form `GA-500`), the Social
 Security Statement (monthly estimates at 62, 67 and 70, tax year = statement year),
 1099-NEC, 1099-K, 1098, 5498, 5498-SA and 1099-SA. A template may name a literal
 `issuer` for the taxpayer's own documents instead of a payer regex, and the line
@@ -1069,6 +1070,47 @@ Credits lines behind it, from the same engine run as the federal return.
   Schedule of Credits lines 3, 5, 7, 8 and 14-35, IT 1040 lines 11 (the IT/SD
   2210 penalty), 21, 24 and 25; school district income tax is a separate return
   (SD 100).
+
+## The GA return: Form 500 (unit 3d-11)
+
+For a Georgia full-year resident (`state: GA`), `planner draft` adds Form 500
+with the Schedule 1 lines behind it, from the same engine run as the federal
+return.
+
+- **Lines.** Line numbers, the standard deduction, the dependent exemption, the
+  low income credit table and the credits follow the 2025 Form 500, its Schedule 1
+  and the IT-511 booklet. Every line is in whole dollars, rounded half up ("Round
+  to the nearest dollar").
+- **Schedule 1 (line 9).** Additions: lump sum distributions (Form 4972) and
+  `ga_additions` you type (other states' bond interest, the depreciation
+  add-back). Subtractions: the retirement and military retirement exclusions
+  (up to $35,000 at 62-64, $65,000 at 65 or older, each spouse on their own),
+  taxable social security, Path2College 529 contributions and US obligations
+  interest, plus `ga_subtractions` you type. Tax-exempt interest on a 1099 asks
+  for the non-Georgia part until `ga_additions` is typed.
+- **Deduction (lines 11-12c).** The Georgia standard deduction ($12,000, $24,000
+  married filing jointly), or, when the federal return itemizes, Schedule A less
+  `ga_itemized_adjustment` (income taxes other than Georgia's, interest spent to
+  earn Georgia-exempt income); until typed, the draft says so.
+- **Tax (lines 14-16).** $4,000 a dependent (line 7c), then 5.19% of line 15c.
+- **Credits (lines 17-22).** The low income credit (federal AGI under $20,000:
+  $26 down to $5 an exemption, one more for each spouse 65 or older), the
+  eligible itemizer credit ($300 a taxpayer who itemizes) and IND-CR 202 on line
+  20 (50% of the federal child and dependent care credit claimed), held to line 16.
+- **Payments.** Line 24 is GA withholding from W-2 box 17 and 1099-R box 14
+  (`state_withheld`); line 26 the GA estimated payments from the bank export or
+  typed. The draft ends on line 29/45 (owed) or 30/46 (refund).
+- **Safe harbor.** Next year's GA safe harbor (Form 500 UET) is the lesser of
+  100% of line 23 less line 27 and 70% of next year's tax, from the draft and from
+  a filed Form 500 alike; Georgia has no 110% rule for higher incomes.
+- **Check.** Line 10 is compared with the engine's Georgia AGI plus the typed
+  items, and line 23 with its tax when nothing is typed. A gap past the rounding
+  is printed as `CHECK:`.
+- **Not drafted, and named.** Part-year and nonresident returns (Schedule 3),
+  lines 15b (the NOL), 18 (other states' tax credit), 21 and 27 (Schedules 2 and
+  2B), 25 (G2 withholding), 31-44 (credit forward, donations, the 500 UET penalty,
+  interest) and IND-CR credits other than 202. A filed Form 500 is read from pages
+  2-4; page 5 prints no readable year.
 
 ## The tax pack: one folder for the preparer (Phase 4l)
 

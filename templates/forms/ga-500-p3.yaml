@@ -1,0 +1,19 @@
+# Georgia Form 500, page 3 (the exemption, the tax, the credits). Merges with
+# pages 2 (ga-500.yaml) and 4 as form GA-500. The printed form splits some
+# words ("M ultiply", "B alance(S ubtract"), so each pattern keys on a run
+# printed whole.
+form: GA-500
+years: [2025]
+match: ["Individual Income Tax Return", "Income before GA NOL"]
+year_pattern: 'Georgia Department of Revenue\s*(?:YOUR SOCIAL SECURITY NUMBER)?\s*(20\d\d)'
+issuer: GA
+boxes:
+  "14": {label: "Dependent exemption", pattern: 'ultiply by \$4,000[\s.]*14 ?\.\s+AMOUNT'}
+  "15a": {label: "Income before GA NOL", pattern: 'Schedule 3, Line 14\)[\s.]*15a\.\s+AMOUNT'}
+  "15c": {label: "Georgia taxable income", pattern: 'Subtract Line 15b from Line 15a\)[\s.]*15c\.\s+AMOUNT'}
+  "16": {label: "Tax", pattern: 'Round to the nearest dollar\)[\s.]*16\.\s+AMOUNT', required: true}
+  "17c": {label: "Low income credit", pattern: 'Low Income Credit.*?17c\.\s+AMOUNT'}
+  "19": {label: "Georgia eligible itemizer tax credit", pattern: 'Itemizer Tax Credit \(See IT-511 Tax Booklet\)[\s.]*19\.\s+AMOUNT'}
+  "20": {label: "Credits used from IND-CR Summary Worksheet", pattern: 'IND-CR Summary Worksheet[\s.]*20\.\s+AMOUNT'}
+  "22": {label: "Total credits used", pattern: 'cannot ex ?ceed Line 16[\s.]*22\.\s+AMOUNT'}
+  "23": {label: "Balance", pattern: 'less than zero, enter ze ?ro[\s.]*23\.\s+AMOUNT', required: true}

@@ -355,6 +355,11 @@ oh_it1040_draft:
   evidence: implemented
   tests: ["tests/test_oh1040.py", "tests/test_state_returns.py"]
   note: "planner draft; OH Form IT 1040 lines 1-10, 12-17, 19, 20, 22, 23 and 26 with the Schedule of Adjustments, Schedule of Business Income and Schedule of Credits lines behind them, for a full-year resident (unit 3d-10, 2025 IT 1040 and instructions): the engine's adjustments plus typed ones, the business income deduction and 3% rate from Schedule C and F, exemptions by modified AGI, the R.C. 5747.02 brackets, the retirement, senior, child care, exemption, joint filing and earned income credits, typed use tax, every line half up to the dollar; filed IT 1040 pages read by templates oh-it1040*.yaml; next year's safe harbor 10 less 16 (IT/SD 2210); part-year and nonresident returns, Schedule of Credits lines 3, 5, 7, 8, 14-35, 38, 39 and IT 1040 lines 11, 21, 24, 25 named, not drafted"
+ga_500_draft:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_ga500.py", "tests/test_state_returns.py"]
+  note: "planner draft; GA Form 500 lines 8-11 or 12a-12c, 13, 14, 15a, 15c, 16, 17a-17c, 19, 20, 22-24, 26, 28-30, 45 and 46 with the Schedule 1 lines behind them, for a full-year resident (unit 3d-11, 2025 Form 500 and IT-511 booklet): the engine's Schedule 1 items plus typed ones, the Georgia standard deduction or federal itemized less line 12b, $4,000 a dependent, 5.19%, the low income, itemizer and IND-CR 202 child care credits, every line half up to the dollar; filed Form 500 pages 2-4 read by templates ga-500*.yaml; next year's safe harbor 23 less 27 (Form 500 UET: 100% of last year or 70% of this, no 110% rule); part-year and nonresident returns, lines 15b, 18, 21, 25, 27, 31-44 and IND-CR credits other than 202 named, not drafted"
 taxpack:
   status: verified
   evidence: implemented
