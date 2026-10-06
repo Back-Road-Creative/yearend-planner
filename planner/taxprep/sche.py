@@ -184,7 +184,8 @@ def columns(entries: list[dict[str, Any]]) -> list[Column]:
                 "18": float(p.get("depletion", 0)),
                 "19": float(p.get("expenses", 0)),
             }
-            c.source = {"4": "royalties", "18": "depletion", "19": "expenses"}
+            c.source = {"4": p.get("source", "royalties")}
+            c.source |= {"18": "depletion", "19": "expenses"}
         if not c.excluded:
             income = c.lines.get("3", 0.0) + c.lines.get("4", 0.0)
             c.lines["20"] = sum(

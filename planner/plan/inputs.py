@@ -197,6 +197,8 @@ class Inputs:
     coverage: list[coverage.Gap] = field(default_factory=list)  # every gap (2a)
     schedule_e: sche.Result | None = None  # Schedule E Part I (3e-2b)
     schedule_k1: k1.Result | None = None  # Schedule E Parts II, III (3e-3a)
+    # (word, payer, amount, source) for each K-1 portfolio box (3e-3b)
+    k1_portfolio: list[tuple[str, str, float, str]] = field(default_factory=list)
 
     def state(self, key: str) -> str:
         """KNOWN, ESTIMATE, UNKNOWN or NOT_APPLICABLE (an item never asked)."""
@@ -414,6 +416,8 @@ def build(
         fields["non_qualified_dividends"] = max(int(round(float(ordinary))) - q, 0)
     elif qualified is not None:
         fields["qualified_dividends"] = int(round(float(qualified)))
+    if value.get("k1s"):
+        _k1_portfolio(out, fields, value["k1s"])
     if recorded > fields.get("roth_conversion", 0):
         fields["roth_conversion"] = int(round(recorded))
         out.origins["roth_conversion"] = "conversions recorded this year"
@@ -468,7 +472,9 @@ def build(
 def _schedule_e(out: Inputs, fields: dict[str, Any], value: dict[str, Any]) -> None:
     """Schedule E: Part I from the rentals (unit 3e-2b), Parts II and III from
     the K-1s (unit 3e-3a), one Form 8582 allowance across both."""
-    cols = sche.columns(value.get("rentals") or [])
+    cols = sche.columns(
+        (value.get("rentals") or []) + k1.royalties(value.get("k1s") or [])
+    )
     rows = k1.rows(value.get("k1s") or [])
     k1_income, k1_losses = k1.passive_totals(rows)
     magi = (
@@ -512,6 +518,38 @@ def _schedule_e(out: Inputs, fields: dict[str, Any], value: dict[str, Any]) -> N
             "passive losses, taxable Social Security, the IRA deduction "
             "or the deductible part of SE tax, from the household's own "
             "income lines"
+        )
+
+
+def _k1_portfolio(out: Inputs, fields: dict[str, Any], entries: list[Any]) -> None:
+    """The K-1 interest and dividends on top of the 1099 figures (unit 3e-3b).
+    The K-1 gains reach Schedule D lines 5 and 12 (planner.taxprep.capgains),
+    the royalties Schedule E line 4."""
+    out.k1_portfolio = k1.portfolio(entries)
+    got = dict.fromkeys(k1.PORTFOLIO, 0.0)
+    for word, _, amount, _ in out.k1_portfolio:
+        got[word] += amount
+    if got["interest"]:
+        fields["interest"] = fields.get("interest", 0) + int(round(got["interest"]))
+    if got["dividends"]:
+        q = int(round(got["qualified"]))
+        ordinary = int(round(got["dividends"])) - q
+        fields["qualified_dividends"] = fields.get("qualified_dividends", 0) + q
+        fields["non_qualified_dividends"] = (
+            fields.get("non_qualified_dividends", 0) + ordinary
+        )
+    if any(got[w] for w in ("interest", "dividends")):
+        out.notes.append(
+            "the K-1 interest and dividends are added to the interest and "
+            "ordinary_dividends answers, which take the 1099s only"
+        )
+    if any(got[w] for w in ("stgain", "ltgain")) and any(
+        k in out.origins and "typed" in out.origins[k]
+        for k in ("short_term_gains", "long_term_gains")
+    ):
+        out.notes.append(
+            "CHECK: a typed short_term_gains or long_term_gains replaces Schedule "
+            "D lines 7 and 15, which carry the K-1 gains (lines 5 and 12)"
         )
 
 
