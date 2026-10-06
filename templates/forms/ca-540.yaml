@@ -1,7 +1,8 @@
 # California Form 540, Side 2 (income, deductions, tax). Sides 3-5 are
 # ca-540-p3/p4/p5.yaml; every side merges as form CA-540. Labels follow the
-# 2024 and 2025 Form 540 (FTB); line 64 (Side 3, required there) is the one the
-# planner relies on: next year's safe harbor (540-ES worksheet line 19a).
+# 2024 and 2025 Form 540 (FTB); line 64 (Side 3, required there) is the one
+# planner close relies on; next year's safe harbor reads lines 48, 61 and 62
+# (540-ES worksheet line 19b).
 form: CA-540
 years: [2024, 2025, 2026]
 match: ["Form 540 20", "This is your taxable income"]
