@@ -1578,7 +1578,7 @@ def esttax(
     shortfall, and the next payment."""
     from datetime import date
 
-    from planner.plan.esttax import estimate
+    from planner.plan.esttax import estimate, penalty_label
 
     et = estimate(
         layout(),
@@ -1604,7 +1604,7 @@ def esttax(
         if ag.next_due:
             typer.echo(f"  next: {ag.next_amount:,.2f} by {ag.next_due}")
         if ag.penalty is not None:
-            typer.echo(f"  Form 2210 penalty {ag.penalty:,.2f}")
+            typer.echo(f"  {penalty_label(ag.name)} {ag.penalty:,.2f}")
         for note in ag.notes:
             typer.echo(f"note: {note}")
     for note in et.notes:
