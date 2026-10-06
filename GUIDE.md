@@ -1216,6 +1216,49 @@ NJ-1040, from the same engine run as the federal return.
   37b-37c, 44 (Schedule NJ-COJ), 46-48, 52, 53c (Schedule NJ-HCC), 59-63 and
   69-78, and the Senior Freeze. A filed NJ-1040 is read from pages 1-3.
 
+## The VA return: Form 760 (unit 3d-14)
+
+For a Virginia full-year resident (`state: VA`), `planner draft` adds Form
+760, from the same engine run as the federal return.
+
+- **Lines.** Line numbers, the rate schedule, the filing threshold, the Spouse
+  Tax Adjustment, the Schedule ADJ codes and the rounding rule follow the 2025
+  Form 760, Schedule ADJ and the Form 760 instructions. Every line is in whole
+  dollars, 50 cents or more rounded up.
+- **VAGI (lines 1-9).** Federal AGI plus the engine's additions and
+  `va_additions` you type (line 2), less the age deduction (4), taxable Social
+  Security (5), the state refund (6) and the subtractions (7): US obligations
+  interest, unemployment, the military, National Guard and federal and state
+  employee subtractions and disability income from the engine, plus
+  `va_subtractions` you type.
+- **Taxable income (lines 10-15).** The Virginia itemized deductions when you
+  itemize federally, else the Virginia standard deduction; the exemptions
+  (each person, and each 65 or older or blind); line 13 is the Commonwealth
+  Savers (529) contribution (code 104), child and dependent care expenses
+  (code 101) and `va_deductions` you type.
+- **Tax (lines 16-18).** The Tax Rate Schedule (2% to $3,000, 3% to $5,000, 5%
+  to $17,000, 5.75% above). VAGI under the filing threshold ($11,950, $23,900
+  married filing jointly) is no tax. Line 17 is the engine's Spouse Tax
+  Adjustment (joint only).
+- **Payments and credits (lines 19a-28, 33-36).** VA withholding
+  (`state_withheld`, 19a; the filed form puts a spouse's on 19b), VA
+  estimated payments (20) and line 23: the engine's better of the refundable
+  credit (20% of the federal earned income credit) and the low-income credit
+  ($300 an exemption, not more than line 18). `va_use_tax` you type on line 33.
+  The draft ends on line 27/35 (owed) or 28/36 (refund).
+- **Safe harbor.** Next year's VA safe harbor (Form 760C) is 90% of next year's
+  tax or 100% of this year's line 18 less the credits on lines 23-25, from the
+  draft and from a filed Form 760 alike; no 760C at $150 or less. From 2026
+  installments are due when the tax over withholding and credits is more than
+  $1,000.
+- **Check.** Line 9 is compared with the engine's Virginia AGI (plus the 529
+  contribution it subtracts there) and the typed items, and line 18 with its
+  tax when nothing is typed. A gap past the rounding is printed as `CHECK:`.
+- **Not drafted, and named.** Part-year and nonresident returns (Form 760PY,
+  763), lines 21, 22, 24 (credit for tax paid to another state), 25 (Schedule
+  CR), 29-32, the Form 760C penalty and the Schedule A detail. A filed Form 760
+  is read from pages 1 and 2.
+
 ## The tax pack: one folder for the preparer (Phase 4l)
 
 `planner taxpack --year 2025` writes `out/tax-2025/`. Every file shows
