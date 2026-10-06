@@ -64,13 +64,14 @@ partial row that cites none, or one whose test does not exist). The poverty-line
 on both sides of each line: 138% (Medicaid) and 400% (premium tax credit), with the credit
 worked by hand from the Rev. Proc. 2025-25 table; they ship in `reference.yaml`, so
 `planner update` holds a release whose engine moves any of them. One known engine
-deviation: at 400.00% to 400.99% of the poverty line the engine pays no credit, but the
-statute ("does not exceed 400 percent", IRC 36B(c)(1)(A)) and Form 8962 line 5 (which
-truncates to a whole percent) still allow it, 3,365.04 for the single $800-a-month
-benchmark case at $62,600. That case is a strict expected-failure test, not a filed line
-in `reference.yaml`, and the premium tax credit row in `config/capabilities.yaml` stays
-`partial` until the engine is fixed. The planner stays clear of the line: it sizes
-conversions to strictly under the line (and under it by your margin on top), so no plan depends on the deviation.
+deviation, corrected by the planner: the engine rounds income over the poverty line down
+to a whole percent and ends the premium tax credit at 400.00%. The statute keeps the
+credit while income "does not exceed 400 percent" (IRC 36B(c)(1)(A)), and Form 8962's
+instructions (Worksheet 2) enter 401 only when income is more than 4 times the poverty
+line, in dollars. So the planner pays the credit at exactly 400.00% (3,365.04 for the
+single $800-a-month benchmark case at $62,600, a filed line in `reference.yaml`) and
+none a cent over it, in every figure, sweep and the draft Form 8962 (line 5 = 401). The
+conversion sizer may size onto the line, never past it (less your margin).
 
 ## Intake (Phase 2a)
 
@@ -154,8 +155,8 @@ replace it). `planner confirm --set 7=G` corrects a text box read from a scan.
 Until the 1099s arrive, `planner ingest` folds the imported rows into year-to-date
 facts under form `YTD` (issuer = the CSV source): short- and long-term proceeds, basis
 and gain from realized rows, dividends, interest and capital-gain distributions from
-income rows (or from Dividend/Interest transactions when no income export covers the
-year), deposits and withdrawals from bank rows. Every ingest recomputes them and
+income rows (or from an account's Dividend/Interest transactions when no income export
+covers that account for the year; an export never hides another account's), deposits and withdrawals from bank rows. Every ingest recomputes them and
 supersedes the last run; `planner derive --year 2025` reruns one year by hand.
 `planner facts --year 2025 --form YTD` shows them beside the forms, box for box
 (the realized boxes use the 1099-B names), so the estimate and the statement can be
@@ -191,7 +192,10 @@ assumptions, SS estimates) go to `data/profile/assumptions.yaml`, which is creat
 `config/assumptions.example.yaml` on first use; year items go to
 `data/manual/<year>.yaml`. `planner dont-have <item> --year 2026` takes an item off the
 list and the plan shows it as unavailable; `--undo` puts it back. The loop is done when `planner needed` prints
-`nothing needed`; `--all` shows the covered items with their source.
+`nothing needed`; `--all` shows the covered items with their source. A list emptied by
+setting items aside (`dont-have`, or a waived late form) prints `nothing left to answer,
+N set aside: not ready` instead, and the page says the same: the figures that rest on
+those items are estimates, not ready to act on or hand to a preparer.
 
 Every kind of item in the Needed panel can be closed on the live page. Every
 don't-have and every waiver can be undone there; a row you categorised is changed
@@ -300,7 +304,10 @@ benefits are typed, NC's scheduled rate step (3.99% to 3.49% in 2027; the
 conversion lever names what waiting would save on the NC side), and from
 2027, with the Medicaid objective, the 80-hour monthly work requirement
 against the thinnest month in the `se_hours` log (`1:85, 2:60`).
-Unknown inputs are named and left out, never treated as zero; unknown
+Every value is in one of four states: known (a typed or documented zero
+included), an estimate (a year-to-date figure standing in), unknown, or not
+applicable (an item another answer makes moot, so it is never asked). Unknown
+inputs are named and left out, never treated as zero; unknown
 qualified dividends are priced as ordinary and flagged. Tax-exempt interest
 (1099-INT box 8, 1099-DIV box 12, or a typed answer) is one of those inputs:
 it is not income, but ACA MAGI adds it back, so the room to the 250% and 400%
@@ -414,7 +421,14 @@ estimated payments are marked "if required" and name the agencies whose
 `planner esttax` result owes them, resting on this year's tax after withholding). The same `--as-of`
 and override options as the planners it composes. A planner whose required
 input is still unknown reports what it needs and the rest of the page still
-renders; nothing is estimated in its place. The page is also written to
+renders; nothing is estimated in its place. A section priced from the
+household (MAGI, conversion, levers, glide path, cash, estimated tax) that
+rests on an unknown input says so ("rests on unknown (left out, not zero): …")
+and the dashboard tags it an estimate even after the year is over; an unknown
+mortgage or premium leaves the cash line running high, and unknown withholding
+makes the estimated-tax amounts the most that could be due. A draft return
+that rests on an unknown (an income item, or a sale with no cost basis) opens
+with "NOT READY for a preparer", and so do its tax-pack page and notes. The page is also written to
 `out/plan-<year>.md` (personal, gitignored; `--no-write` skips it).
 
 From a terminal `planner plan` first asks the few typed fields, and each has an
@@ -464,7 +478,10 @@ against doing nothing; friction is never folded into the number.
   (only enough loss to net the gain to 0; a lot can be sold in part, lots
   clear of a wash-sale window first), a loss harvest of the rest, spending
   cash or Roth basis (contributions and seasoned conversions) instead of a
-  planned sale (no MAGI: the gain is never realized), deferring a planned
+  planned sale (no MAGI; the cash replaces sale proceeds, not gain, so the
+  gain avoided is the gain in the lots the sale would have drawn first, up to
+  the cash on hand; a planned gain no taxable lot supplies avoids nothing and
+  is named), deferring a planned
   sale (`--st`, `--lt`; it moves the same gain as spending basis, so it is
   priced alone, not stacked), an HSA contribution, the SE health insurance deduction, a
   deductible traditional IRA contribution, last year's capital-loss
@@ -502,7 +519,11 @@ source. The plan page shows the top three of each menu.
 
 `planner whatif --year 2026 --apply traditional_ira,hsa --set hsa=1000`
 recomputes the full year with the chosen moves and prints it before and after,
-with every watched line. `planner thresholds --year 2026` prints the sourced
+with every watched line. It refuses what the menu would never stack: two moves
+that move the same dollars (apply one), a key listed twice, a `--set` size at or
+under 0, and a size past what the move can move (a lowering move's sized amount;
+for a conversion the IRA balance, for a gain harvest the long-term gain held, for
+an inherited-IRA withdrawal its balance). `planner thresholds --year 2026` prints the sourced
 limits and checks the ones the engine also carries; a mismatch (the engine's
 2026 IRA limit is still 7,000 against Notice 2025-67's 7,500) means the engine
 prices with its own value until policyengine-us updates. Engine runs are
@@ -907,10 +928,12 @@ year and next from the installed policyengine-us. It needs no network.
   is reported, never a failure; a known variance (say, the self-employed health
   insurance deduction) does not stop updates. The first engine recorded is the baseline.
   A candidate release runs `planner selfcheck --regression` inside `python-candidate/`
-  with its own Python, and every figure must land within $5 of the baseline or the
-  release is held. A release that prints no regression figures is held too. A later
-  engine that is within $5 is recorded beside the baseline; one that is not is named on
-  each run. Delete `data/engine-baseline.json` only to start a new baseline from the
+  with its own Python, and every figure must land within its limit of the baseline or
+  the release is held: $5 on a dollar figure, 0.1 points on a share of the poverty
+  line, and no change at all in a yes/no (Medicaid eligible, itemizes, whether the
+  SE health deduction settled), so an eligibility flip with the same dollars is caught.
+  A release that prints no regression figures is held too. A later engine within the
+  limits is recorded beside the baseline; one that is not is named on each run. Delete `data/engine-baseline.json` only to start a new baseline from the
   engine you run now.
 - **Held.** A release that fails its selfcheck or its regression is never swapped in. The
   dashboard shows "engine update held" with the reason, and the same release
@@ -1083,3 +1106,21 @@ because the sync client would copy your ledger to the cloud. `planner.cmd`
 checks its own folder first with `findstr` and prints the same warning before
 it downloads or runs anything, so a double-click in a synced folder explains
 itself in the window it keeps open.
+
+## Scope guard: one person (Phase 10, unit 0b)
+
+The household the engine prices has one member: no spouse and no dependents. For the
+filing statuses whose answer turns on a second person, `planner.plan.inputs.NOT_HANDLED`
+holds one line each, and `inputs.build` puts it in `Inputs.scope` and the notes:
+
+- Married filing jointly: the spouse's income, age, deductions and credits are left out,
+  so every figure is this person's share, not the joint return.
+- Married filing separately: the spouse's choice to itemize (which binds this return), a
+  community-property split and the spouse's figures are left out.
+- Head of household: no qualifying person is entered, so dependents' credits and the
+  larger household for the ACA credit and benefits are left out.
+
+The line leads the dashboard's alerts (kind `scope`), reaches the draft return's notes,
+`planner magi` and the tax pack's notes. A single filer has none. The tag stays until the
+household model (unit 3a) adds the spouse and dependents.
+

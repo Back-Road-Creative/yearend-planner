@@ -18,7 +18,7 @@ no account, no cloud, no AI at runtime.
    last year's return, and statements (PDF, CSV or a phone photo).
 5. Work the **Needed** panel. It groups what the plan still lacks by document: each group
    shows the exact download path, the outputs that document unlocks, and every figure it
-   closes. Upload that document, or type the figure, or mark it as one you don't have. Repeat until the panel says *nothing needed*.
+   closes. Upload that document, or type the figure, or mark it as one you don't have. Repeat until the panel says *nothing needed*. (If you marked items as ones you don't have, it says how many were set aside and that the plan is not ready: the figures resting on them are estimates.)
 
 The rest of the page is the plan: projected income against each cliff, the Roth
 conversion size, estimated tax due dates, wash-sale warnings, the levers with a what-if,
@@ -29,6 +29,16 @@ Everything personal stays in `data/` and `out/` inside that folder. Nothing is s
 anywhere. One planner writes at a time: a second window, or a scheduled run while the
 dashboard is open, stops with "another planner is running". To move to a new computer,
 copy the folder or run `planner backup`.
+
+## Who it handles
+
+The planner models **one person with no dependents**. A single filer gets the full plan
+and draft. Married filing jointly, married filing separately and head of household are
+priced as that one person and tagged **Not handled** first in the alerts, in the draft
+return's notes, in `planner magi` and in the tax pack, because a spouse or a qualifying
+person changes the answer and neither is entered. Treat those figures as one person's
+share, not the household's return. The state return drafted is NC's D-400; another state
+gets the engine's estimate and a note that no return is drafted.
 
 ## Commands
 
@@ -76,7 +86,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `sweep` | Sweep one input across a range in a single engine run; one JSON row per step. |
 | `taxpack` | Everything a preparer asks for in out/tax-<year>/: the draft return (text and printable HTML), Form 8949 CSV, Schedule C, carryforward and basis, estimated payments, the form inventory, and the originals ZIP. |
 | `thresholds` | The sourced limits in config/thresholds.yaml for a year, checked against the engine's own parameters. |
-| `update` | Swap in a newer release after its own selfcheck passes and its regression matches the engine baseline within $5; --rollback undoes it; --check looks for one on the update feed now (the automatic check runs at most weekly); --allow-major installs a release that jumps a major version of the planner or policyengine-us. |
+| `update` | Swap in a newer release after its own selfcheck passes and its regression matches the engine baseline ($5 on dollars, 0.1 points on a share of poverty, exact on yes/no); --rollback undoes it; --check looks for one on the update feed now (the automatic check runs at most weekly); --allow-major installs a release that jumps a major version of the planner or policyengine-us. |
 | `verify` | Recompute a filed year from its inputs; compare each line to what was filed. With no file it checks the shipped reference cases. |
 | `version` | Print the planner version (the release's VERSION file when there is one). |
 | `waive` | Take a late form that will not come (the issuer never sends one) off the Needed list; it stays in `forms`, marked waived. `--undo` puts it back. |
@@ -87,7 +97,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 ## If an update is held
 
 The dashboard says **engine update held** when a downloaded release failed its own
-selfcheck, or moved a tax figure more than $5 from the engine you run now, or jumps a
+selfcheck, or moved a tax figure past its limit from the engine you run now, or jumps a
 major version. Nothing changed: you are still on the release you had.
 
 1. Keep working; the held release is never retried on its own.
@@ -98,7 +108,7 @@ major version. Nothing changed: you are still on the release you had.
 4. If a release that did go in looks wrong, `planner.cmd update --rollback` puts the
    previous one back.
 
-`GUIDE.md` (Updates) explains the selfcheck and the $5 regression in full.
+`GUIDE.md` (Updates) explains the selfcheck and the regression limits in full.
 
 ## Develop
 
