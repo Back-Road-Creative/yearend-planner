@@ -251,3 +251,11 @@ def test_expected_1099misc_for_royalties(planner_home: Path) -> None:
     enter(lay, 2025, "rentals", "royalty royalties 800")
     inv = expected.inventory(lay, 2025, date(2026, 3, 1))
     assert any(e.form == "1099-MISC" and e.reason == "royalties" for e in inv.items)
+
+
+def test_rental_income_is_qbi_only_when_answered_yes(planner_home: Path) -> None:
+    lay = _lay(planner_home)
+    enter(lay, 2025, "rentals", "rental rents 12000 expenses 2000 days 365 personal 0")
+    assert draft.build(lay, 2025).get("1040", "13a") == 0.0
+    enter(lay, 2025, "rental_qbi", "yes")
+    assert draft.build(lay, 2025).get("1040", "13a") == 2000.0  # 20% of 10,000
