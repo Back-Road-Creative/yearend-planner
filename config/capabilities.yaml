@@ -299,7 +299,7 @@ nc_d400_draft:
   status: verified
   evidence: implemented
   tests: ["tests/test_d400.py"]
-  note: "planner draft; Schedule S 16/18/19/20-40/41, D-400 6-34 for a full-year resident; Schedule PN, D-400TC, D-422 named, not drafted"
+  note: "planner draft; Schedule S 16/18/19/20-40/41, D-400 6-34 for a full-year resident (joint: 20a yours, 20b the spouse's by document owner, unit 3a-6, D-401 p. 15); Schedule PN, D-400TC, D-422 named, not drafted"
 taxpack:
   status: verified
   evidence: implemented

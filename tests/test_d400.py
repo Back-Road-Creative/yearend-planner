@@ -1,6 +1,8 @@
 """Phase 4k: the NC D-400 and Schedule S on the draft, from synthetic W-2 and
 1099-INT boxes: US Treasury interest taxed federally and subtracted for NC, the
-NC standard deduction, the flat rate, withholding and an estimated payment."""
+NC standard deduction, the flat rate, withholding and an estimated payment.
+Unit 3a-6: on a joint return line 20a is your NC withholding and line 20b the
+spouse's (2025 D-401 p. 15), read from whose documents show it (unit 3a-4)."""
 
 from __future__ import annotations
 
@@ -127,3 +129,59 @@ def test_rate_falls_back_and_says_so() -> None:
     assert rate == d400.RATE[2026][0] and "2027 not on file" in why
     with pytest.raises(ValueError):
         d400.rate(2020)
+
+
+def _joint(lay: Layout, spouse_nc: float) -> None:
+    for key, text in (
+        ("filing_status", "married_joint"),
+        ("spouse_birth_date", "1982-03-01"),
+    ):
+        enter(lay, 2025, key, text)
+    if not spouse_nc:
+        return
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    db.add_document(
+        conn,
+        fingerprint="synthetic-nc-spouse",
+        file_name="spouse-w2.pdf",
+        kind="pdf",
+        pages=1,
+        batch="b2",
+        owner="spouse",
+        facts=[
+            db.Fact("W-2", 2025, "Other Employer (synthetic)", b, "", v, 1)
+            for b, v in (("1", 40_000.0), ("2", 3_000.0), ("17", spouse_nc))
+        ],
+    )
+    conn.close()
+
+
+def test_joint_withholding_goes_on_20a_and_20b_by_owner(planner_home: Path) -> None:
+    lay = _lay(planner_home, 2000.0)
+    _joint(lay, 1200.0)
+    d = draft.build(lay, 2025)
+    g = d.get
+    assert g("D-400", "11") == 25_500.0  # 2025 married filing jointly, D-401 p. 14
+    assert (g("D-400", "20a"), g("D-400", "20b"), g("D-400", "23")) == (
+        2000.0,
+        1200.0,
+        3200.0,
+    )
+    assert not [n for n in d.notes if n.startswith("CHECK")], d.notes
+    assert not [n for n in d.notes if "20b" in n], d.notes
+
+
+def test_joint_with_no_spouse_withholding_on_file_says_how_to_mark_it(
+    planner_home: Path,
+) -> None:
+    lay = _lay(planner_home, 2000.0)
+    _joint(lay, 0.0)
+    d = draft.build(lay, 2025)
+    assert (d.get("D-400", "20a"), d.get("D-400", "20b")) == (2000.0, 0.0)
+    assert any("20b" in n and "planner owner" in n for n in d.notes), d.notes
+
+
+def test_a_single_return_has_no_line_20b(planner_home: Path) -> None:
+    d = draft.build(_lay(planner_home, 2000.0), 2025)
+    assert d.get("D-400", "20b") is None
+    assert not [n for n in d.notes if "20b" in n], d.notes

@@ -39,6 +39,7 @@ ENGINE = (
 )
 KEYS = ("nc_additions", "nc_other_deductions", "nc_use_tax", "nc_withheld")
 US_INTEREST = (("1099-INT", "3"),)
+NC_WITHHELD = (("W-2", "17"), ("1099-R", "14"))
 TOLERANCE = 1.0
 
 Add = Callable[..., float]
@@ -170,13 +171,33 @@ def lay_lines(
     l19 = add(FORM, "19", "Lines 17 and 18", l17 + l18, "17 + 18")
 
     # D-400 payments
+    # Married filing jointly: yours on 20a, the spouse's on 20b (2025 D-401
+    # p. 15), read from whose documents show it (unit 3a-4).
     withheld = typed.get("nc_withheld")
+    total = float(withheld or 0.0)
+    l20b = 0.0
+    if married:
+        l20b = add(
+            FORM,
+            "20b",
+            "Spouse's NC income tax withheld",
+            min(
+                sum(
+                    f.value
+                    for f in facts
+                    if f.owner == "spouse" and (f.form, f.box) in NC_WITHHELD
+                ),
+                total,
+            ),
+            "the spouse's W-2 box 17 and 1099-R box 14",
+        )
     l20a = add(
         FORM,
         "20a",
-        "NC income tax withheld",
-        float(withheld or 0.0),
-        "W-2 box 17, 1099-R box 14 (Needed panel nc_withheld)"
+        "Your NC income tax withheld" if married else "NC income tax withheld",
+        total - l20b,
+        ("nc_withheld less line 20b" if married else "W-2 box 17, 1099-R box 14")
+        + " (Needed panel nc_withheld)"
         if withheld is not None
         else "nc_withheld: not given (left out, not zero)",
     )
@@ -188,7 +209,7 @@ def lay_lines(
         "; ".join(f"{d} {a:,.2f} ({o})" for d, a, o in paid)
         or "no NC payment recorded (planner paid)",
     )
-    l23 = add(FORM, "23", "Total payments", l20a + l21a, "20a + 21a")
+    l23 = add(FORM, "23", "Total payments", l20a + l20b + l21a, "20a + 20b + 21a")
     l25 = add(
         FORM, "25", "Payments less previous refunds", l23, "line 23 (not amended)"
     )
@@ -212,10 +233,11 @@ def lay_lines(
             "D-400 line 18 is the use tax table's estimate for your income; type "
             "nc_use_tax when your records show the use tax actually owed"
         )
-    if married:
+    if married and l20a and not l20b:
         notes.append(
-            "D-400 lines 20a and 20b: the draft puts all NC withholding on 20a; "
-            "split it by whose W-2 or 1099-R shows it"
+            "D-400 line 20b: no NC withholding is on a document marked the "
+            "spouse's; if some of line 20a is theirs, mark it (data/inbox/spouse/ or "
+            "planner owner <file> spouse)"
         )
     notes.append(
         "the D-400 draft is for a full-year NC resident: a part-year or nonresident "
