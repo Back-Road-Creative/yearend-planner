@@ -23,7 +23,7 @@ from typing import Any
 from planner import NOTICE, coverage
 from planner.engine import tax
 from planner.engine.household import Dependent, Household, Person
-from planner.ingest.needs import need_values, schedule_b_required
+from planner.ingest.needs import need_values, retirement_kind, schedule_b_required
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
@@ -49,6 +49,7 @@ ENGINE = (
     "dividend_income",
     "taxable_ira_distributions",
     "taxable_roth_conversions",
+    "taxable_private_pension_income",
     "social_security",
     "taxable_social_security",
     "loss_limited_net_capital_gains",
@@ -510,6 +511,7 @@ def build(lay: Layout, year: int) -> Draft:
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
         facts = db.facts_for(conn, year)
+        kinds = retirement_kind(db.facts_for(conn, year, "1099-R", text=None))
         pays = esttax.payments(conn, lay, year)
         typed = need_values(
             conn,
@@ -981,15 +983,42 @@ def build(lay: Layout, year: int) -> Draft:
         v["dividend_income"],
         origin("ordinary_dividends"),
     )
+    # A 1099-R from an IRA goes on lines 4a-4b, one from a plan or annuity on
+    # 5a-5b (needs.retirement_kind; 2025 Form 1040 instructions, lines 4 and 5).
+    box1 = (("1099-R", "1"),)
+    ira_r = [f for f in facts if kinds.get(f.document_id, "ira") == "ira"]
+    plan_r = [f for f in facts if kinds.get(f.document_id) == "plan"]
+    qcd = sum(inp.qcd.values())
     l4b = v["taxable_ira_distributions"] + v["taxable_roth_conversions"]
-    gross_r = _sum(facts, (("1099-R", "1"),))
-    add(f, "4a", "IRA distributions", gross_r or l4b, _cited(facts, (("1099-R", "1"),)))
+    gross_r = _sum(ira_r, box1)
+    add(f, "4a", "IRA distributions", gross_r or l4b + qcd, _cited(ira_r, box1))
     l4b = add(
         f,
         "4b",
         "IRA distributions, taxable",
         l4b,
-        f"{origin('ira_distributions')}; {origin('roth_conversion')}",
+        f"{origin('ira_distributions')}; {origin('roth_conversion')}"
+        + (f"; less the QCD on 4c ({origin('qcd')})" if qcd else ""),
+    )
+    if qcd:
+        add(
+            f,
+            "4c",
+            "Box 2 checked (QCD): qualified charitable distributions left out of 4b",
+            qcd,
+            f"Pub. 590-B; {origin('qcd')}"
+            + ("; spouse_qcd" if "spouse" in inp.qcd else ""),
+        )
+    l5b = v["taxable_private_pension_income"]
+    gross_p = _sum(plan_r, box1)
+    if gross_p and round(gross_p, 2) != round(l5b, 2):
+        add(f, "5a", "Pensions and annuities", gross_p, _cited(plan_r, box1))
+    l5b = add(
+        f,
+        "5b",
+        "Pensions and annuities, taxable",
+        l5b,
+        origin("pension_income"),
     )
     add(
         f,
@@ -1019,8 +1048,8 @@ def build(lay: Layout, year: int) -> Draft:
         f,
         "9",
         "Total income",
-        l1z + l2b + l3b + l4b + l6b + l7 + l8,
-        "1z + 2b + 3b + 4b + 6b + 7a + 8",
+        l1z + l2b + l3b + l4b + l5b + l6b + l7 + l8,
+        "1z + 2b + 3b + 4b + 5b + 6b + 7a + 8",
     )
     l10 = add(f, "10", "Adjustments from Schedule 1", s1_26, "Sch 1 line 26")
     l11 = add(f, "11a", "Adjusted gross income", l9 - l10, "9 - 10")
@@ -1688,9 +1717,9 @@ def _form_8880(
     add = sheet.add
     f = "8880"
     cap = tax.savers_credit_cap(d.year)
-    # Line 4 is never below the year's own IRA distributions, both spouses' on
-    # a joint return (the form: both spouses' go in both columns).
-    floor = sum(x.ira_distributions for _, _, x in people)
+    # Line 4 is never below the year's own IRA and plan distributions, both
+    # spouses' on a joint return (the form: both spouses' go in both columns).
+    floor = sum(x.ira_distributions + x.pension_income for _, _, x in people)
     l7 = 0.0
     for col, who, x in people:
         l1 = add(
