@@ -5,28 +5,30 @@ the dates, shares, de minimis and safe harbor from the state's instructions;
 a state without its own rules in the planner is on the federal ones, and says
 so). A payment is
 credited to the installment whose window it falls in, so a late payment never
-cures an earlier shortfall. The federal Form 2210 penalty is the regular
-method (``penalty``) on the payments made plus the plan's later installments;
-the annualized method and the states' own penalties are reported as
-unavailable."""
+cures an earlier shortfall. The federal Form 2210 penalty is the lower of the
+regular method (``penalty``) and the annualized method (Schedule AI, when
+income came unevenly or a planned year-end item is entered) on the payments
+made plus the plan's later installments; the states' own penalties are
+reported as unavailable."""
 
 from __future__ import annotations
 
 import calendar
 import re
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any
 
 from planner import states
-from planner.engine.tax import r
+from planner.engine.tax import compute, r
 from planner.ingest.needs import load_manual, manual_path, need_value
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan.calendar import shift
-from planner.plan.inputs import UNKNOWN, Overrides
+from planner.plan.inputs import UNKNOWN, Overrides, build
 from planner.plan.magi import project
+from planner.taxprep import schedule_ai
 
 PAYMENTS = "payments"  # top-level list in the year's manual file
 FED = "fed"
@@ -145,6 +147,7 @@ class Agency:
     next_due: str | None = None
     next_amount: float = 0.0
     penalty: float | None = None  # Form 2210 (federal); None: unavailable
+    schedule_ai: list[float] | None = None  # Schedule AI line 27, when figured
     notes: list[str] = field(default_factory=list)
     separate: bool = False  # married filing separately: the halved AGI lines
 
@@ -316,6 +319,7 @@ def penalty(
     annual: float,
     withheld: float,
     paid: list[tuple[date, float]],
+    required: list[float] | None = None,
 ) -> Penalty:
     """The Form 2210 penalty on the regular method (Part III and the penalty
     worksheet): each installment owes its share of ``annual`` (line 9; a
@@ -323,7 +327,9 @@ def penalty(
     date, a payment on the business day a weekend or holiday moved the date
     to is on time, a payment first pays off the earliest open shortfall and
     what is left carries forward, and each shortfall is charged from its due
-    date until paid or the 15th of the following April (IRC 6654(a), (b))."""
+    date until paid or the 15th of the following April (IRC 6654(a), (b)).
+    ``required``: each installment's own amount instead (Schedule AI line 27,
+    the annualized method)."""
     rule = rules(agency)[0]
     dated = schedule(year, agency)
     nominal = [date(year + off, m, d) for _, (off, m, d), _ in rule.installments()]
@@ -345,15 +351,15 @@ def penalty(
     pool = owed = 0.0
     underpaid: list[float] = []
     i = 0
-    for due, part in zip(nominal, parts, strict=True):
+    owes = required or [annual * part for part in parts]
+    for due, owe in zip(nominal, owes, strict=True):
         while i < len(credits) and credits[i][0] <= due:
             left, cost = _settle(credits[i][1], credits[i][0], shortfalls, end, missing)
             pool += left
             owed += cost
             i += 1
-        required = annual * part
-        short = max(required - pool, 0.0)
-        pool = max(pool - required, 0.0)
+        short = max(owe - pool, 0.0)
+        pool = max(pool - owe, 0.0)
         underpaid.append(r(short))
         if short > 0.005:
             shortfalls.append([due, short])
@@ -392,6 +398,7 @@ def _agency(
     as_of: date,
     separate: bool = False,
     agi: float | None = None,
+    periods: list[float] | None = None,
 ) -> Agency:
     rule, own = rules(name)
     annual, basis = safe_harbor(
@@ -455,9 +462,30 @@ def _agency(
                 if need:
                     credits.append((date.fromisoformat(inst.due), need))
         pen = penalty(year, name, 0.0 if small else annual, withheld, credits)
+        method = "regular"
+        if periods is not None and pen.amount:
+            ai_req = schedule_ai.installments(periods, annual)
+            alt = penalty(year, name, annual, withheld, credits, ai_req)
+            ag.schedule_ai = ai_req
+            if alt.amount < pen.amount:
+                ag.notes.append(
+                    f"{name}: Form 2210 penalty {alt.amount:,.2f} on the annualized "
+                    "method (Schedule AI): required installments "
+                    + ", ".join(f"{x:,.2f}" for x in ai_req)
+                    + f" (box C), under the regular method's {pen.amount:,.2f}; "
+                    "the remaining installments paid in full on their due dates"
+                )
+                pen, method = alt, "annualized"
+            else:
+                ag.notes.append(
+                    f"{name}: the annualized method (Schedule AI) gives "
+                    f"{alt.amount:,.2f}, no lower than the regular method"
+                )
         ag.penalty = pen.amount
         ag.notes.extend(f"{name}: {note}" for note in pen.notes)
-        if pen.amount:
+        if method == "annualized":
+            pass
+        elif pen.amount:
             ag.notes.append(
                 f"{name}: Form 2210 penalty {pen.amount:,.2f} (regular method: a "
                 "quarter of the required annual payment due on each date, "
@@ -579,6 +607,7 @@ def estimate(
     try:
         paid = payments(conn, lay, year)
         quarters = _quarters(conn, year)
+        typed = need_value(conn, lay, year, schedule_ai.KEY) or {}
         names = agencies(pj.inputs.household.state)
         separate = pj.inputs.household.filing_status == "SEPARATE"
         prior_agi = need_value(conn, lay, year, "prior_agi")
@@ -597,6 +626,41 @@ def estimate(
         res.agi > 0 and lump / res.agi > 1 - LUMPY_SHARE
     )
     et = EstTax(year, today.isoformat(), res.agi, lumpy)
+    # Schedule AI line 19 by column: the engine's tax (net of refundable
+    # credits, as Part I line 4 is) on each period's annualized household,
+    # the planned year-end items in the last period only; with nothing typed
+    # and nothing planned it can only match the regular method
+    planned = {
+        k: getattr(ov, k)
+        for k in (
+            "q4_dividend_estimate",
+            "planned_st_sales",
+            "planned_lt_sales",
+            "planned_conversion",
+        )
+        if getattr(ov, k)
+    }
+    periods = None
+    if typed or planned:
+        plain = (
+            build(
+                lay,
+                year,
+                replace(
+                    ov,
+                    q4_dividend_estimate=0.0,
+                    planned_st_sales=0.0,
+                    planned_lt_sales=0.0,
+                    planned_conversion=0.0,
+                ),
+            ).household
+            if planned
+            else pj.inputs.household
+        )
+        periods = [
+            max(r(t.fed_total_tax - t.refundable_credits), 0.0)
+            for t in (compute(year, h) for h in schedule_ai.households(plain, typed))
+        ] + [r(res.fed_total_tax - res.refundable_credits)]
     # Form 2210 Part I and the 1040-ES worksheet test the 90% leg on line 24 less
     # the refundable credits (EIC, additional child tax credit, refundable AOTC);
     # compute's fed_total_tax is the gross line 24.
@@ -619,13 +683,22 @@ def estimate(
                 today,
                 separate,
                 res.agi,
+                periods if name == FED else None,
             )
         )
-    if lumpy:
+    fed = et.agencies[0]
+    if planned and fed.schedule_ai is not None:
+        fed.notes.append(
+            f"{FED}: Schedule AI counts the planned year-end items ("
+            + ", ".join(f"{k} {v:,.0f}" for k, v in planned.items())
+            + ") in the last period (September-December)"
+        )
+    if lumpy and periods is None:
         et.notes.append(
             "income is lumpy (over half in one quarter, or a planned year-end "
             "lump): the annualized method (Schedule AI) may cut an earlier "
-            "installment's shortfall; not computed"
+            f"installment's shortfall; type {schedule_ai.KEY} (each income line "
+            "through March, May and August) to figure it"
         )
     if len(names) == 1 and res.state_tax > 0:
         et.notes.append(
