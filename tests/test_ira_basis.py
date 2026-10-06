@@ -140,7 +140,11 @@ def test_nondeductible_over_the_contribution_is_noted(planner_home: Path) -> Non
     enter(lay, 2025, "ira_basis", "basis 0 nondeductible 5000")
     inp = inputs.build(lay, 2025)
     assert inp.household.nondeductible_ira_contribution == 2000
-    assert [n for n in inp.notes if "is more than the 2,000" in n]
+    assert [
+        n
+        for n in inp.notes
+        if "is more than your 2,000 traditional IRA contribution" in n
+    ]
 
 
 def test_spouse_files_their_own(planner_home: Path) -> None:
