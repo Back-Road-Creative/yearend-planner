@@ -1952,18 +1952,10 @@ Pub. 527 Worksheet 5-1 lines 7a and 7b. `planner/taxprep/sche.py` drafts lines 3
   and direct costs come first, then operating costs up to what is left, then
   depreciation. The rest carries to next year (a note). The worksheet takes the
   itemizer's lines 2a-2b, and a note names the standard-deduction path.
-- **Passive losses.** A rental that is not a home is passive. When its net is a loss
-  and `rental_passive_simple` is yes, Form 8582 Part II allows passive income plus the
-  special allowance:
-  - The allowance is 50% of $150,000 less modified AGI, at most $25,000 ($75,000 and
-    $12,500 married filing separately, living apart).
-  - Modified AGI comes from the household's own income lines, without the passive
-    loss, taxable Social Security, the IRA deduction or the deductible part of SE tax.
-  - The allowed loss is split by each property's share of the losses (line 22). The
-    disallowed part carries to next year (a note).
-  - When the answer is no, `passive_loss_allowed` takes the Form 8582 figure. Until
-    either is answered, only passive income is allowed.
-  - A royalty or home loss is not passive.
+- **Passive losses.** A rental that is not a home is passive. Each property is a
+  Form 8582 activity, and line 22 takes what Form 8582 Part VIII allows it (see
+  "Form 8582" below). `prior` on a property is its prior-year unallowed loss. A
+  royalty or home loss is not passive.
 - **Totals.** Lines 23a-23e, 24 and 25 are drafted. Line 26 goes to Schedule 1 line 5,
   and the engine prices it as `rental_income`, whose loss reaches AGI through
   `loss_ald`. A typed `total_income` excludes Schedule E, which is added on top.
@@ -1978,7 +1970,9 @@ Pub. 527 Worksheet 5-1 lines 7a and 7b. `planner/taxprep/sche.py` drafts lines 3
 `planner enter k1s` takes one Schedule K-1 per entry, separated by semicolons. Each
 entry gives the kind (`partnership`, `scorp` or `trust`), then `passive` or
 `nonpassive` (nonpassive when you materially participated), then each box as a word
-and an amount. For example:
+and an amount, with `prior` for the K-1's prior-year unallowed passive loss and
+`active` after passive or nonpassive for a box 2 rental you actively participated in.
+For example:
 `partnership passive ordinary -4000 rental 1200; scorp nonpassive ordinary 30000
 section179 2000 qbi 30000; trust passive ordinary 800 portfolio 300`, or `none`.
 
@@ -2006,13 +2000,9 @@ A leading `spouse` puts the box 14 code A earnings on the spouse's Schedule SE.
     box 9 is a deduction of the K-1's own kind.
   - Lines 29-32 and 34-37 total them. Line 41 (26 + 32 + 37) goes to Schedule 1
     line 5.
-- **Passive losses.** One Form 8582 share covers rentals and K-1s, worked out by
-  `sche.allowance`.
-  - When a K-1 has a passive item, the special allowance is not tried and
-    `rental_passive_simple` is not asked. `passive_loss_allowed` takes Form 8582's
-    allowed total for line 22, line 28 column (g) and line 33 column (c).
-  - Until that is answered, passive losses are allowed only up to passive income.
-  - The unallowed part carries forward (a note).
+- **Passive losses.** Each K-1's passive boxes are one Form 8582 activity, with the
+  rentals on the same Form 8582. Line 28 column (g) and line 33 column (c) take what
+  Part VIII allows it.
 - **Engine.** The net amounts after the passive-loss limit go into
   `partnership_income` and `s_corp_income`.
   - Guaranteed payments go into `miscellaneous_income`, because they are not QBI.
@@ -2052,6 +2042,35 @@ The same `k1s` entry takes it:
 - A K-1 with only portfolio boxes has no Part II or III row.
 - Collectibles (28%) gain, unrecaptured section 1250 gain and section 1231 gain come in
   unit 3e-6.
+
+
+## Form 8582: passive activity losses (Phase 10, unit 3e-4)
+
+`planner/taxprep/f8582.py` drafts the 2025 Form 8582 from every passive activity on
+Schedule E: each rental property (Part I) and each K-1 with a passive box or a
+`prior` loss (Parts II and III).
+
+- **Parts.** A rental is in Part IV when `rental_active` is yes (you, with your
+  spouse, own 10% or more and make the management decisions; not as a limited
+  partner), otherwise in Part V. A K-1 marked `active` is in Part IV; every other K-1
+  is in Part V. Lines 1a-1d and 2a-2d total them, and line 3 combines them. When line
+  3 is not a loss, every loss and prior-year loss is allowed.
+- **Special allowance (Part II).** Only for a Part IV loss: line 9 is the smaller of
+  that loss and 50% of $150,000 less modified AGI, at most $25,000. Married filing
+  separately, it is $75,000 and $12,500 when you lived apart all year
+  (`lived_apart` yes), and none when you did not: those rentals go in Part V.
+  - Modified AGI comes from the household's own income lines, without the passive
+    losses, taxable Social Security, the IRA deduction or the deductible part of SE
+    tax.
+- **Allocation.** Part VI shares line 9 among the Part IV losses; Part VII shares the
+  rest of the line 3 loss across every remaining loss; Part VIII gives each activity
+  its allowed loss, which Schedule E line 22, line 28 column (g) or line 33 column (c)
+  takes. The unallowed part carries to next year (a note).
+- **Until answered.** `rental_active` unanswered puts rentals in Part V;
+  `lived_apart` unanswered takes married filing separately as living together. Each
+  is a note.
+- **Not handled.** Part IX (a loss split across forms) and the commercial
+  revitalization deduction are named, not drafted.
 
 ## Coverage gate (Phase 10, unit 2a)
 

@@ -1,6 +1,6 @@
 """Unit 3e-2b: Schedule E Part I, rental real estate and royalties, with the
-Pub. 527 vacation-home rules and the Form 8582 special allowance. Synthetic
-figures only."""
+Pub. 527 vacation-home rules, its passive losses through Form 8582 (unit
+3e-4b). Synthetic figures only."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 from planner.ingest.needs import _needed, enter
 from planner.ledger import db
 from planner.plan import inputs
-from planner.taxprep import draft, expected, sche
+from planner.taxprep import draft, expected, f8582, sche
 from tests.test_income_1099g import _doc, _lay
 
 
@@ -24,14 +24,20 @@ def _lines(r: sche.Result) -> dict[str, float]:
     return {ln: round(v, 2) for ln, _, v, _ in r.lines}
 
 
-def _run(text: str, **kw: object) -> sche.Result:
-    args: dict[str, object] = {
-        "magi": 50_000.0,
-        "separate": False,
-        "simple": "yes",
-        "allowed": None,
-    }
-    return sche.schedule(_cols(text), **(args | kw))  # type: ignore[arg-type]
+def _run(
+    text: str,
+    *,
+    magi: float = 50_000.0,
+    separate: str | None = None,
+    active: bool = True,
+) -> sche.Result:
+    cols = _cols(text)
+    form = f8582.compute(
+        sche.activities(cols, active=active), magi=magi, separate=separate
+    )
+    r = sche.schedule(cols, form.allowed)
+    r.notes.extend(form.notes)
+    return r
 
 
 def test_parse_entries() -> None:
@@ -156,21 +162,46 @@ def test_separate_lived_apart_allowance() -> None:
     r = _run(
         "rental rents 0 expenses 20000 days 365 personal 0",
         magi=60_000.0,
-        separate=True,
+        separate="apart",
     )
     assert _lines(r)["22A"] == -7500.0  # 50% of (75,000 - 60,000), at most 12,500
+    together = _run(
+        "rental rents 0 expenses 20000 days 365 personal 0", separate="together"
+    )
+    assert _lines(together)["22A"] == 0.0
 
 
-def test_conditions_fail_takes_form_8582() -> None:
-    text = "rental rents 0 expenses 8000 days 365 personal 0"
-    r = _run(text, simple="no", allowed=3000.0)
-    assert _lines(r)["22A"] == -3000.0
-    r = _run(text, simple="no", allowed=9000.0)
-    assert _lines(r)["22A"] == -8000.0
-    assert any(n.startswith("CHECK passive_loss_allowed") for n in r.notes)
-    r = _run(text, simple=None)
-    assert _lines(r)["22A"] == 0.0
-    assert any("until rental_passive_simple" in n for n in r.notes)
+def test_no_active_participation_gets_no_allowance() -> None:
+    # Part V: a loss is allowed only against passive income.
+    r = _run(
+        "rental rents 0 expenses 8000 days 365 personal 0; "
+        "rental rents 5000 expenses 2000 days 365 personal 0",
+        active=False,
+    )
+    got = _lines(r)
+    assert (got["22A"], got["24"], got["25"], got["26"]) == (
+        -3000.0,
+        3000.0,
+        -3000.0,
+        0.0,
+    )
+    assert any("5,000.00 of passive loss is not allowed" in n for n in r.notes)
+
+
+def test_prior_year_loss_comes_off_line_22() -> None:
+    # Net income 4,000 covers the 3,000 prior-year loss: Form 8582 line 3 is
+    # income, so all of it is allowed.
+    (c,) = _cols("rental rents 9000 expenses 5000 days 365 personal 0 prior 3000")
+    assert c.prior == 3000.0
+    r = _run("rental rents 9000 expenses 5000 days 365 personal 0 prior 3000")
+    got = _lines(r)
+    assert (got["21A"], got["22A"], got["24"], got["25"], got["26"]) == (
+        4000.0,
+        -3000.0,
+        4000.0,
+        -3000.0,
+        1000.0,
+    )
 
 
 def test_royalty_loss_is_not_passive() -> None:
@@ -190,20 +221,26 @@ def test_passive_questions_asked_only_for_a_loss(planner_home: Path) -> None:
     enter(lay, 2025, "rentals", "rental rents 9000 expenses 1000 days 365 personal 0")
     conn = db.connect(lay.data / "ledger" / "planner.db")
     keys = {s.need.key for s in _needed(conn, lay, 2025).items}
-    assert "rentals" in keys and "rental_passive_simple" not in keys
+    assert "rentals" in keys and "rental_active" not in keys
     enter(lay, 2025, "rentals", "rental rents 1000 expenses 9000 days 365 personal 0")
-    enter(lay, 2025, "rental_passive_simple", "no")
+    keys = {s.need.key for s in _needed(conn, lay, 2025).items}
+    assert "rental_active" in keys and "lived_apart" not in keys
+    enter(lay, 2025, "filing_status", "married_separate")
     keys = {s.need.key for s in _needed(conn, lay, 2025).items}
     conn.close()
-    assert {"rental_passive_simple", "passive_loss_allowed"} <= keys
+    assert "lived_apart" in keys
 
 
 def test_inputs_magi_and_rental_income(planner_home: Path) -> None:
     lay = _lay(planner_home)  # 40,000 of wages
     enter(lay, 2025, "rentals", "rental rents 1000 expenses 9000 days 365 personal 0")
-    enter(lay, 2025, "rental_passive_simple", "yes")
+    inp = inputs.build(lay, 2025)
+    assert inp.household.rental_income == 0
+    assert any("until rental_active" in n for n in inp.notes)
+    enter(lay, 2025, "rental_active", "yes")
     inp = inputs.build(lay, 2025)
     assert inp.household.rental_income == -8000
+    assert inp.form_8582 is not None and inp.form_8582.allowed == {"rental A": 8000.0}
     assert any("modified AGI 40,000" in n for n in inp.notes)
 
 
@@ -226,9 +263,10 @@ def test_draft_rental_income(planner_home: Path) -> None:
 def test_draft_rental_loss_reaches_agi(planner_home: Path) -> None:
     lay = _lay(planner_home)
     enter(lay, 2025, "rentals", "rental rents 2000 expenses 7000 days 365 personal 0")
-    enter(lay, 2025, "rental_passive_simple", "yes")
+    enter(lay, 2025, "rental_active", "yes")
     d = draft.build(lay, 2025)
     assert (d.get("Sch E", "22A"), d.get("Sch 1", "5")) == (-5000.0, -5000.0)
+    assert (d.get("Form 8582", "1d"), d.get("Form 8582", "9")) == (-5000.0, 5000.0)
     assert d.get("1040", "8") == -5000.0
     assert d.get("1040", "11a") == 35000.0
     assert not [n for n in d.notes if n.startswith("CHECK")]
