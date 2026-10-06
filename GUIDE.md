@@ -493,8 +493,9 @@ installments use the same shift.
 tax bill or the ACA credit, each sized from the ledger, priced through the
 engine and shown beside its deadline and friction (automatic, a trade, a
 trade inside a wash-sale window, needs outside cash, irreversible). Net is
-federal tax (income + SE) plus NC tax minus the ACA credit, saved or spent
-against doing nothing; friction is never folded into the number.
+federal tax (Form 1040 line 24, which holds any repayment of an advance ACA
+credit above the credit allowed) plus NC tax, less refundable credits and the
+ACA credit paid out above the advance, saved or spent against doing nothing; friction is never folded into the number.
 
 - **Get under a line**: pairing losses against the year's realized gains
   (only enough loss to net the gain to 0; a lot can be sold in part, lots
