@@ -73,6 +73,8 @@ ENGINE = (
     "eitc",
     "eitc_child_count",
     "refundable_ctc",
+    "employee_social_security_tax",
+    "employee_medicare_tax",
     "ctc",
     "ctc_qualifying_children",
     "income_tax_refundable_credits",
@@ -144,6 +146,8 @@ ENGINE_LINE = {
     "37": "additional_senior_deduction",
 }
 SS_WAGES = (("W-2", "3"), ("W-2", "7"))  # Social Security wages and tips
+# Social Security and Medicare tax withheld (Schedule 8812 line 21)
+PAYROLL = (("W-2", "4"), ("W-2", "6"))
 SCH_SE_SPOUSE = "Sch SE (spouse)"
 # Read for each spouse alone: each has their own Schedule SE (unit 3a-5)
 OWN = ("self_employment_income", "employment_income", "self_employment_tax")
@@ -943,7 +947,18 @@ def build(lay: Layout, year: int) -> Draft:
     )
     s3_9 = add("Sch 3", "9", "Net premium tax credit", net_ptc, "Form 8962 line 26")
     s3_15 = add("Sch 3", "15", "Other payments and refundable credits", s3_9, "line 9")
-    ctc_14, ctc_27 = _schedule_8812(sheet, d, v, hh, l11, max(l18 - s3_8, 0.0))
+    eic = _eic(sheet, d, v, hh, l1z, eic_se, l11, exempt + l2b + l3b + max(l7, 0.0))
+    ctc_14, ctc_27 = _schedule_8812(
+        sheet,
+        d,
+        v,
+        hh,
+        l11,
+        max(l18 - s3_8, 0.0),
+        _actc_earned(d, eic, eic_se, l1z, profit + sp_profit),
+        _payroll(facts, v),
+        eic,
+    )
     l19 = add(
         f,
         "19",
@@ -974,7 +989,6 @@ def build(lay: Layout, year: int) -> Draft:
         or "no federal payment recorded (planner paid)"
     )
     l26 = add(f, "26", "Estimated tax payments", sum(p.amount for p in paid), est_src)
-    eic = _eic(sheet, d, v, hh, l1z, eic_se, l11, exempt + l2b + l3b + max(l7, 0.0))
     l27 = add(f, "27a", "Earned income credit", eic, "EIC Worksheet")
     l28 = add(
         f,
@@ -1036,6 +1050,8 @@ def build(lay: Layout, year: int) -> Draft:
     # Line 27a is the EIC Table's and the engine's eitc exact: their gap is
     # checked at 27a, so the tie-out takes the table's.
     eic_gap = l27 - v["eitc"]
+    # Part II-B takes 27a too: Schedule 8812 line 27 is checked on its own.
+    ctc_gap = l28 - v["refundable_ctc"]
     for got, want, what in (
         (
             l9,
@@ -1048,10 +1064,10 @@ def build(lay: Layout, year: int) -> Draft:
         (l15, v["taxable_income"], "line 15 against the engine's taxable income"),
         (
             l22 - s2_1a + s2_12 - (l27 + l28 + l29),
-            v["income_tax"] + passed - eic_gap,
+            v["income_tax"] + passed - eic_gap - ctc_gap,
             "line 22 (less 1a, plus NIIT, less refundable credits) against the "
             "engine's income tax (plus any Tax Table difference left after the "
-            "credits, less the EIC Table's)",
+            "credits, less the EIC Table's and Schedule 8812's)",
         ),
     ):
         if got is not None and abs(got - want) > TOLERANCE:
@@ -1618,13 +1634,17 @@ def _schedule_8812(
     hh: Household,
     agi: float,
     limit: float,
+    earned: tuple[float, str],
+    payroll: tuple[float, str],
+    eic: float,
 ) -> tuple[float | None, float | None]:
     """Schedule 8812 for the household's dependents, and the 1040 dependents
     list as a note: (line 14, line 27), or None for a line not drafted. Lines
-    4-17 are the form's own arithmetic, line 13 being `limit` (Credit Limit
-    Worksheet A: 1040 line 18 less the Schedule 3 credits). Lines 18a-26
-    (earned income, and Social Security tax with three or more children) are
-    not drafted, so line 27 is the engine's, checked against line 17."""
+    4-27 are the form's own arithmetic: line 13 is `limit` (Credit Limit
+    Worksheet A: 1040 line 18 less the Schedule 3 credits), line 18a `earned`
+    (the Earned Income Chart, ``_actc_earned``), and Part II-B, with three or
+    more children, takes line 21 from `payroll` and line 24 from `eic` (1040
+    line 27a). Line 27 is checked against the engine's refundable_ctc."""
     if not hh.dependents:
         return None, None
     listed = []
@@ -1725,16 +1745,94 @@ def _schedule_8812(
         f"4 x {refundable:,.0f}",
     )
     l17 = add(f, "17", "Smaller of 16a and 16b", min(l16a, l16b), "min(16a, 16b)")
-    l27 = add(
-        f,
-        "27",
-        "Additional child tax credit",
-        v["refundable_ctc"],
-        "engine refundable_ctc (lines 18a-26, earned income, not drafted)",
-    )
-    if l27 > l17 + TOLERANCE:
-        d.notes.append(f"CHECK: Schedule 8812 line 27 {l27:,.2f} over line 17")
+    floor, rate, many = tax.actc_phase_in(d.year)
+    l18a = add(f, "18a", "Earned income", *earned)
+    l20 = 0.0
+    if l18a > floor:
+        l19 = add(
+            f, "19", f"Line 18a less ${floor:,.0f}", l18a - floor, f"18a - {floor:,.0f}"
+        )
+        l20 = l19 * rate
+    l20 = add(f, "20", f"Line 19 times {rate:.0%}", l20, f"19 x {rate:g}")
+    slack = TOLERANCE
+    if l16b >= many * refundable and l20 < l17:
+        # Part II-B: the Social Security and Medicare tax less the EIC.
+        l21 = add(f, "21", "Social Security and Medicare tax withheld", *payroll)
+        if v["additional_medicare_tax"] > TOLERANCE:
+            d.notes.append(
+                "Schedule 8812 line 21: the Additional Medicare Tax and RRTA Tax "
+                "Worksheet is not drafted (Additional Medicare Tax is owed); the "
+                "line is boxes 4 and 6 as they stand"
+            )
+        l22 = add(
+            f,
+            "22",
+            "Schedule 1 line 15; Schedule 2 lines 5, 6 and 13",
+            d.get("Sch 1", "15") or 0.0,
+            "Sch 1 line 15 (Schedule 2 lines 5, 6 and 13, Forms 4137 and 8919 "
+            "and W-2 box 12 codes A, B, M and N, are not drafted)",
+        )
+        l23 = add(f, "23", "Lines 21 and 22", l21 + l22, "21 + 22")
+        l24 = add(
+            f,
+            "24",
+            "1040 line 27a and Schedule 3 line 11",
+            eic,
+            "1040 line 27a (Schedule 3 line 11, excess Social Security tax "
+            "withheld, is not drafted)",
+        )
+        l25 = add(f, "25", "Line 23 less line 24", max(l23 - l24, 0.0), "23 - 24")
+        l26 = add(f, "26", "Larger of lines 20 and 25", max(l20, l25), "max(20, 25)")
+        refund, how = min(l17, l26), "min(17, 26)"
+        # The engine takes its exact eitc where line 24 has the EIC Table's.
+        slack = EIC_SLACK
+    else:
+        refund, how = min(l17, l20), "min(17, 20)"
+    l27 = add(f, "27", "Additional child tax credit", refund, how)
+    if abs(l27 - v["refundable_ctc"]) > slack:
+        d.notes.append(
+            f"CHECK: Schedule 8812 line 27 {l27:,.2f} vs engine refundable_ctc "
+            f"{v['refundable_ctc']:,.2f}"
+        )
     return l14, l27
+
+
+def _actc_earned(
+    d: Draft,
+    eic: float,
+    se: list[tuple[str, float, float]],
+    wages: float,
+    profit: float,
+) -> tuple[float, str]:
+    """Schedule 8812 line 18a by its Earned Income Chart (2025 instructions):
+    taking the EIC, its earned income (Worksheet B line 4b, or Step 5's, which
+    is Worksheet A line 1); otherwise the Earned Income Worksheet: 1040 line 1z
+    plus Schedule C line 31 less Schedule 1 line 15 (line 7), and 0 when that
+    is zero or less. Neither the optional methods, statutory employee income,
+    combat pay nor Medicaid waiver payments are drafted."""
+    if eic > 0:
+        if se:
+            return d.get("EIC", "B4b") or 0.0, "EIC Worksheet B line 4b"
+        return d.get("EIC", "A1") or 0.0, "EIC Worksheet A line 1 (Step 5)"
+    half = d.get("Sch 1", "15") or 0.0
+    return (
+        max(wages + profit - half, 0.0),
+        "Earned Income Worksheet: 1040 line 1z + Schedule C line 31 - "
+        "Schedule 1 line 15",
+    )
+
+
+def _payroll(facts: list[db.FactRow], v: dict[str, float]) -> tuple[float, str]:
+    """Schedule 8812 line 21: the W-2s' boxes 4 and 6 on file, both spouses';
+    with neither box on file, the engine's employee Social Security and Medicare
+    tax on the wages, which is what an employer withholds."""
+    if any((f.form, f.box) in PAYROLL for f in facts):
+        return _sum(facts, PAYROLL), _cited(facts, PAYROLL)
+    return (
+        v["employee_social_security_tax"] + v["employee_medicare_tax"],
+        "engine employee Social Security and Medicare tax (W-2 boxes 4 and 6 "
+        "not on file)",
+    )
 
 
 def _ss_wages(facts: list[db.FactRow], owner: str) -> float | None:
