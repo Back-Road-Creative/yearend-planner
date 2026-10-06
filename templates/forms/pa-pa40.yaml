@@ -1,0 +1,21 @@
+# Pennsylvania Form PA-40, Side 1 (the classes of income, deductions, adjusted
+# PA taxable income). Side 2 is pa-pa40-p2.yaml; both merge as form PA-PA40.
+# Labels follow the 2025 PA-40 (PA DOR, 2025_pa-40.pdf). A loss on lines 4-6
+# is marked by an oval the text does not carry, so read those lines with care.
+form: PA-PA40
+years: [2025]
+match: ["PA-40 (EX)", "Total PA Taxable Income"]
+year_pattern: 'Harrisburg, PA 17129\s+(20\d\d)'
+issuer: PA
+boxes:
+  "1a": {label: "Gross compensation", pattern: 'qualifying retirement benefits\. See the instructions\.[\s.•]*1a\.\s+AMOUNT'}
+  "1b": {label: "Unreimbursed employee business expenses", pattern: 'Unreimbursed Employee Business Expenses[\s.•]*1b\.\s+AMOUNT'}
+  "1c": {label: "Net compensation", pattern: 'Subtract Line 1b from Line 1a[\s.•]*1c\.\s+AMOUNT'}
+  "2": {label: "Interest income", pattern: 'Complete PA Schedule A if required[\s.•]*2\.\s+AMOUNT'}
+  "3": {label: "Dividend and capital gains distributions income", pattern: 'Complete PA Schedule B if required[\s.•]*3\.\s+AMOUNT'}
+  "4": {label: "Net income or loss from a business", pattern: 'Business, Profession, or Farm[\s.•]*4\.\s+AMOUNT'}
+  "5": {label: "Net gain or loss from the sale of property", pattern: 'Disposition of Property[\s.•]*5\.\s+AMOUNT'}
+  "6": {label: "Net income or loss from rents and royalties", pattern: 'Patents, or Copyrights[\s.•]*6\.\s+AMOUNT'}
+  "9": {label: "Total PA taxable income", pattern: 'losses reported on Lines 4, 5, or 6[\s.•]*9\.\s+AMOUNT'}
+  "10": {label: "Other deductions", pattern: 'for additional information[\s.•]*10\.\s+(?:[A-Z]\s+)?AMOUNT'}
+  "11": {label: "Adjusted PA taxable income", pattern: 'Subtract Line 10 from Line 9[\s.•]*11\.\s+AMOUNT'}

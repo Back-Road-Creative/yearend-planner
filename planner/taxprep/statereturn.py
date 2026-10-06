@@ -5,7 +5,7 @@ safe harbor carries and the key it carries under, the typed Needed keys and
 engine variables the return reads, and the function that lays its lines.
 
 NC's D-400 is the first entry, CA's Form 540 the second (unit 3d-6), NY's
-IT-201 the third (unit 3d-7). A
+IT-201 the third (unit 3d-7), PA's PA-40 the fourth (unit 3d-8). A
 drafted state is a module beside d400.py, a template under templates/forms/
 (``issuer`` is the state's code; one per page when the return runs to several)
 and an entry here; the draft, ``planner close``, the rollover and the
@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from planner.taxprep import ca540, d400, ny201
+from planner.taxprep import ca540, d400, ny201, pa40
 
 
 @dataclass(frozen=True)
@@ -91,6 +91,25 @@ RETURNS: dict[str, StateReturn] = {
         keys=ny201.KEYS,
         engine=ny201.ENGINE,
         lay=ny201.lay_lines,
+    ),
+    "PA": StateReturn(
+        code="PA",
+        forms={
+            pa40.FORM: ("PA Form PA-40", "pa_40_draft"),
+            pa40.SP: ("PA Schedule SP (tax forgiveness)", "pa_40_draft"),
+        },
+        form=pa40.FORM,
+        template="PA-PA40",
+        boxes=("9", "11", "12", "13", "15", "21", "23", "24", "25", "26", "28")
+        + ("29", "30"),
+        # REV-1630 Part II: the prior year's line 12 tax less its line 21
+        # forgiveness (the 2024 PA-40 line 11 at 3.07% less line 21).
+        tax_line="12",
+        carry="state_tax",  # prior_state_tax's estimate
+        prior=("12", "-21"),
+        keys=pa40.KEYS,
+        engine=pa40.ENGINE,
+        lay=pa40.lay_lines,
     ),
 }
 

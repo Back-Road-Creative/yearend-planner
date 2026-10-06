@@ -774,6 +774,56 @@ NEEDS: tuple[Need, ...] = (
         asked=lambda s: s.get("state") == "NY",
     ),
     Need(
+        "pa_ube",
+        "PA unreimbursed employee business expenses (PA-40 line 1b)",
+        "subtracted from PA compensation on PA-40 line 1b",
+        "PA Schedule UE (most returns have none; type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "PA",
+    ),
+    Need(
+        "pa_other_interest",
+        "Tax-exempt interest PA taxes (other states' bonds)",
+        "added to PA interest income on PA-40 line 2",
+        "1099-INT box 8 or 1099-DIV box 12 from bonds of states other than PA "
+        "(a fund's statement gives the PA share); type 0 when none",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "PA",
+    ),
+    Need(
+        "pa_deductions",
+        "Other PA deductions (PA-40 line 10: MSA, ABLE, student loan interest)",
+        "subtracted on PA-40 line 10 with the HSA and 529 deductions",
+        "PA Schedule O, less the HSA and 529 contributions the planner fills "
+        "itself; type 0 when none",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "PA",
+    ),
+    Need(
+        "pa_sp_income",
+        "Other PA eligibility income (Schedule SP Section III lines 3-10)",
+        "added to eligibility income for tax forgiveness (PA-40 line 21)",
+        "Schedule SP lines 3-10 (alimony, gifts and inheritances over $5,000, "
+        "income from outside PA, ...); it matters only near the forgiveness "
+        "limits; type 0 when none",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "PA",
+    ),
+    Need(
+        "pa_use_tax",
+        "PA use tax owed (PA-40 line 25)",
+        "tax on purchases no sales tax was collected on",
+        "your purchase records, or the PA-40 IN use tax table (the draft uses the "
+        "table until you type it)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "PA",
+    ),
+    Need(
         "nc_additions",
         "NC additions to federal AGI (D-400 Schedule S line 16)",
         "added to federal AGI on D-400 line 7",
