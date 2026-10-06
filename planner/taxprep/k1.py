@@ -28,7 +28,9 @@ Shareholder's and Beneficiary's Instructions:
   and a trust's unrecaptured section 1250 gain (1041 box 4c) line 11 of the
   Unrecaptured Section 1250 Gain Worksheet (Schedule D lines 18 and 19, unit
   3e-6b2); a partnership's or S corporation's (1065 9c, 1120-S 8c) is line 5,
-  through Form 4797, and is not taken.
+  through Form 4797 (unit 3e-6c).
+- The net section 1231 gain or loss (1065 box 10, 1120-S box 9) goes to Form
+  4797 Part I line 2 (planner.taxprep.f4797).
 - The section 199A statement (1065 box 20 code Z, 1120-S box 17 code V, 1041
   box 14 code I) gives the qualified business income, W-2 wages and UBIA.
 
@@ -74,6 +76,8 @@ BOXES = {
         "stgain": "8",
         "ltgain": "9a",
         "collectibles": "9b",
+        "unrecaptured1250": "9c",
+        "section1231": "10",
         "qbi": "20Z",
         "w2wages": "20Z",
         "ubia": "20Z",
@@ -90,6 +94,8 @@ BOXES = {
         "stgain": "7",
         "ltgain": "8a",
         "collectibles": "8b",
+        "unrecaptured1250": "8c",
+        "section1231": "9",
         "qbi": "17V",
         "w2wages": "17V",
         "ubia": "17V",
@@ -114,7 +120,7 @@ BOXES = {
 }
 SIGNED = (
     *("ordinary", "rental", "otherrental", "se", "qbi"),
-    *("stgain", "ltgain", "collectibles"),
+    *("stgain", "ltgain", "collectibles", "section1231"),
 )
 # The boxes Schedule E Parts II and III take; the portfolio boxes go elsewhere
 PART_E = (
@@ -124,6 +130,7 @@ PART_E = (
 PORTFOLIO = (
     *("interest", "dividends", "qualified", "royalties", "stgain", "ltgain"),
     *("collectibles", "unrecaptured1250"),
+    "section1231",  # not portfolio income: Form 4797 Part I
 )
 ORDINALS = ("1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th")
 ALWAYS_PASSIVE = ("rental", "otherrental")

@@ -86,12 +86,10 @@ def html_page(d: draft.Draft) -> str:
     ]
     if d.not_ready:
         parts.append(f"<p><strong>{esc(d.not_ready)}</strong></p>")
-    for form in (*draft.ORDER, "Carryover"):
+    for form in draft.forms(d):
         lines = [ln for ln in d.lines if ln.form == form]
-        if not lines:
-            continue
         parts.append(
-            f"<h2>{esc(draft.HEADINGS.get(form, form))} <small>[{esc(d.tag(form))}]"
+            f"<h2>{esc(draft.heading(form))} <small>[{esc(d.tag(form))}]"
             "</small></h2><table>"
         )
         for ln in lines:
@@ -131,15 +129,13 @@ def _coverage(d: draft.Draft) -> list[tuple[object, ...]]:
     """A row per drafted form with its tag and why, then a row per gap."""
     touching = [g for g in d.coverage if "draft" in g.touches]
     rows: list[tuple[object, ...]] = []
-    for form in (*draft.ORDER, "Carryover"):
-        if not any(ln.form == form for ln in d.lines):
-            continue
+    for form in draft.forms(d):
         row = draft.FORM_CAPABILITY.get(form, "draft_return")
         why = "; ".join(g.reason for g in touching) or (
             f"capability {row}: {d.statuses.get(row, 'no row')}"
         )
         needed = "; ".join(g.needed for g in touching)
-        rows.append((draft.HEADINGS.get(form, form), d.tag(form), why, needed))
+        rows.append((draft.heading(form), d.tag(form), why, needed))
     rows.extend(
         (f"gap: {g.area}", coverage.NOT_HANDLED, g.reason, g.needed) for g in d.coverage
     )
