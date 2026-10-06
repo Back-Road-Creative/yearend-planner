@@ -103,6 +103,9 @@ class Need:
     # Whose documents the boxes sum: "you" or "spouse" for a per-person line
     # (db.OWNERS), None for the household's.
     owner: str | None = None
+    # Which documents the boxes read, when one form carries two lines (a
+    # 1099-R from an IRA or from a plan): (conn, year) -> their ids.
+    docs: Callable[[sqlite3.Connection, int | None], set[int]] | None = None
 
     def __post_init__(self) -> None:
         if self.doc and self.doc not in DOCS:
@@ -186,9 +189,9 @@ DOCS: dict[str, Doc] = {
         ),
         Doc(
             "f1099r",
-            "Form 1099-R from each IRA custodian",
+            "Form 1099-R from each IRA custodian, retirement plan and annuity payer",
             "Vanguard > My Accounts > Tax center > the 1099-R in the forms list; "
-            "another custodian: its tax documents page",
+            "another custodian, plan or insurer: its tax documents page",
         ),
         Doc(
             "f5498",
@@ -264,6 +267,75 @@ def _passive(s: dict[str, Any]) -> tuple[float, bool]:
     rentals = sche.activities(sche.columns(s.get("rentals") or []), active=True)
     acts = rentals + k1.activities(k1.rows(s.get("k1s") or []))
     return sum(a.overall for a in acts), bool(rentals)
+
+
+# Form 1099-R box 7a codes used only for an IRA, and only for a plan or annuity
+# (2026 Instructions for Forms 1099-R and 5498, Guide to Distribution Codes);
+# 1, 2, 3, 4, 7, 8, G and P are used for both.
+IRA_CODES = frozenset("5JKNQRSTY")
+PLAN_CODES = frozenset("ABDEHLMUW9")
+
+
+def retirement_kind(facts: Iterable[db.FactRow]) -> dict[int, str]:
+    """Each 1099-R's document id -> "ira" or "plan". An IRA when box 7b
+    (IRA/SEP/SIMPLE, beside box 7 before 2026) is marked or the code is an
+    IRA's; a plan when 7b was read unmarked or the code is a plan's; an IRA
+    otherwise, since a form read before 7b was (or with no 7b on the page)
+    says nothing more."""
+    read: dict[int, dict[str, str]] = {}
+    for f in facts:
+        if f.form == "1099-R":
+            boxes = read.setdefault(f.document_id, {})
+            if f.box in ("7", "7b") and f.text:
+                boxes[f.box] = f.text
+    out: dict[int, str] = {}
+    for doc, boxes in read.items():
+        code = set(boxes.get("7", ""))
+        if boxes.get("7b") == "yes" or code & IRA_CODES:
+            out[doc] = "ira"
+        elif boxes.get("7b") == "no" or code & PLAN_CODES:
+            out[doc] = "plan"
+        else:
+            out[doc] = "ira"
+    return out
+
+
+def _r_docs(kind: str) -> Callable[[sqlite3.Connection, int | None], set[int]]:
+    def docs(conn: sqlite3.Connection, year: int | None) -> set[int]:
+        facts = db.facts_for(conn, year, "1099-R", text=None)
+        return {d for d, k in retirement_kind(facts).items() if k == kind}
+
+    return docs
+
+
+ira_documents = _r_docs("ira")
+plan_documents = _r_docs("plan")
+
+
+def _qcd_code(
+    config: Path, conn: sqlite3.Connection, year: int, values: dict[str, Any]
+) -> tuple[str | float | None, str] | None:
+    """No amount, but a lead: a 1099-R coded Y marks a distribution the payer
+    was told is a QCD (code Y is optional for 2026)."""
+    del config, values
+    payers = sorted(
+        {
+            f.issuer
+            for f in db.facts_for(conn, year, "1099-R", text=True)
+            if f.box == "7" and "Y" in (f.text or "")
+        }
+    )
+    if not payers:
+        return None
+    return None, (
+        f"the 1099-R from {', '.join(payers)} is coded Y (a QCD): type the amount "
+        "paid straight to charity"
+    )
+
+
+def _qcd_asked(s: dict[str, Any]) -> bool:
+    """Asked when there are IRA distributions to exclude it from."""
+    return float(s.get("ira_distributions") or 0) > 0
 
 
 NEEDS: tuple[Need, ...] = (
@@ -1820,7 +1892,31 @@ NEEDS: tuple[Need, ...] = (
         "money",
         boxes=(("1099-R", "2a"),),
         doc="f1099r",
+        docs=ira_documents,
         unlocks=("MAGI headroom", "Levers", "Draft 1040"),
+    ),
+    Need(
+        "qcd",
+        "Qualified charitable distributions (QCDs)",
+        "paid by the IRA trustee straight to a charity at 70 1/2 or older: left out "
+        "of income, up to the year's limit, and never also deducted (Pub. 590-B)",
+        "the charity's acknowledgment of each gift the IRA paid it (0 when none)",
+        "money",
+        derive_text=_qcd_code,
+        asked=_qcd_asked,
+        unlocks=("MAGI headroom", "Draft 1040"),
+    ),
+    Need(
+        "pension_income",
+        "Taxable pension and annuity distributions",
+        "ordinary income (Form 1040 line 5b): 401(k), 403(b), governmental 457(b), "
+        "pension and annuity payouts",
+        "box 2a of each 1099-R from a plan or insurer (box 7b IRA/SEP/SIMPLE unmarked)",
+        "money",
+        boxes=(("1099-R", "2a"),),
+        doc="f1099r",
+        docs=plan_documents,
+        unlocks=("MAGI headroom", "Draft 1040"),
     ),
     Need(
         "social_security",
@@ -2041,6 +2137,8 @@ def _spouse_asked(
             return float(s.get(SPOUSE + "qualified_tips") or 0) > 0
         if key in ("savers_distributions", "savers_barred"):
             return _saves(s, SPOUSE)
+        if key == "qcd":  # from the spouse's own IRA
+            return float(s.get(SPOUSE + "ira_distributions") or 0) > 0
         return head is None or head(s)
 
     return asked
@@ -2052,7 +2150,7 @@ def _with_spouse(needs: tuple[Need, ...]) -> tuple[Need, ...]:
     (``data/inbox/spouse/``, or ``planner owner``)."""
     out: list[Need] = []
     for n in needs:
-        if n.key not in (*PERSON_INPUTS, *PERSON_HSA, *PERSON_8880):
+        if n.key not in (*PERSON_INPUTS, *PERSON_HSA, *PERSON_8880, "qcd"):
             out.append(n)
             continue
         out.append(replace(n, owner="you"))
@@ -2653,12 +2751,16 @@ def _sum_boxes(
     boxes: tuple[tuple[str, str], ...],
     year: int | None,
     owner: str | None = None,
+    docs: Callable[[sqlite3.Connection, int | None], set[int]] | None = None,
 ) -> tuple[float, str] | None:
     total = 0.0
     origins: list[str] = []
+    keep = None if docs is None else docs(conn, year)
     for form, box in boxes:
         name, sign = statereturn.signed(box)
         for f in db.facts_for(conn, year, form):
+            if keep is not None and f.document_id not in keep:
+                continue
             if f.box == name and owner in (None, f.owner):
                 total += sign * f.value
                 origins.append(_origin(f))
@@ -2707,7 +2809,7 @@ def _needed(conn: sqlite3.Connection, lay: Layout, year: int) -> NeedsReport:
                 report.items.append(Status(need, "actual", word[0], word[1]))
                 continue
         hit = (
-            _sum_boxes(conn, need.boxes, fact_year, need.owner)
+            _sum_boxes(conn, need.boxes, fact_year, need.owner, need.docs)
             if need.boxes and need.kind not in ("enum", "str")
             else None
         )
@@ -2715,7 +2817,7 @@ def _needed(conn: sqlite3.Connection, lay: Layout, year: int) -> NeedsReport:
             report.items.append(Status(need, "actual", hit[0], hit[1]))
             continue
         est = (
-            _sum_boxes(conn, need.estimate, fact_year, need.owner)
+            _sum_boxes(conn, need.estimate, fact_year, need.owner, need.docs)
             if need.estimate
             else None
         )
