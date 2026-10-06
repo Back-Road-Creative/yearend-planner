@@ -31,7 +31,7 @@ from planner.ingest.derive import CountyError, resolve_county
 from planner.ingest.needs import _needed
 from planner.ledger import db
 from planner.paths import Layout
-from planner.taxprep import capgains, hsa, k1, sche
+from planner.taxprep import capgains, f8582, hsa, k1, sche
 
 FILING = {
     "single": "SINGLE",
@@ -116,8 +116,8 @@ TAX_KEYS = (
     "education",
     "rentals",
     "k1s",
-    "rental_passive_simple",
-    "passive_loss_allowed",
+    "rental_active",
+    "lived_apart",
     "rental_qbi",
     "aotc_refundable_barred",
     "savers_barred",
@@ -197,6 +197,7 @@ class Inputs:
     coverage: list[coverage.Gap] = field(default_factory=list)  # every gap (2a)
     schedule_e: sche.Result | None = None  # Schedule E Part I (3e-2b)
     schedule_k1: k1.Result | None = None  # Schedule E Parts II, III (3e-3a)
+    form_8582: f8582.Result | None = None  # passive activity losses (3e-4)
     # (word, payer, amount, source) for each K-1 portfolio box (3e-3b)
     k1_portfolio: list[tuple[str, str, float, str]] = field(default_factory=list)
 
@@ -471,12 +472,14 @@ def build(
 
 def _schedule_e(out: Inputs, fields: dict[str, Any], value: dict[str, Any]) -> None:
     """Schedule E: Part I from the rentals (unit 3e-2b), Parts II and III from
-    the K-1s (unit 3e-3a), one Form 8582 allowance across both."""
+    the K-1s (unit 3e-3a), their passive losses through one Form 8582 (unit
+    3e-4)."""
     cols = sche.columns(
         (value.get("rentals") or []) + k1.royalties(value.get("k1s") or [])
     )
     rows = k1.rows(value.get("k1s") or [])
-    k1_income, k1_losses = k1.passive_totals(rows)
+    active = value.get("rental_active")
+    acts = sche.activities(cols, active=active == "yes") + k1.activities(rows)
     magi = (
         fields.get("wages", 0)
         + _counted(fields)
@@ -485,17 +488,25 @@ def _schedule_e(out: Inputs, fields: dict[str, Any], value: dict[str, Any]) -> N
         - fields.get("hsa_contribution", 0)
         - fields.get("se_health_premiums", 0)
     )
-    allowed = value.get("passive_loss_allowed")
-    passive = {
-        "magi": magi,
-        "separate": fields["filing_status"] == "SEPARATE",
-        "simple": value.get("rental_passive_simple"),
-        "allowed": None if allowed is None else float(allowed),
-        "k1_income": k1_income,
-        "k1_losses": k1_losses,
-    }
+    separate = None
+    if fields["filing_status"] == "SEPARATE":
+        separate = "apart" if value.get("lived_apart") == "yes" else "together"
+    form = f8582.compute(acts, magi=magi, separate=separate)
+    if acts:
+        out.form_8582 = form
+        out.notes.extend(form.notes)
+        if active is None and any(a.name.startswith("rental") for a in acts):
+            out.notes.append(
+                "Form 8582 puts the rentals in Part V, with no special allowance, "
+                "until rental_active is answered"
+            )
+        if separate == "together" and value.get("lived_apart") is None:
+            out.notes.append(
+                "Form 8582 takes married filing separately as living together "
+                "(no special allowance) until lived_apart is answered"
+            )
     if cols:
-        out.schedule_e = sche.schedule(cols, **passive)
+        out.schedule_e = sche.schedule(cols, form.allowed)
         fields["rental_income"] = int(round(out.schedule_e.total))
         fields["rental_qbi"] = value.get("rental_qbi") == "yes"
         if fields["rental_qbi"] and any(c.kind == "royalty" for c in cols):
@@ -505,14 +516,10 @@ def _schedule_e(out: Inputs, fields: dict[str, Any], value: dict[str, Any]) -> N
                 "(royalties are investment income, not a trade or business)"
             )
         out.notes.extend(out.schedule_e.notes)
-        ratio, ratio_src = out.schedule_e.ratio, out.schedule_e.ratio_src
-    else:
-        ratio, ratio_src, notes = sche.allowance(cols, **passive)
-        out.notes.extend(notes)
     if rows:
-        out.schedule_k1 = k1.schedule(rows, ratio, ratio_src)
+        out.schedule_k1 = k1.schedule(rows, form.allowed)
         _k1_fields(out, fields, value["k1s"], out.schedule_k1)
-    if sche.passive_net(cols) + k1_income - k1_losses < 0:
+    if sum(a.overall for a in acts) < 0:
         out.notes.append(
             f"Form 8582 line 6 modified AGI {magi:,.0f}: AGI without the "
             "passive losses, taxable Social Security, the IRA deduction "

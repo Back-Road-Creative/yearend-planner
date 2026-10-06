@@ -27,8 +27,12 @@ Shareholder's and Beneficiary's Instructions:
 - The section 199A statement (1065 box 20 code Z, 1120-S box 17 code V, 1041
   box 14 code I) gives the qualified business income, W-2 wages and UBIA.
 
-Each passive box is its own activity for Form 8582. A passive loss is allowed
-in the same share as every other passive loss on the return (planner.taxprep.sche).
+Each K-1's passive boxes are one activity for Form 8582 (planner.taxprep.f8582),
+in Part V; ``active`` after passive or nonpassive puts a partnership or S
+corporation K-1 whose only passive box is 2 (rental real estate, you a general
+partner or shareholder who actively participated) in Part IV. ``prior`` is the
+activity's prior-year unallowed loss (last year's Form 8582 Part VII column
+(c)). Column (g) or (c) takes what Part VIII allows.
 
 Each K-1 is typed as ``partnership passive ordinary -4000 rental 1200``,
 ``scorp nonpassive ordinary 30000 section179 2000 qbi 30000`` or ``trust
@@ -41,6 +45,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+
+from planner.taxprep import f8582
 
 EXAMPLE = (
     "partnership passive ordinary -4000 rental 1200; scorp nonpassive ordinary "
@@ -101,7 +107,7 @@ SIGNED = ("ordinary", "rental", "otherrental", "se", "qbi", "stgain", "ltgain")
 # The boxes Schedule E Parts II and III take; the portfolio boxes go elsewhere
 PART_E = (
     *("ordinary", "rental", "otherrental", "guaranteed"),
-    *("section179", "portfolio", "deductions"),
+    *("section179", "portfolio", "deductions", "prior"),
 )
 PORTFOLIO = ("interest", "dividends", "qualified", "royalties", "stgain", "ltgain")
 ORDINALS = ("1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th")
@@ -130,6 +136,8 @@ def parse(key: str, s: str) -> list[dict[str, Any]]:
                 f"{key}: {entry!r} says passive or nonpassive after {kind} "
                 "(nonpassive when you materially participated)"
             )
+        active = bool(rest) and rest[0].lower() == "active"
+        rest = rest[1:] if active else rest
         if len(rest) % 2:
             raise ValueError(f"{key}: {entry!r} pairs each word with an amount")
         got: dict[str, Any] = {
@@ -139,9 +147,10 @@ def parse(key: str, s: str) -> list[dict[str, Any]]:
         }
         for word, amount in zip(rest[::2], rest[1::2], strict=True):
             word = word.lower()
-            if word not in BOXES[kind]:
+            if word not in BOXES[kind] and word != "prior":
                 raise ValueError(
-                    f"{key}: {word!r} is not a {kind} word ({', '.join(BOXES[kind])})"
+                    f"{key}: {word!r} is not a {kind} word "
+                    f"({', '.join(BOXES[kind])}, prior)"
                 )
             if word in got:
                 raise ValueError(f"{key}: {word} is typed twice in {entry!r}")
@@ -159,6 +168,18 @@ def parse(key: str, s: str) -> list[dict[str, Any]]:
                 f"{key}: qualified dividends are part of the ordinary dividends; "
                 f"{entry!r} has more qualified than dividends"
             )
+        if active and (
+            kind == "trust"
+            or "rental" not in got
+            or "otherrental" in got
+            or (got["passive"] and "ordinary" in got)
+        ):
+            raise ValueError(
+                f"{key}: active is for a partnership or S corporation K-1 whose "
+                f"only passive box is 2 (rental); {entry!r} is not"
+            )
+        if active:
+            got["active"] = True
         if spouse and "se" not in got:
             raise ValueError(
                 f"{key}: spouse marks whose Schedule SE takes box 14 code A; "
@@ -181,6 +202,7 @@ class Row:
     kind: str
     entry: dict[str, Any]
     passive: list[tuple[str, float]] = field(default_factory=list)
+    prior: float = 0.0  # the passive activity's prior-year unallowed loss
     loss: float = 0.0  # column (i) or (e)
     section179: float = 0.0  # column (j)
     income: float = 0.0  # column (k) or (f)
@@ -188,6 +210,14 @@ class Row:
     @property
     def form(self) -> str:
         return FORMS[self.kind]
+
+    @property
+    def name(self) -> str:
+        return f"{self.kind} {self.letter}"
+
+    @property
+    def line(self) -> str:
+        return "33" if self.kind == "trust" else "28"
 
     @property
     def passive_income(self) -> float:
@@ -204,9 +234,9 @@ def rows(entries: list[dict[str, Any]]) -> list[Row]:
     count = dict.fromkeys(FORMS, 0)
     for e in entries:
         kind = e["kind"]
-        if not any(w in e for w in PART_E):
+        if not any(w in e for w in (*PART_E, "prior")):
             continue  # portfolio boxes only: nothing on Schedule E Part II or III
-        r = Row(LETTERS[count[kind]], kind, e)
+        r = Row(LETTERS[count[kind]], kind, e, prior=float(e.get("prior", 0)))
         count[kind] += 1
         box = BOXES[kind]
         for word in ("ordinary", "rental", "otherrental"):
@@ -234,10 +264,21 @@ def rows(entries: list[dict[str, Any]]) -> list[Row]:
     return out
 
 
-def passive_totals(rs: list[Row]) -> tuple[float, float]:
-    """(passive income, passive losses) across the K-1s, Form 8582 lines 2a-2b
-    and 3a-3b."""
-    return sum(r.passive_income for r in rs), sum(r.passive_loss for r in rs)
+def activities(rs: list[Row]) -> list[f8582.Activity]:
+    """Each K-1 with a passive box or a prior-year loss as a Form 8582
+    activity."""
+    return [
+        f8582.Activity(
+            r.name,
+            f"Sch E, line {r.line}{r.letter}",
+            income=r.passive_income,
+            loss=r.passive_loss,
+            prior=r.prior,
+            active=bool(r.entry.get("active")),
+        )
+        for r in rs
+        if r.passive or r.prior
+    ]
 
 
 def nonpassive_net(rs: list[Row]) -> float:
@@ -272,26 +313,26 @@ COLUMNS = {
 }
 
 
-def schedule(rs: list[Row], ratio: float, ratio_src: str) -> Result:
-    """Lines 28-37. ``ratio`` is the share of each passive loss Form 8582
-    allows (planner.taxprep.sche.Result.ratio)."""
+def schedule(rs: list[Row], allowed: dict[str, float]) -> Result:
+    """Lines 28-37. ``allowed`` is each K-1's passive loss Form 8582 allows
+    (planner.taxprep.f8582.Result.allowed), by its name."""
     lines: list[tuple[str, str, float, str]] = []
     notes: list[str] = []
     by_kind = dict.fromkeys(FORMS, 0.0)
     passive_pships = 0.0
     totals: dict[str, float] = {}
     for r in rs:
-        line = "33" if r.kind == "trust" else "28"
-        allowed = r.passive_loss * ratio
+        line = r.line
+        allow = allowed.get(r.name, 0.0)
         cols = (
-            {"g": allowed, "h": r.passive_income, "i": r.loss}
+            {"g": allow, "h": r.passive_income, "i": r.loss}
             | {"j": r.section179, "k": r.income}
             if line == "28"
-            else {"c": allowed, "d": r.passive_income, "e": r.loss, "f": r.income}
+            else {"c": allow, "d": r.passive_income, "e": r.loss, "f": r.income}
         )
         src = {
-            "g": f"box losses x {ratio_src}",
-            "c": f"box losses x {ratio_src}",
+            "g": "Form 8582 Part VIII column (c)",
+            "c": "Form 8582 Part VIII column (c)",
             "h": "passive boxes with income",
             "d": "passive boxes with income",
             "i": "nonpassive box 1 loss",
@@ -311,10 +352,10 @@ def schedule(rs: list[Row], ratio: float, ratio_src: str) -> Result:
                     )
                 )
                 totals[line + col] = totals.get(line + col, 0.0) + cols[col]
-        net = r.passive_income - allowed + r.income - r.loss - r.section179
+        net = r.passive_income - allow + r.income - r.loss - r.section179
         by_kind[r.kind] += net
         if r.kind != "trust":
-            passive_pships += r.passive_income - allowed
+            passive_pships += r.passive_income - allow
         if r.passive_loss or r.loss:
             notes.append(
                 f"Schedule E {r.kind} {r.letter}: the draft takes the K-1 loss as "
@@ -375,8 +416,9 @@ def schedule(rs: list[Row], ratio: float, ratio_src: str) -> Result:
         )
     notes.append(
         "Schedule E line 27 is drafted No: a prior-year loss held back by the "
-        "basis, at-risk or passive rules, or unreimbursed partnership expenses, "
-        "changes Part II (see its instructions)"
+        "basis or at-risk rules, or unreimbursed partnership expenses, changes "
+        "Part II (see its instructions); a prior-year passive loss goes through "
+        "Form 8582 (prior)"
     )
     return Result(lines, part2, part3, by_kind, passive_pships, notes)
 
