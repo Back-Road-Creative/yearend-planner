@@ -1201,11 +1201,12 @@ checks its own folder first with `findstr` and prints the same warning before
 it downloads or runs anything, so a double-click in a synced folder explains
 itself in the window it keeps open.
 
-## Scope guard and the household's people (Phase 10, units 0b and 3a-2 to 3a-7)
+## Scope guard and the household's people (Phase 10, units 0b, 3a-2 to 3a-7 and 3b-1)
 
 The profile names the household's people: `spouse_birth_date` (asked when the filing
-status is married_joint) and `dependents` (asked for married_joint and
-head_of_household), typed as birth dates with `student` (full-time this year) or
+status is married_joint), `spouse_death_year` (asked for qualifying_surviving_spouse)
+and `dependents` (asked for married_joint, head_of_household and
+qualifying_surviving_spouse), typed as birth dates with `student` (full-time this year) or
 `disabled` after one, or `none`:
 
     planner enter spouse_birth_date 1974-05-02
@@ -1223,6 +1224,13 @@ Until they are named, `planner.coverage.HOUSEHOLD` holds one line per status:
   separate returns arrive (unit 3b).
 - Head of household: no qualifying person is entered, so dependents' credits and the
   larger household for the ACA credit and benefits are left out.
+- Qualifying surviving spouse (unit 3b-1): joint rates (the joint brackets, standard
+  deduction and IRA and Roth phase-outs, Pub. 590-A) with no spouse in the tax unit,
+  for the two years after the year of death while a dependent child lives at home
+  (2025 Form 1040 instructions). With no child named, or a `spouse_death_year` outside
+  those two years, the line says what to file instead: married_joint for the year of
+  death, single or head_of_household after the second year. Medicare's IRMAA tiers and
+  the Social Security taxation thresholds are the single ones, as the law sets them.
 
 The line leads the dashboard's alerts (kind `scope`), reaches the draft return's notes,
 `planner magi` and the tax pack's notes. Once the people are named it goes: the draft lays out the spouse's Schedule 1-A line 36b and the dependents'

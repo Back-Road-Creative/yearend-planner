@@ -39,6 +39,7 @@ FILING = {
     "married_joint": "JOINT",
     "married_separate": "SEPARATE",
     "head_of_household": "HEAD_OF_HOUSEHOLD",
+    "qualifying_surviving_spouse": "SURVIVING_SPOUSE",
 }
 REQUIRED = ("birth_date", "filing_status", "state")
 # Needed-panel key -> Household field, dollars rounded to whole dollars.
@@ -304,6 +305,8 @@ def build(
         fields["filing_status"],
         spouse="spouse" in fields,
         dependents=len(fields["dependents"]),
+        death_year=value.get("spouse_death_year"),
+        year=year,
     )
     out.scope = [g.reason for g in out.coverage if g.area == "household"]
     out.notes.extend(g.reason for g in out.coverage)

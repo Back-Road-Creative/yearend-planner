@@ -31,7 +31,9 @@ PRICED = (
 # A status whose answer turns on a second person, until the profile names that
 # person (unit 3a-2: the spouse's birth date, the dependents), is priced as the
 # one person and tagged, never passed off as a full plan (master plan unit 0b).
-# Separate returns stay tagged until unit 3b.
+# Separate returns stay tagged until unit 3b. A qualifying surviving spouse
+# (unit 3b-1) is tagged without a dependent child or outside the two years
+# after the year of death (2025 Form 1040 instructions).
 HOUSEHOLD = {
     "JOINT": (
         "Not handled: married filing jointly is priced for one person; the "
@@ -49,6 +51,12 @@ HOUSEHOLD = {
         "children, dependent care) and the larger household for the ACA credit "
         "and benefits are left out"
     ),
+    "SURVIVING_SPOUSE": (
+        "Not handled: qualifying surviving spouse is priced at joint rates, but "
+        "the status needs a dependent child (a child or stepchild, not a foster "
+        "child, who lived with you all year) and a spouse who died in either of "
+        "the two years before the tax year; as typed the return does not qualify"
+    ),
 }
 
 
@@ -59,7 +67,24 @@ HOUSEHOLD_NEEDED = {
     "separate returns arrive (unit 3b)",
     "HEAD_OF_HOUSEHOLD": "name the qualifying person (planner enter dependents "
     "YYYY-MM-DD [student|disabled], ...)",
+    "SURVIVING_SPOUSE": "name the child (planner enter dependents YYYY-MM-DD, ...)",
 }
+
+
+def _widowed_needed(death_year: int, year: int) -> str:
+    """What a surviving spouse whose year of death falls outside the two years
+    before ``year`` files instead (2025 Form 1040 instructions)."""
+    if death_year >= year:
+        return (
+            f"a spouse who died in {year} files a joint return for {year} "
+            "(planner enter filing_status married_joint); check spouse_death_year"
+        )
+    return (
+        f"from {death_year + 3} the status is single or head_of_household "
+        "(planner enter filing_status ...); check spouse_death_year"
+    )
+
+
 # Once the people are named nothing about them stays tagged: the spouse's own
 # lines, Schedule SE and Form 8889 are theirs (units 3a-4, 3a-5 and 3a-7).
 
@@ -101,22 +126,36 @@ def gate(
     *,
     spouse: bool = False,
     dependents: int = 0,
+    death_year: int | None = None,
+    year: int | None = None,
 ) -> list[Gap]:
     """Every gap for this household, in a fixed order: household, state, documents.
     ``filing_status`` is the engine's (SINGLE, JOINT, ...); None when not yet known.
-    ``spouse`` and ``dependents`` are the people the profile names."""
+    ``spouse`` and ``dependents`` are the people the profile names; ``death_year``
+    a surviving spouse's year of death, checked against the tax ``year``."""
     out = []
     unnamed = (
         filing_status == "SEPARATE"
         or (filing_status == "JOINT" and not spouse)
-        or (filing_status == "HEAD_OF_HOUSEHOLD" and not dependents)
+        or (
+            filing_status in ("HEAD_OF_HOUSEHOLD", "SURVIVING_SPOUSE")
+            and not dependents
+        )
     )
-    if unnamed and filing_status:
+    widowed = (
+        filing_status == "SURVIVING_SPOUSE"
+        and death_year is not None
+        and year is not None
+        and int(death_year) not in (year - 2, year - 1)
+    )
+    if (unnamed or widowed) and filing_status:
         out.append(
             Gap(
                 "household",
                 HOUSEHOLD[filing_status],
-                HOUSEHOLD_NEEDED[filing_status],
+                HOUSEHOLD_NEEDED[filing_status]
+                if unnamed
+                else _widowed_needed(int(death_year or 0), int(year or 0)),
                 PRICED,
             )
         )
