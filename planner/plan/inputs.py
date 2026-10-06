@@ -61,6 +61,10 @@ MONEY = {
     "planned_giving": "charitable_cash",
     "real_estate_taxes": "real_estate_taxes",
     "mortgage_interest": "mortgage_interest",
+    "care_expenses": "care_expenses",
+    "dependent_care_benefits": "dependent_care_benefits",
+    "dependent_care_grace": "dependent_care_grace",
+    "dependent_care_forfeited": "dependent_care_forfeited",
 }
 # The four states a value can be in. Known includes a known zero; unknown is
 # left out of the arithmetic (never priced as zero without saying so); not
