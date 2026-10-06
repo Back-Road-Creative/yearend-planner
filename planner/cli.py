@@ -72,6 +72,23 @@ def _single_writer(ctx: typer.Context) -> None:
     except WriterBusyError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=BUSY_EXIT) from exc
+    _refuse_newer_ledger()
+
+
+def _refuse_newer_ledger() -> None:
+    """A writing command stops before any step when the ledger was written by a
+    newer planner, rather than failing partway through."""
+    from planner.ledger import db
+
+    try:
+        conn = db.connect_readonly(layout().data / "ledger" / "planner.db")
+    except db.LedgerTooNew as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except db.LedgerOutOfDate:
+        return  # older: the command's own open brings it up to date
+    if conn is not None:
+        conn.close()
 
 
 def _open_ledger_readonly() -> sqlite3.Connection | None:

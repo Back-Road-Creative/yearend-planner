@@ -943,6 +943,15 @@ year and next from the installed policyengine-us. It needs no network.
   release the same way, `planner update --rollback` goes back to
   `python-previous/`, and `planner update --check` looks for one now. `data/`
   and `out/` are never touched.
+- **An older `data/` opens in a newer release** (Phase 10, 2e). The first
+  writing command after an update copies the ledger to
+  `data/ledger/planner.db.schemaN.bak` (N is the old schema) and then brings it
+  up to date one step at a time. A ledger written by a *newer* release (say
+  after `--rollback`, or restoring a newer backup) is refused with "written by
+  a newer planner" and left exactly as it was: use that release again, or
+  restore a backup this release made. Every release's tests open the v0.1.0
+  `data/` folder in `tests/fixtures/data-v0.1.0` (synthetic, made by the
+  v0.1.0 tag with `make.py` beside it) and run it end to end.
 - `scripts/build_release.py` writes the `.sha256` file beside the zip.
 
 ## Rolling over to the new year (Phase 7)
