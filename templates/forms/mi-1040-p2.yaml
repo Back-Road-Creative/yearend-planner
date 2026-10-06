@@ -1,0 +1,18 @@
+# Michigan MI-1040, page 2 (credits, the tax liability and payments). Merges
+# with pages 1 (mi-1040.yaml) and 3 as form MI-1040.
+form: MI-1040
+years: [2025]
+match: ["MI-1040, Page 2 of 3", "Total Tax Liability"]
+year_pattern: '(20\d\d) (?:MICHIGAN Individual Income Tax Return MI-1040|MI-1040, Page)'
+issuer: MI
+boxes:
+  "21": {label: "Income tax", pattern: 'greater than line 17, enter[^\n]*?21\.\s+AMOUNT', required: true}
+  "25": {label: "Total tax liability", pattern: 'Add lines 21 through 24[\s.]*25\.\s+AMOUNT'}
+  "26": {label: "Property tax credit", pattern: 'Include MI-1040CR or MI-1040CR-2[\s.]*26\.\s+AMOUNT'}
+  "27": {label: "Farmland preservation tax credit", pattern: 'Include MI-1040CR-5[\s.]*27\.\s+AMOUNT'}
+  "28b": {label: "Michigan earned income tax credit", pattern: 'enter result on line 28b\.[^\n]*?28b\.\s+AMOUNT'}
+  "29": {label: "Historic preservation tax credit (refundable)", pattern: 'Include Form 3581\.[\s.]*29\.\s+AMOUNT'}
+  "30": {label: "Flow-through entity tax credit", pattern: 'electing flow-through entity \(see instructions\)[\s.]*30\.\s+AMOUNT'}
+  "31": {label: "Michigan tax withheld", pattern: '\(do not submit W-2s\)[\s.]*31\.\s+AMOUNT'}
+  "32": {label: "Estimated tax payments", pattern: 'and 20\d\d credit forward[\s.]*32\.\s+AMOUNT'}
+  "34": {label: "Total refundable credits and payments", pattern: '32 and 33c[\s.]*34\.\s+AMOUNT'}

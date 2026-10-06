@@ -137,7 +137,8 @@ issuer `self`), Schedules 1, 2, 3, C, D and SE, NC Form D-400 (issuer `NC`), CA 
 merge as form `PA-PA40`), IL Form IL-1040 (issuer `IL`; front and back merge as form
 `IL-IL1040`, the back's year read from its revision date R-12/25), OH Form IT 1040
 (issuer `OH`; pages 1 and 2 merge as form `OH-IT1040`), GA Form 500 (issuer `GA`;
-pages 2-4 merge as form `GA-500`), the Social
+pages 2-4 merge as form `GA-500`), MI-1040 (issuer `MI`; pages 1-3 merge as
+form `MI-1040`), the Social
 Security Statement (monthly estimates at 62, 67 and 70, tax year = statement year),
 1099-NEC, 1099-K, 1098, 5498, 5498-SA and 1099-SA. A template may name a literal
 `issuer` for the taxpayer's own documents instead of a payer regex, and the line
@@ -1111,6 +1112,55 @@ return.
   2B), 25 (G2 withholding), 31-44 (credit forward, donations, the 500 UET penalty,
   interest) and IND-CR credits other than 202. A filed Form 500 is read from pages
   2-4; page 5 prints no readable year.
+
+## The MI return: MI-1040 (unit 3d-12)
+
+For a Michigan full-year resident (`state: MI`), `planner draft` adds the
+MI-1040 with the Schedule 1 lines behind it, from the same engine run as the
+federal return.
+
+- **Lines.** Line numbers, the exemption allowance, the Michigan Standard
+  Deduction tiers, Form 4884 and the credits follow the 2025 MI-1040, its
+  Schedule 1, Form 4884 and the MI-1040 instruction book. Every line is in whole
+  dollars: 49 cents or less round down, 50 cents or more round up.
+- **Schedule 1 additions (line 9).** Self-employment tax deducted federally
+  (line 2) and `mi_additions` you type (other states' bond interest and the rest
+  of lines 1, 3-8). Tax-exempt interest on a 1099 asks for the non-Michigan part
+  until `mi_additions` is typed.
+- **Schedule 1 subtractions (line 31).** US obligations interest (10), military
+  and railroad retirement (11), taxable social security and military pay (14),
+  state refunds in AGI (16), MESP/529 contributions (17), the Schedule R base
+  (23), the Michigan Standard Deduction by the older spouse's birth year (25 Tier
+  2: $20,000, $40,000 joint; 26 Tier 3: the same less exemptions and taxable
+  social security), the retirement and pension subtraction (27, Form 4884,
+  including Section D: up to 75% of the $65,897/$131,794 limit for 2025, laid on
+  line 27 even when the engine weighs it against the standard deduction) and the
+  senior interest, dividends and capital gains deduction (28, born before 1946),
+  plus `mi_subtractions` you type.
+- **Tax (lines 9-17).** $5,800 an exemption (9a), $3,400 a disabled person
+  (9b), $500 a disabled veteran (9c), $5,800 a stillbirth (9d); then 4.25% of
+  line 16.
+- **Credits and payments (lines 26-34).** `mi_property_tax_credit` you type
+  from MI-1040CR or MI-1040CR-2 on line 26 (until typed, the draft prints the
+  engine's estimate and asks); the Michigan EITC on 28b (30% of the federal
+  credit on 28a); MI withholding from W-2 box 17 and 1099-R box 14 on 31
+  (`state_withheld`); MI estimated payments on 32. The home heating credit is
+  claimed on MI-1040CR-7, filed apart: the draft names the engine's estimate. The
+  draft ends on line 36 (owed) or 37/39 (refund).
+- **Safe harbor.** Next year's MI safe harbor (MI-2210) is the lesser of 90% of
+  next year's tax and 100% of line 21 less lines 26, 27, 28b, 29 and 30 (110%
+  when AGI is over $150,000, $75,000 married filing separately), from the draft
+  and from a filed MI-1040 alike; no penalty when $500 or less is left.
+- **Check.** Schedule 1's additions less subtractions are compared with the
+  engine's plus the typed items, lines 9a-9d with its exemptions, and line 21
+  with its tax when nothing is typed. A gap past the rounding is printed as
+  `CHECK:`.
+- **Not drafted, and named.** Part-year and nonresident returns (Schedule NR),
+  Schedule 1 lines 24A-24H (fill in the year of birth boxes) and 30 (the NOL),
+  MI-1040 lines 18-20 (nonrefundable credits), 22-24 (contributions, the
+  home buyer savings penalty, use tax), 27, 29, 30 (farmland, historic and
+  flow-through credits), 33 (amended returns), 38 (credit forward) and the
+  MI-2210 penalty. A filed MI-1040 is read from pages 1-3.
 
 ## The tax pack: one folder for the preparer (Phase 4l)
 
