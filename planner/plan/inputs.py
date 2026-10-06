@@ -31,11 +31,22 @@ from planner.engine.household import (
     Student,
 )
 from planner.ingest.derive import CountyError, resolve_county
-from planner.ingest.needs import _needed, undetermined
+from planner.ingest.needs import _needed, retirement_kind, undetermined
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import forecast
-from planner.taxprep import annuity, capgains, f8582, f8606, hsa, k1, sche, schf
+from planner.taxprep import (
+    annuity,
+    capgains,
+    f5329,
+    f8582,
+    f8606,
+    hsa,
+    k1,
+    sche,
+    schf,
+)
+from planner.taxprep.f5329 import half_birthday
 
 FILING = {
     "single": "SINGLE",
@@ -235,6 +246,7 @@ class Inputs:
     qcd: dict[str, float] = field(default_factory=dict)  # who -> excluded (3f-1)
     annuities: list[annuity.Worksheet] = field(default_factory=list)  # 3f-2
     f8606: list[f8606.Form8606] = field(default_factory=list)  # 3f-3
+    f5329: list[f5329.Form5329] = field(default_factory=list)  # 3f-5
     notes: list[str] = field(default_factory=list)
     overrides: Overrides = field(default_factory=Overrides)
     forecast: list[forecast.Stream] = field(default_factory=list)
@@ -265,17 +277,6 @@ class Inputs:
 def age_on(birth: str, day: date) -> int:
     b = date.fromisoformat(birth)
     return day.year - b.year - ((day.month, day.day) < (b.month, b.day))
-
-
-def half_birthday(birth: str, years: int) -> date:
-    """The day someone is ``years`` and a half: six calendar months after that
-    birthday, the month's last day when it is shorter (born August 31: 70 1/2
-    on the last day of February)."""
-    b = date.fromisoformat(birth)
-    month = b.month + 6
-    y, m = b.year + years + (month > 12), (month - 1) % 12 + 1
-    last = ((date(y + (m == 12), m % 12 + 1, 1)) - timedelta(days=1)).day
-    return date(y, m, min(b.day, last))
 
 
 def exclude_qcd(value: dict[str, Any], year: int, notes: list[str]) -> dict[str, float]:
@@ -482,6 +483,81 @@ def basis(
     return out
 
 
+def early_tax(
+    value: dict[str, Any],
+    fields: dict[str, Any],
+    r_facts: list[db.FactRow],
+    out: Inputs,
+    year: int,
+) -> list[f5329.Form5329]:
+    """Form 5329 Part I for each person with a 1099-R coded 1 or S: box 2a,
+    an IRA's less its Form 8606 line 10 share, an annuity with box 2a blank its
+    Simplified Method amount when it is the owner's only such annuity."""
+    docs = f5329.read(r_facts, retirement_kind(r_facts))
+    forms: list[f5329.Form5329] = []
+    for who, pre in (("you", ""), ("spouse", "spouse_")):
+        if who == "spouse" and fields.get("spouse") is None:
+            continue
+        mine = [r for r in docs.values() if r["owner"] == who]
+        for r in mine:
+            if "J" in str(r.get("7") or ""):
+                out.notes.append(
+                    f"{pre}early distribution from a Roth IRA (code J, "
+                    f"{r['issuer']}): Form 8606 Part III and Form 5329 line 1 "
+                    "are not handled; figure them by hand"
+                )
+        early = [r for r in mine if f5329.early_code(str(r.get("7") or ""))]
+        if not early:
+            continue
+        share = next((x.lines.get("10", 0.0) for x in out.f8606 if x.who == who), 0.0)
+        sheets = [w for w in out.annuities if w.who == who]
+        blank = [r for r in mine if r["kind"] == "plan" and "2a" not in r]
+        items: list[f5329.Early] = []
+        for r in early:
+            if "2a" in r:
+                amount = float(r["2a"] or 0)
+            elif r["kind"] == "plan" and len(sheets) == 1 and len(blank) == 1:
+                amount = sheets[0].taxable
+            else:
+                out.notes.append(
+                    f"{pre}Form 5329: {r['issuer']} is coded "
+                    f"{r.get('7')} with box 2a blank; line 1 leaves it out (add "
+                    "its taxable part by hand)"
+                )
+                continue
+            if r["kind"] != "plan":
+                amount *= 1 - share
+            items.append(
+                f5329.Early(
+                    r["issuer"], r["kind"], "S" in str(r.get("7")), round(amount, 2)
+                )
+            )
+        birth = value.get(pre + "birth_date")
+        aged = bool(birth) and f5329.aged(str(birth), year)
+        if birth and not aged:
+            half = f5329.half_birthday(str(birth), 59)
+            if half.year == year:
+                out.notes.append(
+                    f"{pre}early_exception: 59 1/2 on {half.isoformat()}; a code 1 "
+                    "or S paid on or after that day is exception 12: type it (12 "
+                    "and the amount)"
+                )
+        typed = value.get(pre + "early_exception")
+        if typed is None and not aged:
+            out.notes.append(
+                f"{pre}early_exception not given: the additional tax is 10% (25% "
+                "for a SIMPLE IRA's coded S) of every early distribution (type "
+                "none when no exception applies)"
+            )
+        try:
+            f = f5329.figure(who, items, typed, aged)
+        except ValueError as err:
+            out.notes.append(f"{pre}early_exception: {err}; taxed in full meanwhile")
+            f = f5329.figure(who, items, None, aged)
+        forms.append(f)
+    return forms
+
+
 def _recorded_conversions(conn: sqlite3.Connection, year: int) -> float:
     return round(
         sum(c.amount for c in db.conversions(conn) if c.date.startswith(f"{year}-")),
@@ -540,7 +616,8 @@ def build(
         report = _needed(conn, lay, year)
         recorded = _recorded_conversions(conn, year)
         through = forecast.ytd_through(conn, year)
-        left = undetermined(db.facts_for(conn, year, "1099-R", text=None))
+        r_facts = list(db.facts_for(conn, year, "1099-R", text=None))
+        left = undetermined(r_facts)
     finally:
         conn.close()
     value: dict[str, Any] = {}
@@ -732,6 +809,7 @@ def build(
             round(ov.planned_conversion)
         )
     out.f8606 = basis(value, fields, out.notes)
+    out.f5329 = early_tax(value, fields, r_facts, out, year)
     if ov.planned_hsa is not None:
         fields["hsa_contribution"] = int(round(ov.planned_hsa))
     if value.get("rentals") or value.get("k1s") or value.get("farms"):
