@@ -1967,6 +1967,9 @@ Pub. 527 Worksheet 5-1 lines 7a and 7b. `planner/taxprep/sche.py` drafts lines 3
 - **Totals.** Lines 23a-23e, 24 and 25 are drafted. Line 26 goes to Schedule 1 line 5,
   and the engine prices it as `rental_income`, whose loss reaches AGI through
   `loss_ald`. A typed `total_income` excludes Schedule E, which is added on top.
+- **QBI.** Rental income counts for the qualified business income deduction
+  (1040 line 13) only when `rental_qbi` is yes: the Rev. Proc. 2019-38 safe harbor
+  or a section 162 trade or business. Unanswered, it does not count.
 - **Checks.** A 1099-MISC box 1 or 2 above lines 23a or 23b is a CHECK. A royalty
   makes a 1099-MISC expected from each payer.
 
