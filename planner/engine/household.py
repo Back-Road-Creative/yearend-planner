@@ -321,6 +321,7 @@ class Household:
                 "is_tax_unit_dependent": {y: True},
                 "is_full_time_student": {y: d.full_time_student},
                 "is_disabled": {y: d.disabled},
+                "is_permanently_and_totally_disabled": {y: d.disabled},
                 "employment_income": {y: d.wages},
             }
         for st in self.students:

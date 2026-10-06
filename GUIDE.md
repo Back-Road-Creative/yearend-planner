@@ -1418,6 +1418,29 @@ line 18 less Schedule 3 lines 1-3); and the credit (line 12) on Schedule 3 line 
 table comes from the engine's own parameters for the year and the tests pin its 2025
 edges to the printed form.
 
+## Earned income credit (Phase 10, unit 3c-4)
+
+The draft works Form 1040 line 27a by the instructions' EIC worksheet (2025): Worksheet A,
+or Worksheet B when you or a joint spouse had Schedule C profit (Part 1: Schedule SE line 3
+less line 13, then line 1z). The EIC Table gives the credit on earned income and, when AGI
+is different and at or past the phase-out start ($10,620, or $17,730 joint, with no
+qualifying child; $23,350, or $30,470 joint, with one or more), on AGI too; the smaller
+is the credit. The table is priced from the engine's parameters for the year, and the
+tests pin it to rows and footnotes of the printed 2025 table.
+
+The draft also applies Steps 1-4 where it knows the answer: no credit with investment
+income over $11,950 (1040 lines 2a + 2b + 3b + 7a, a loss as zero), none married filing
+separately without a qualifying child, and without one the filer (or a joint spouse) must
+be 25 to 64 at the end of the year (25 the day before the birthday). A qualifying child is
+a dependent under 19, or under 24 and a full-time student, and younger than you (or your
+spouse), or permanently and totally disabled. Schedule EIC carries each child's year of
+birth and lines 4a-4b; type the name, SSN, relationship and months lived with you in the
+United States. Each child is taken to have a valid SSN and to have lived with you more
+than half the year; married filing separately with a child, the draft notes the special
+rule for separated spouses. Rental or passive income (Pub. 596 Worksheet 1), clergy pay,
+excluded Medicaid waiver payments and nontaxable combat pay are not drafted: a CHECK note
+appears when the engine's credit differs.
+
 ## Coverage gate (Phase 10, unit 2a)
 
 `planner.coverage.gate` runs right after intake, before any plan or draft, and lists
