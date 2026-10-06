@@ -464,8 +464,7 @@ year's state tax is `prior_nc_tax` or `prior_state_tax` (each estimated from
 last year's draft when one was carried over). Each is asked only
 for the state it belongs to, and the state itself is typed as its two-letter
 code.
-Income with over half in one quarter, or a planned year-end lump, raises the
-annualized-method flag (Schedule AI is not computed). The federal Form 2210
+The federal Form 2210
 penalty is figured on the regular method: a quarter of the required annual
 payment due on each date, withholding counted a quarter on each date, a payment
 on the business day after a weekend or holiday due date on time, each payment
@@ -474,8 +473,20 @@ underpayment rate of each calendar quarter it stays unpaid, to April 15 (a
 quarter not yet published takes the last published rate, and says so). The
 payments made count on their dates and the plan's later installments on their
 due dates, so the figure is what the shortfalls so far cost if the plan is
-followed; it rides with the balance due on the cash line. The states'
-underpayment penalties are reported as unavailable.
+followed; it rides with the balance due on the cash line. When income came
+unevenly, type `income_by_period` (asked once there is self-employment income,
+gains, IRA or other irregular income): each income line that did not come
+evenly and its total from January 1 through the end of March, May and August,
+like `se_income 0 4000 20000; long_term_gains 0 0 15000`; a line not typed is
+taken as received evenly. The annualized method (Form 2210 Schedule AI) then
+prices each period's income multiplied up to a year (4, 2.4, 1.5) through the
+engine, takes 22.5, 45, 67.5 and 90% of each, less the earlier installments and
+capped at the regular installment plus what earlier ones left unused, and the
+penalty is the lower of the two methods, with the required installments named.
+A planned year-end conversion or sale counts in the last period only, so it is
+figured even with nothing typed. Income with over half in one quarter and no
+`income_by_period` raises a note naming it. The states' underpayment penalties
+are reported as unavailable.
 
 ## The plan on one page (Phase 4e)
 
