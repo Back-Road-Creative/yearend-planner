@@ -1,0 +1,30 @@
+# Form 1099-DA (2025), IRS box labels: a broker's digital asset sale, one form
+# per sale. The tax year is the sale date's (box 1e). The asset, units and
+# dates join the issuer, so a broker's second sale is not a correction of its
+# first (planner.taxprep.capgains matches each to a lot). The "Applicable
+# checkbox on Form 8949" letter is G or H (short-term), J or K (long-term), or
+# X (the broker does not know the term; Form 8949 instructions). Box 2 checked
+# means basis was reported to the IRS (Form 8949 box G or J, else H or K).
+form: "1099-DA"
+years: [2025, 2026]
+match: ["1099-DA"]
+year_pattern: "\\b1e Date sold or disposed\\s*:?\\s*\\d{1,2}/\\d{1,2}/(20\\d\\d)"
+issuer_pattern: "FILER'?S name[^:\\n]*:\\s*([^\\n]+)"
+event:
+  asset: "\\b1b Name of digital asset\\s*:?\\s*([^\\n]+)"
+  units: "\\b1c Number of units\\s*:?\\s*([\\d,]*\\d(?:\\.\\d+)?)"
+  acquired: "\\b1d Date acquired\\s*:?\\s*(\\d{1,2}/\\d{1,2}/20\\d\\d|various)"
+  sold: "\\b1e Date sold or disposed\\s*:?\\s*(\\d{1,2}/\\d{1,2}/20\\d\\d)"
+boxes:
+  "8949": {label: "Applicable checkbox on Form 8949", kind: text, pattern: "Applicable checkbox on Form 8949\\s*:?\\s*\\(?(\\w)\\b", allowed: [G, H, J, K, X, "Y"]}
+  "1a": {label: "Code for digital asset", kind: text, pattern: "\\b1a Code for digital asset\\s*:?\\s*([^\\n]+)"}
+  "1b": {label: "Name of digital asset", kind: text, pattern: "\\b1b Name of digital asset\\s*:?\\s*([^\\n]+)"}
+  "1c": {label: "Number of units", kind: text, pattern: "\\b1c Number of units\\s*:?\\s*([\\d,]*\\d(?:\\.\\d+)?)"}
+  "1d": {label: "Date acquired", kind: text, pattern: "\\b1d Date acquired\\s*:?\\s*(\\d{1,2}/\\d{1,2}/20\\d\\d|various)"}
+  "1e": {label: "Date sold or disposed", kind: text, pattern: "\\b1e Date sold or disposed\\s*:?\\s*(\\d{1,2}/\\d{1,2}/20\\d\\d)", required: true}
+  "1f": {label: "Proceeds", pattern: "\\b1f Proceeds\\s*:?\\s*AMOUNT", required: true}
+  "1g": {label: "Cost or other basis", pattern: "\\b1g Cost or other basis\\s*:?\\s*AMOUNT"}
+  "1i": {label: "Wash sales loss disallowed", pattern: "\\b1i Wash sales? loss disallowed\\s*:?\\s*AMOUNT"}
+  "2": {label: "Basis reported to IRS", kind: check, options: {"yes": "Check if basis reported to IRS"}}
+  "4": {label: "Federal income tax withheld", pattern: "\\b4 Federal income tax withheld\\s*:?\\s*AMOUNT"}
+  "6": {label: "Gain or loss", kind: check, options: {short: "Short-term", long: "Long-term", ordinary: "Ordinary"}}

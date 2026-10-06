@@ -67,6 +67,9 @@ Forms 3921 and 3922 and W-2 box 12 code V are read: an incentive stock option sp
 the AMT adjustment on Form 6251, which the draft lays out with its line 11 on Schedule 2
 line 2; ordinary income from a disqualifying sale goes on Schedule 1 line 8k, and the
 compensation a broker's basis leaves out is a Form 8949 code B row (unit 3e-8).
+Form 1099-DA is read one sale per form: digital asset lots go to Form 8949 boxes G-L and
+Schedule D lines 1b-3 and 8b-10, box 4 is withholding, and the Form 1040 digital assets
+question is derived yes from a 1099-DA or typed (unit 3e-9).
 The draft works the earned income credit on 1040 line 27a by the EIC worksheet and the
 EIC Table, with Schedule EIC for each qualifying child (unit 3c-4), and Schedule 8812's
 additional child tax credit line by line, Part II-B included (unit 3c-5).
