@@ -50,6 +50,9 @@ MONEY = {
     "se_income": "se_income",
     "interest": "interest",
     "tax_exempt_interest": "tax_exempt_interest",
+    "unemployment": "unemployment",
+    "state_refund_taxable": "salt_refund",
+    "cancelled_debt": "cancelled_debt",
     "short_term_gains": "short_term_gains",
     "long_term_gains": "long_term_gains",
     "ira_distributions": "ira_distributions",
@@ -93,6 +96,9 @@ TOTAL_INCOME_LINES = (
     "qualified_dividends",
     "ira_distributions",
     "roth_conversion",
+    "unemployment",
+    "salt_refund",
+    "cancelled_debt",
 )
 # The lines a typed total_income can be put on: the residual is ordinary income
 # of the owner's own naming, never wages by default when wages are known.

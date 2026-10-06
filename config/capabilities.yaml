@@ -79,6 +79,11 @@ earned_income_credit:
   evidence: implemented
   tests: ["tests/test_eic.py"]
   note: "1040 line 27a by the EIC worksheet (unit 3c-4): Worksheet A, or B when anyone is self-employed (Schedule SE line 3 less line 13 plus line 1z), the EIC Table on earned income and, when AGI differs and is past the phase-out start, on AGI, the smaller; the table is priced from the engine's parameters and pinned to the printed 2025 rows and footnotes. Steps 1-4: the investment income limit (1040 lines 2a + 2b + 3b + 7a), the 25-64 age band without a child, no credit married filing separately without a child, and the separated-spouse rule noted with one. Qualifying children by age, student and disability (Schedule EIC lines 3-4b); each child's SSN, relationship and months at home are assumed and left to the preparer. Pub. 596 Worksheet 1 (rental or passive income) and the clergy, Medicaid waiver and combat pay rules are not drafted; the engine's eitc is checked against line 27a"
+income_1099g_1099c:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_income_1099g.py"]
+  note: "Form 1099-G (Rev. March 2024) and 1099-C (Rev. April 2025) read by templates 1099-g.yaml and 1099-c.yaml (unit 3e-1): Schedule 1 line 7 unemployment (box 1), line 1 the taxable part of a state or local refund (box 2) by the 2025 instructions' State and Local Income Tax Refund Worksheet (none taxable when last year's 1040 line 12 is within the standard deduction plus the age amounts, otherwise asked with the cap; married filing separately always asked), line 8c canceled debt (1099-C box 2, the Form 982 exclusions typed), line 9 = 8c + 8f, line 10 = 1 + 3 + 7 + 9; 1099-G box 4 onto 1040 line 25b and box 11 onto the state return's withholding; priced by the engine as unemployment_compensation, salt_refund_income and debt_relief; expected forms from the answers, and a 1099-C not predicted from last year's; blindness and the full worksheet with Schedule A lines 5d-5e are left to the preparer"
 aca_slcsp_county:
   status: verified
   evidence: implemented
