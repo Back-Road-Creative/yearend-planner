@@ -1566,6 +1566,52 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("MAGI headroom", "Draft 1040"),
     ),
     Need(
+        "foreign_tax_paid",
+        "Foreign tax paid",
+        "the foreign tax credit (Schedule 3 line 1, Form 1116 line 8)",
+        "1099-DIV box 7, 1099-INT box 6",
+        "money",
+        boxes=(("1099-DIV", "7"), ("1099-INT", "6")),
+        doc="vg_tax",
+        unlocks=("Draft 1040",),
+        asked=lambda s: _money(s, "interest") + _money(s, "ordinary_dividends") > 0,
+        derive_text=lambda config, conn, year, s: (
+            0.0,
+            "no 1099-DIV box 7 or 1099-INT box 6 on file",
+        ),
+    ),
+    Need(
+        "foreign_tax_carryover",
+        "Unused foreign tax carried to this year",
+        "Form 1116 line 10: foreign tax over an earlier year's limit (back 1 "
+        "year, forward 10)",
+        "last year's Schedule B (Form 1116), the carryover to this year; 0 when none",
+        "money",
+        unlocks=("Draft 1040",),
+        asked=lambda s: _money(s, "foreign_tax_paid") > 0,
+    ),
+    Need(
+        "foreign_source_income",
+        "Foreign source income (passive)",
+        "Form 1116 lines 1a and 3d: over $300 of foreign tax ($600 married "
+        "filing jointly) the credit is limited to the U.S. tax on it",
+        "each fund's year-end foreign source income statement (its share of "
+        "the dividends from foreign sources) and any foreign bank interest",
+        "money",
+        unlocks=("Draft 1040",),
+        asked=lambda s: foreign_form_needed(s),
+    ),
+    Need(
+        "foreign_qualified_dividends",
+        "Qualified dividends in the foreign source income",
+        "Form 1116 line 1a: qualified dividends taxed at 0%, 15% or 20% are "
+        "scaled down (the rate differential adjustment)",
+        "each fund's foreign source income statement (the qualified part); 0 when none",
+        "money",
+        unlocks=("Draft 1040",),
+        asked=lambda s: foreign_form_needed(s),
+    ),
+    Need(
         "short_term_gains",
         "Short-term gain or loss",
         "ordinary income",
@@ -1979,6 +2025,19 @@ def group_by_document(items: Iterable[Status]) -> list[Group]:
         else:
             typed.items.append(st)
     return [*by_doc.values(), *([typed] if typed.items else [])]
+
+
+def _money(so_far: dict[str, Any], key: str) -> float:
+    return float(so_far.get(key) or 0)
+
+
+def foreign_form_needed(so_far: dict[str, Any]) -> bool:
+    """Form 1116, not the election: over $300 of foreign tax ($600 married
+    filing jointly), or a carryover (2025 Form 1116 instructions, "Election
+    To Claim the Foreign Tax Credit Without Filing Form 1116")."""
+    limit = 600 if so_far.get("filing_status") == "married_joint" else 300
+    paid = _money(so_far, "foreign_tax_paid")
+    return paid > limit or (paid > 0 and _money(so_far, "foreign_tax_carryover") > 0)
 
 
 def schedule_b_required(interest: Any, dividends: Any) -> bool:
