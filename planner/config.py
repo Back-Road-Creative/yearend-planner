@@ -36,6 +36,7 @@ ASSUMPTION_FIELDS = (
     "conversion_objective",
     "roth_basis_contributions",
     "hsa_coverage",
+    "spouse_hsa_coverage",  # a joint spouse's own plan (unit 3a-7)
     "workplace_plan",
 )
 

@@ -873,7 +873,7 @@ NEEDS: tuple[Need, ...] = (
         "Form 8889 line 13 once the year has ended (planner hsa); before then, "
         "what you have put in yourself so far",
         "money",
-        boxes=(("8889", "13"),),
+        boxes=(("8889", "13"), ("8889 (spouse)", "13")),
         unlocks=("Levers", "Draft 1040", "Year rollover"),
     ),
     Need(
@@ -915,6 +915,19 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("Form 8889",),
     ),
     Need(
+        "hsa_family_share",
+        "Your share of the family HSA limit, in percent, when each spouse has an HSA",
+        "Form 8889 line 6: spouses with their own HSAs split the family limit, "
+        "equally unless they agree otherwise",
+        "the split you and your spouse agree on; 50 when you have not chosen",
+        "int",
+        asked=lambda s: (
+            s.get("filing_status") == "married_joint"
+            and "family" in (s.get("hsa_coverage"), s.get("spouse_hsa_coverage"))
+        ),
+        unlocks=("Form 8889",),
+    ),
+    Need(
         "se_health_premiums",
         "Health premiums paid (self-employed), before any premium tax credit",
         "the SE health deduction and ACA reconciliation (the deduction is these "
@@ -948,6 +961,15 @@ NEEDS: tuple[Need, ...] = (
 )
 
 SPOUSE = "spouse_"  # a joint spouse's own line: the head's key behind this
+# Each spouse's own Form 8889 (unit 3a-7): typed and summed per person, like
+# PERSON_INPUTS, though the engine takes only the household's deduction.
+PERSON_HSA = (
+    "hsa_coverage",
+    "hsa_contributions",
+    "hsa_employer_contributions",
+    "hsa_months",
+    "hsa_qualified_expenses",
+)
 
 
 def _spouse_asked(
@@ -964,12 +986,12 @@ def _spouse_asked(
 
 
 def _with_spouse(needs: tuple[Need, ...]) -> tuple[Need, ...]:
-    """Each per-person line (PERSON_INPUTS) is the head's, summed from the
+    """Each per-person line (PERSON_INPUTS, PERSON_HSA) is the head's, summed from the
     head's documents, followed by a joint spouse's twin summed from theirs
     (``data/inbox/spouse/``, or ``planner owner``)."""
     out: list[Need] = []
     for n in needs:
-        if n.key not in PERSON_INPUTS:
+        if n.key not in PERSON_INPUTS and n.key not in PERSON_HSA:
             out.append(n)
             continue
         out.append(replace(n, owner="you"))
@@ -1113,6 +1135,7 @@ SIGNED = frozenset({"se_income", "short_term_gains", "long_term_gains"})
 INT_RANGE = {
     "ss_claim_age": (62, 70),
     "hsa_months": (0, 12),
+    "hsa_family_share": (0, 100),
     "tipped_occupation_code": (0, 999),
 }
 MONEY_MAX = 100_000_000
@@ -1199,7 +1222,7 @@ def parse_value(need: Need, text: str) -> Any:
         return _dependents(need.key, s)
     if need.kind == "money":
         value = int(round(_number(need, s, "a dollar amount")))
-        if value < 0 and need.key not in SIGNED:
+        if value < 0 and need.key.removeprefix(SPOUSE) not in SIGNED:
             raise ValueError(f"{need.key}: not negative, got {s}")
         if abs(value) > MONEY_MAX:
             raise ValueError(f"{need.key}: over {MONEY_MAX:,}; check the figure")
@@ -1208,7 +1231,7 @@ def parse_value(need: Need, text: str) -> Any:
         v = _number(need, s, "a whole number")
         if v != int(v):
             raise ValueError(f"{need.key}: a whole number, got {s}")
-        lo, hi = INT_RANGE.get(need.key, (0, MONEY_MAX))
+        lo, hi = INT_RANGE.get(need.key.removeprefix(SPOUSE), (0, MONEY_MAX))
         if not lo <= v <= hi:
             raise ValueError(f"{need.key}: between {lo} and {hi}, got {s}")
         return int(v)

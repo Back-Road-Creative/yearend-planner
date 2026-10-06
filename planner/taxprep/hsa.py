@@ -9,11 +9,18 @@ is named: it draws a 6% excise tax each year it stays (Form 5329) unless it is
 taken out by the filing deadline. Part II: distributions not spent on qualified
 medical expenses are income, plus a 20% additional tax before 65.
 
+On a joint return each spouse with an HSA has their own Form 8889 from the
+documents marked theirs and their own typed answers (unit 3a-7): if either has
+family coverage both are treated as having it, spouses with their own HSAs
+split the family limit (equally unless hsa_family_share says otherwise), and
+each one 55 or older adds their own catch-up (2025 Instructions for Form 8889,
+Part I and lines 6-7).
+
 Not handled: Archer MSA contributions (line 4), a qualified HSA funding
-distribution from an IRA (line 10), rollovers (line 14b), splitting a family
-limit with a spouse's own HSA (line 6), and the testing-period income (Part
-III); each is named when it could apply. The stored ``8889`` facts feed the
-Needed panel's HSA deduction once the year has ended.
+distribution from an IRA (line 10), rollovers (line 14b), and the
+testing-period income (Part III); each is named when it could apply. The
+stored ``8889`` facts feed the Needed panel's HSA deduction once the year has
+ended.
 """
 
 from __future__ import annotations
@@ -22,11 +29,13 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import date
 
-from planner.ingest.needs import load_profile, need_values
+from planner.ingest.needs import PERSON_HSA, SPOUSE, load_profile, need_values
 from planner.ledger import db
 from planner.paths import Layout
 
 FORM = "8889"
+SPOUSE_FORM = "8889 (spouse)"
+WHO = ("you", "spouse")
 # Annual limits by coverage, IRC 223(b)(2) as indexed; the catch-up, IRC
 # 223(b)(3)(B), is not indexed. A year missing here takes the latest earlier one
 # and says so.
@@ -53,17 +62,17 @@ LABELS = {
     "17b": "Additional 20% tax",
 }
 KEYS = (
-    "hsa_contributions",
-    "hsa_employer_contributions",
-    "hsa_months",
-    "hsa_qualified_expenses",
+    *PERSON_HSA,
+    *(SPOUSE + k for k in PERSON_HSA),
     "filing_status",
+    "hsa_family_share",
 )
 
 
 @dataclass
 class HSA:
     year: int
+    who: str = "you"  # or a joint return's spouse
     lines: dict[str, float] = field(default_factory=dict)  # dollars, by line
     sources: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
@@ -84,15 +93,36 @@ def _r(x: float) -> float:
     return round(x, 2)
 
 
-def build(conn: sqlite3.Connection, lay: Layout, year: int) -> HSA:
-    """Form 8889 for a tax year; no lines when there is no HSA activity."""
-    h = HSA(year)
+def build(conn: sqlite3.Connection, lay: Layout, year: int, who: str = "you") -> HSA:
+    """``who``'s Form 8889 for a tax year (``spouse``: a joint return's
+    spouse's); no lines when they have no HSA activity."""
+    h = HSA(year, who)
     profile = load_profile(lay)
+    joint = profile.get("filing_status") == "married_joint" and bool(
+        profile.get("spouse_birth_date")
+    )
+    if who == "spouse" and not joint:
+        return h
+    pre, other = ("", SPOUSE) if who == "you" else (SPOUSE, "")
     v = need_values(conn, lay, year, KEYS)
-    out = _r(sum(f.value for f in db.facts_for(conn, year, "1099-SA") if f.box == "1"))
-    coverage = profile.get("hsa_coverage")
-    total = float(v["hsa_contributions"] or 0)
-    employer = float(v["hsa_employer_contributions"] or 0)
+    out = _r(
+        sum(
+            f.value
+            for f in db.facts_for(conn, year, "1099-SA")
+            if f.box == "1" and f.owner == who
+        )
+    )
+    coverage = profile.get(pre + "hsa_coverage")
+    partner = profile.get(other + "hsa_coverage") if joint else None
+    # Part I: either spouse's family plan makes both family.
+    by_partner = coverage == "self" and partner == "family"
+    if by_partner:
+        coverage = "family"
+    total = float(v[pre + "hsa_contributions"] or 0)
+    employer = float(v[pre + "hsa_employer_contributions"] or 0)
+    partner_hsa = partner in ("self", "family") and bool(
+        v[other + "hsa_contributions"] or v[other + "hsa_employer_contributions"]
+    )
     if coverage not in ("self", "family") and not (total or employer or out):
         return h
     lines, src = h.lines, h.sources
@@ -101,21 +131,26 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> HSA:
         lines[line], src[line] = _r(value), source
         return lines[line]
 
-    born = profile.get("birth_date")
+    born = profile.get(pre + "birth_date")
     age = year - date.fromisoformat(str(born)).year if born else None
     if total or employer or coverage in ("self", "family"):
         if coverage in ("self", "family"):
-            months = int(v["hsa_months"] or 12)
-            if v["hsa_months"] is None:
+            months = int(v[pre + "hsa_months"] or 12)
+            if v[pre + "hsa_months"] is None:
                 h.notes.append(
-                    "HSA coverage is taken as all 12 months; type hsa_months if it "
-                    "started or ended during the year"
+                    f"HSA coverage is taken as all 12 months; type {pre}hsa_months "
+                    "if it started or ended during the year"
                 )
             full, cite = limit(year, coverage)
             l3 = put(
                 "3",
                 full * months / 12,
-                f"{coverage} limit {full:,.0f} ({cite}) x {months}/12",
+                f"{coverage} limit {full:,.0f} ({cite}) x {months}/12"
+                + (
+                    "; the other spouse's plan is family, so both are"
+                    if by_partner
+                    else ""
+                ),
             )
             catch = CATCHUP * months / 12 if age is not None and age >= 55 else 0.0
             if age is None:
@@ -128,7 +163,20 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> HSA:
                 "HSA money went in without HSA-eligible coverage: all of it is an "
                 "excess contribution"
             )
-        l6 = put("6", l3, "line 3 (no Archer MSA on line 4)")
+        if joint and coverage == "family" and partner_hsa:
+            typed = v["hsa_family_share"]
+            share = 50 if typed is None else int(typed)
+            mine = share if who == "you" else 100 - share
+            l6 = put(
+                "6",
+                l3 * mine / 100,
+                f"line 3 x {mine}%: the family limit split between the spouses' "
+                "HSAs ("
+                + ("hsa_family_share" if typed is not None else "equally")
+                + ", line 6; no Archer MSA on line 4)",
+            )
+        else:
+            l6 = put("6", l3, "line 3 (no Archer MSA on line 4)")
         l7 = put(
             "7",
             catch,
@@ -155,24 +203,38 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> HSA:
                 "tax applies for each year it stays (Form 5329 Part VII)"
                 + ("; employer money over the limit is also wages" if l9 > l8 else "")
             )
-        if coverage == "family" and str(v["filing_status"] or "").startswith("married"):
-            h.notes.append(
-                "line 6 takes the whole family limit: if your spouse has an HSA of "
-                "their own, the limit is split between you"
-            )
+        if coverage == "family" and not partner_hsa:
+            if joint and who == "you":
+                h.notes.append(
+                    "line 6 takes the whole family limit: no HSA is on a document "
+                    "marked the spouse's; if they have one, mark its 5498-SA theirs "
+                    "(data/inbox/spouse/ or planner owner <file> spouse) and type "
+                    "spouse_hsa_coverage, and the limit is split"
+                )
+            elif not joint and str(v["filing_status"] or "").startswith("married"):
+                h.notes.append(
+                    "line 6 takes the whole family limit: if your spouse has an HSA "
+                    "of their own, the limit is split between you"
+                )
     if out:
-        put("14a", out, "1099-SA box 1")
+        put(
+            "14a",
+            out,
+            "1099-SA box 1" if who == "you" else "the spouse's 1099-SA box 1",
+        )
         l14c = put("14c", out, "14a (no rollover on line 14b)")
-        spent = v["hsa_qualified_expenses"]
+        spent = v[pre + "hsa_qualified_expenses"]
         if spent is None:
             h.notes.append(
-                "hsa_qualified_expenses not given: the distributions are taken as "
-                "spent on medical care (left out of income, not zeroed); type it "
-                "from the HSA's claims history"
+                f"{pre}hsa_qualified_expenses not given: the distributions are "
+                "taken as spent on medical care (left out of income, not zeroed); "
+                "type it from the HSA's claims history"
             )
-            l15 = put("15", l14c, "hsa_qualified_expenses not given (taken as 14c)")
+            l15 = put(
+                "15", l14c, f"{pre}hsa_qualified_expenses not given (taken as 14c)"
+            )
         else:
-            l15 = put("15", float(spent), "hsa_qualified_expenses (typed)")
+            l15 = put("15", float(spent), f"{pre}hsa_qualified_expenses (typed)")
         l16 = put("16", max(l14c - l15, 0.0), "14c - 15")
         if l16:
             if age is not None and age >= 65:
@@ -189,11 +251,15 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> HSA:
 
 
 def store(
-    conn: sqlite3.Connection, lay: Layout, year: int, today: date | None = None
+    conn: sqlite3.Connection,
+    lay: Layout,
+    year: int,
+    today: date | None = None,
+    who: str = "you",
 ) -> HSA:
-    """Rebuild the year; once it has ended, replace its 8889 facts when they
-    changed (an open year keeps what you have typed)."""
-    h = build(conn, lay, year)
+    """Rebuild ``who``'s year; once it has ended, replace their 8889 facts when
+    they changed (an open year keeps what you have typed)."""
+    h = build(conn, lay, year, who)
     if (today or date.today()) <= date(year, 12, 31):
         if h.lines:
             h.notes.append(
@@ -201,12 +267,14 @@ def store(
                 "contribution"
             )
         return h
-    db.replace_derived(conn, FORM, year, h.lines, LABELS, f"Form 8889 {year}")
+    form = FORM if who == "you" else SPOUSE_FORM
+    db.replace_derived(conn, form, year, h.lines, LABELS, f"Form {form} {year}")
     return h
 
 
 def render(h: HSA) -> str:
-    out = [f"Form 8889 (health savings accounts) for {h.year}"]
+    whose = ", the spouse's" if h.who == "spouse" else ""
+    out = [f"Form 8889 (health savings accounts) for {h.year}{whose}"]
     if not h.lines:
         out.append("no HSA coverage, contributions or distributions on file")
     for line, value in h.lines.items():
