@@ -1949,6 +1949,36 @@ the same grant and exercise dates replaces it.
 - **Not drafted, and named.** Form 6251 lines 2b-2h and 2j-3, Part III lines 12-40 (the
   engine's figure is used), the AMT foreign tax credit and Form 8801.
 
+## Digital assets: Form 1099-DA (Phase 10, unit 3e-9)
+
+Cryptocurrency, stablecoins and NFTs are property, and a sale or exchange is a capital
+gain or loss reported on its own part of Form 8949 (Form 8949 and Schedule D
+instructions). From 2025 a broker sends Form 1099-DA for each sale; drop them in the inbox
+with the rest. Each one is a separate sale, so the asset, units and dates join the
+exchange's name and a second form is kept beside the first; only a corrected copy of the
+same sale replaces it.
+
+- **Form 8949 boxes G to L.** A lot in the realized-lots CSV whose symbol is a 1099-DA's
+  asset, or one you list in `digital_assets` (the panel asks once you answer yes below),
+  goes to box G or J when its 1099-DA reported basis to the IRS (box 2 checked), H or K
+  when it did not, and I or L with no 1099-DA. A 1099-DA's box 1i (wash sale loss
+  disallowed) becomes code W; otherwise digital assets are not checked for wash sales,
+  which apply only to digital assets that are securities. A 1099-DA with no lot in the
+  CSV is its own row with the broker's proceeds and basis; a blank box 1g, or no term
+  (box 6, or the letter X), is left for you to fill rather than guessed.
+- **Schedule D.** Lines 1b, 2 and 3 (short-term) and 8b, 9 and 10 (long-term) add their
+  Form 8949 boxes (1b = A + G, 2 = B + H, 3 = C + I, and the same for D/J, E/K, F/L);
+  lines 7 and 15 add every line.
+- **Withholding.** 1099-DA box 4 is federal tax withheld, on Form 1040 line 25b.
+- **The 1040 question.** Every return answers "did you receive, sell, exchange or
+  otherwise dispose of a digital asset?" on page 1. A 1099-DA on file makes it yes;
+  otherwise type `digital_asset_activity` yes or no. Only holding one, or buying one with
+  dollars, is no (Form 1040 instructions). The draft shows the answer, or names it as
+  missing.
+- **Not drafted, and named.** Digital assets received as pay, a reward, mining or staking
+  are ordinary income (Schedule 1 line 8v or Schedule C) and are typed with that income;
+  a gift may need Form 709.
+
 ## Earned income credit (Phase 10, unit 3c-4)
 
 The draft works Form 1040 line 27a by the instructions' EIC worksheet (2025): Worksheet A,
