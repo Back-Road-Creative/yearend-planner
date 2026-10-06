@@ -26,7 +26,7 @@ from planner.ingest.needs import need_values, schedule_b_required
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
-from planner.taxprep import capgains, d400, hsa, schedule_c
+from planner.taxprep import capgains, d400, hsa, schedule_c, statereturn
 from planner.taxprep.expected import inventory
 
 ENGINE = (
@@ -467,11 +467,14 @@ def _form_8962(
 def build(lay: Layout, year: int) -> Draft:
     """The draft return for a tax year, from the ledger and the Needed panel."""
     inp = inputs.build(lay, year)
+    ret = statereturn.get(inp.household.state)  # None: no state return drafted
+    state_keys = ret.keys if ret else ()
+    state_engine = ret.engine if ret else ()
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
         facts = db.facts_for(conn, year)
         pays = esttax.payments(conn, lay, year)
-        typed = need_values(conn, lay, year, (*d400.KEYS, "foreign_accounts"))
+        typed = need_values(conn, lay, year, (*state_keys, "foreign_accounts"))
         cg = capgains.build(conn, lay, year)
         h = hsa.build(conn, lay, year)
         hs = hsa.build(conn, lay, year, "spouse")  # a joint spouse's own 8889
@@ -479,7 +482,11 @@ def build(lay: Layout, year: int) -> Draft:
     finally:
         conn.close()
     paid = [p for p in pays if p.agency == "fed"]
-    nc_paid = [(p.date, p.amount, p.origin) for p in pays if p.agency == "nc"]
+    state_paid = [
+        (p.date, p.amount, p.origin)
+        for p in pays
+        if ret is not None and p.agency == ret.code.lower()
+    ]
     # The draft is a tax return: a filer born January 1 is 65 for the year
     # before (Pub. 501), which the standard deduction and Part V both count.
     hh = dataclasses.replace(
@@ -505,7 +512,7 @@ def build(lay: Layout, year: int) -> Draft:
         )
     exempt = float(hh.tax_exempt_interest)  # the Needed panel: boxes, then typed
     us = _sum(facts, d400.US_INTEREST)
-    if us:  # taxable federally, subtracted on NC Schedule S line 18
+    if us:  # taxable federally; no state taxes it (NC: Schedule S line 18)
         hh = dataclasses.replace(
             hh, other={**hh.other, "us_govt_interest_person": int(round(us))}
         )
@@ -534,7 +541,7 @@ def build(lay: Layout, year: int) -> Draft:
     if hh.filing_status == "SEPARATE" and year in SCH_1A_YEARS:
         priced = dataclasses.replace(hh, qualified_tips=0, qualified_overtime=0)
     _, care = tax.dependent_care(year, priced)  # Form 2441 Part III
-    v = tax.values(year, priced, (*ENGINE, *d400.ENGINE), PRIOR, OWN)
+    v = tax.values(year, priced, (*ENGINE, *state_engine), PRIOR, OWN)
     d = Draft(
         year,
         tax.engine_version(),
@@ -858,7 +865,7 @@ def build(lay: Layout, year: int) -> Draft:
             v = tax.values(
                 year,
                 dataclasses.replace(priced, tax_unit_inputs=form_rounded),
-                (*ENGINE, *d400.ENGINE),
+                (*ENGINE, *state_engine),
                 PRIOR,
             )
         l13b = add(
@@ -1037,9 +1044,9 @@ def build(lay: Layout, year: int) -> Draft:
         limit = 1500.0 if hh.filing_status == "SEPARATE" else 3000.0
         _schedule_d(sheet, d, cg, l7, l11 - l14, limit)
     _schedule_b(sheet, d, facts, l2b, l3b, typed["foreign_accounts"])
-    if hh.state == "NC":
+    if ret is not None:
         married = hh.filing_status == "JOINT"
-        d400.lay_lines(add, d.notes, v, facts, nc_paid, year, l11, typed, married)
+        ret.lay(add, d.notes, v, facts, state_paid, year, l11, typed, married)
 
     # The lines against the engine's own totals: a gap is a mapping the draft
     # missed, and is said, never hidden.
@@ -2332,8 +2339,7 @@ ORDER = (
     "8889",
     hsa.SPOUSE_FORM,
     "8962",
-    d400.FORM,
-    d400.SCHED,
+    *(f for r in statereturn.RETURNS.values() for f in r.forms),
 )
 HEADINGS = {
     "1040": "Form 1040",
@@ -2346,8 +2352,7 @@ HEADINGS = {
     "8880": "Form 8880 (credit for qualified retirement savings contributions)",
     "EIC": "EIC Worksheet (Form 1040 line 27a: A, or B when self-employed)",
     SCH_EIC: "Schedule EIC (qualifying child information)",
-    d400.FORM: "NC Form D-400",
-    d400.SCHED: "NC D-400 Schedule S (additions and deductions)",
+    **{f: h for r in statereturn.RETURNS.values() for f, (h, _) in r.forms.items()},
     "Carryover": "Capital loss carryover to next year",
 }
 # The capability row behind each form's tag; any other form is draft_return's.
@@ -2367,8 +2372,7 @@ FORM_CAPABILITY = {
     "8880": "savers_credit",
     "EIC": "earned_income_credit",
     SCH_EIC: "earned_income_credit",
-    d400.FORM: "nc_d400_draft",
-    d400.SCHED: "nc_d400_draft",
+    **{f: c for r in statereturn.RETURNS.values() for f, (_, c) in r.forms.items()},
     "Carryover": "schedule_d",
 }
 

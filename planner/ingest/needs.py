@@ -632,6 +632,7 @@ NEEDS: tuple[Need, ...] = (
         "the tax line of last year's return for the state you live in",
         "money",
         PRIOR,
+        estimate=(("CARRY-EST", "state_tax"),),
         doc="filed_return",
         unlocks=("Estimated tax", "Year rollover"),
         asked=lambda s: _other_taxing_state(s),

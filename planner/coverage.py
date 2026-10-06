@@ -13,9 +13,10 @@ from datetime import date
 from planner import states
 from planner.config import load_capabilities
 from planner.paths import Layout
+from planner.taxprep import statereturn
 
 VERIFIED, ESTIMATED, NOT_HANDLED = "verified", "estimated", "not handled"
-DRAFTED_STATES = states.DRAFTED  # the states whose return the draft lays out
+DRAFTED_STATES = statereturn.RETURNS  # the states whose return the draft lays out
 STATE_RETURN = "state return"  # what a state gap touches: that return alone
 # Every section whose figure rests on the household's income and deductions;
 # "draft" stands for each form of the draft return.
