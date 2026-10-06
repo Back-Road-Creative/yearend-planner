@@ -78,6 +78,38 @@ class Dependent:
     wages: int = 0
 
 
+# The engine's eligibility tests for each credit (policyengine-us takes them as
+# inputs, all false by default): the student's answers that the typed credit
+# claims are true (2025 Form 8863 Part III lines 23-26 and the 1098-T and EIN
+# requirements; the lifetime learning credit needs only the school and form).
+EDUCATION_CREDITS = {
+    "aotc": (
+        "is_pursuing_credential_for_american_opportunity_credit",
+        "attends_eligible_educational_institution_for_american_opportunity_credit",
+        "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+        "has_american_opportunity_credit_1098_t_or_exception",
+        "has_american_opportunity_credit_institution_ein",
+    ),
+    "llc": (
+        "attends_eligible_educational_institution_for_lifetime_learning_credit",
+        "has_lifetime_learning_credit_1098_t_or_exception",
+    ),
+}
+
+
+@dataclass(frozen=True)
+class Student:
+    """A student on the return (unit 3c-2): who ("p" the head, "s" the spouse,
+    "d1"... a dependent in order), the adjusted qualified education expenses
+    (paid less tax-free assistance: Form 8863's worksheet, before the $4,000
+    or $10,000 cap) and the credit claimed for them, "aotc" (the American
+    opportunity credit) or "llc" (the lifetime learning credit)."""
+
+    who: str
+    expenses: int
+    credit: str
+
+
 def _people(kind: str, cls: type, data: Any) -> Any:
     if not isinstance(data, Mapping):
         raise ValueError(f"{kind}: expected a mapping, not {data!r}")
@@ -145,6 +177,11 @@ class Household:
     tax_unit_inputs: dict[str, float] = field(default_factory=dict)
     spouse: Person | None = None  # a joint return's second person (unit 3a-1)
     dependents: tuple[Dependent, ...] = ()
+    # Form 8863 (unit 3c-2): each student and their credit, and the line 7
+    # box: a filer under 24 who meets its three conditions gets no refundable
+    # American opportunity credit (all of it is nonrefundable).
+    students: tuple[Student, ...] = ()
+    aotc_refundable_barred: bool = False
 
     def __post_init__(self) -> None:
         missing = [
@@ -162,6 +199,21 @@ class Household:
                 f"a spouse files JOINT here, not {self.filing_status}: a separate "
                 "return's spouse is not in its tax unit"
             )
+        people = {"p", *(("s",) if self.spouse is not None else ())}
+        people |= {f"d{i}" for i in range(1, len(self.dependents) + 1)}
+        seen: set[str] = set()
+        for st in self.students:
+            if st.who not in people or st.who in seen:
+                raise ValueError(
+                    f"student {st.who!r}: not a person on the return or named twice "
+                    f"(one of {sorted(people)}, each once)"
+                )
+            if st.credit not in EDUCATION_CREDITS or st.expenses < 0:
+                raise ValueError(
+                    f"student {st.who!r}: credit one of {sorted(EDUCATION_CREDITS)} "
+                    f"and expenses not negative, not {st.credit!r} {st.expenses}"
+                )
+            seen.add(st.who)
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Household:
@@ -175,6 +227,9 @@ class Household:
             out["spouse"] = _people("spouse", Person, out["spouse"])
         out["dependents"] = tuple(
             _people("dependent", Dependent, d) for d in out.get("dependents") or ()
+        )
+        out["students"] = tuple(
+            _people("student", Student, st) for st in out.get("students") or ()
         )
         return cls(**out)
 
@@ -239,6 +294,10 @@ class Household:
                 "is_disabled": {y: d.disabled},
                 "employment_income": {y: d.wages},
             }
+        for st in self.students:
+            people[st.who]["qualified_tuition_expenses"] = {y: st.expenses}
+            for flag in EDUCATION_CREDITS[st.credit]:
+                people[st.who][flag] = {y: True}
         members = list(people)
         couple = [m for m in ("p", "s") if m in people]
         tax_unit: dict[str, Any] = {
@@ -246,6 +305,8 @@ class Household:
             "filing_status": {y: self.filing_status},
             "health_savings_account_ald": {y: self.hsa_contribution},
         }
+        if self.aotc_refundable_barred:
+            tax_unit["refundable_american_opportunity_credit"] = {y: 0}
         for k, amount in self.tax_unit_inputs.items():
             tax_unit[k] = {y: amount}
         if self.slcsp_monthly is not None:

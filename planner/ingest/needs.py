@@ -61,7 +61,8 @@ class Need:
     label: str
     why: str
     source: str  # the document that supplies it, with where to get it
-    kind: str  # date | int | money | fraction | enum | monthly | dependents | str
+    kind: str  # date | int | money | fraction | enum | monthly | dependents |
+    # education | str
     scope: str = YEAR
     boxes: tuple[tuple[str, str], ...] = ()  # (form, box) ledger lookups, summed
     estimate: tuple[tuple[str, str], ...] = ()  # YTD facts that stand in meanwhile
@@ -215,6 +216,11 @@ DOCS: dict[str, Doc] = {
             "f1098",
             "Form 1098 (two years in a row)",
             "your loan servicer's website > documents or tax forms",
+        ),
+        Doc(
+            "f1098t",
+            "Form 1098-T from each school",
+            "the school's student account or bursar portal > tax forms (1098-T)",
         ),
         Doc(
             "insurer",
@@ -730,6 +736,44 @@ NEEDS: tuple[Need, ...] = (
         "reimbursed); type 0 if none",
         "money",
         asked=lambda s: _dependent_care(s),
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "education",
+        "Students: qualified education expenses and the credit for each (or none)",
+        "Form 8863: the American opportunity credit (up to $2,500 a student, 40% "
+        "refundable) or the lifetime learning credit (20% of up to $10,000 a "
+        "return); tuition, fees and course materials paid, less the tax-free "
+        "scholarships and grants that paid them",
+        "each student's 1098-T (box 1 paid, box 5 scholarships and grants) and "
+        "receipts for required books and supplies: who (you, spouse, or "
+        "dependent N in the order the dependents were typed), the expenses paid, "
+        "aid and the tax-free assistance, then aotc or llc: dependent 1 6500 aid "
+        "1500 aotc; you 3000 llc; or none. aotc is only for a student in the "
+        "first four years of college, at least half-time toward a degree or "
+        "credential, with the credit claimed for 3 or fewer earlier years, no "
+        "felony drug conviction, and the school's EIN",
+        "education",
+        doc="f1098t",
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "aotc_refundable_barred",
+        "Do the Form 8863 line 7 conditions all apply to you (yes or no)",
+        "a filer under 24 at the end of the year who meets all three gets no "
+        "refundable American opportunity credit: all of it is nonrefundable "
+        "(2025 Form 8863 line 7)",
+        "yes if all three hold: (1) you were under 18, or 18 with earned income "
+        "under half your support, or a full-time student over 18 and under 24 "
+        "with earned income under half your support; (2) a parent was alive at "
+        "the end of the year; (3) you are not filing a joint return. Otherwise "
+        "no (always no at 24 or older)",
+        "enum",
+        choices=("yes", "no"),
+        asked=lambda s: (
+            s.get("filing_status") != "married_joint"
+            and any(e.get("credit") == "aotc" for e in s.get("education") or ())
+        ),
         unlocks=("Draft 1040",),
     ),
     Need(
@@ -1319,6 +1363,45 @@ def _dependents(key: str, s: str) -> list[dict[str, Any]]:
     return out
 
 
+_AMOUNT = r"\$?([\d,]+(?:\.\d+)?)"
+_EDUCATION = re.compile(
+    rf"(you|spouse|dependent\s+(\d+))\s+{_AMOUNT}(?:\s+aid\s+{_AMOUNT})?"
+    r"\s+(aotc|llc)",
+    re.IGNORECASE,
+)
+
+
+def _education(key: str, s: str) -> list[dict[str, Any]]:
+    """``dependent 1 6500 aid 1500 aotc; you 3000 llc`` or ``none``: each
+    student (you, spouse or dependent N), the expenses paid, the tax-free
+    assistance that paid them, and the credit claimed."""
+    if s.lower() == "none":
+        return []
+    out: list[dict[str, Any]] = []
+    for entry in (e.strip() for e in s.split(";") if e.strip()):
+        m = _EDUCATION.fullmatch(entry)
+        if m is None:
+            raise ValueError(
+                f"{key}: {entry!r} is not who, paid, [aid amount,] aotc or llc "
+                "(like dependent 1 6500 aid 1500 aotc; you 3000 llc), or none"
+            )
+        who = m.group(1).lower().split()
+        student = " ".join(who) if who[0] != "dependent" else f"dependent {int(who[1])}"
+        if student == "dependent 0":
+            raise ValueError(f"{key}: dependents count from 1, in the order typed")
+        if any(e["student"] == student for e in out):
+            raise ValueError(f"{key}: {student} is named twice")
+        paid, aid = (round(float((g or "0").replace(",", ""))) for g in m.group(3, 4))
+        if max(paid, aid) > MONEY_MAX:
+            raise ValueError(f"{key}: over {MONEY_MAX:,}; check the figure")
+        out.append(
+            {"student": student, "paid": paid, "aid": aid, "credit": m.group(5).lower()}
+        )
+    if len(out) > DEPENDENTS_MAX + 2:
+        raise ValueError(f"{key}: at most {DEPENDENTS_MAX + 2} students")
+    return out
+
+
 def parse_value(need: Need, text: str) -> Any:
     """Typed, validated; a bad answer is an error naming what is expected,
     never a guess."""
@@ -1329,6 +1412,8 @@ def parse_value(need: Need, text: str) -> Any:
         return "none" if s.lower() == "none" else _date(need.key, s)
     if need.kind == "dependents":
         return _dependents(need.key, s)
+    if need.kind == "education":
+        return _education(need.key, s)
     if need.kind == "money":
         value = int(round(_number(need, s, "a dollar amount")))
         if value < 0 and need.key.removeprefix(SPOUSE) not in SIGNED:
