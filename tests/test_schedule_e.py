@@ -149,7 +149,7 @@ def test_special_allowance_phases_out() -> None:
         -14000.0,
         -10000.0,
     )
-    assert any("6,000.00 of rental loss is not allowed" in n for n in r.notes)
+    assert any("6,000.00 of passive loss is not allowed" in n for n in r.notes)
 
 
 def test_separate_lived_apart_allowance() -> None:
@@ -167,7 +167,7 @@ def test_conditions_fail_takes_form_8582() -> None:
     assert _lines(r)["22A"] == -3000.0
     r = _run(text, simple="no", allowed=9000.0)
     assert _lines(r)["22A"] == -8000.0
-    assert any(n.startswith("CHECK rental_loss_allowed") for n in r.notes)
+    assert any(n.startswith("CHECK passive_loss_allowed") for n in r.notes)
     r = _run(text, simple=None)
     assert _lines(r)["22A"] == 0.0
     assert any("until rental_passive_simple" in n for n in r.notes)
@@ -195,7 +195,7 @@ def test_passive_questions_asked_only_for_a_loss(planner_home: Path) -> None:
     enter(lay, 2025, "rental_passive_simple", "no")
     keys = {s.need.key for s in _needed(conn, lay, 2025).items}
     conn.close()
-    assert {"rental_passive_simple", "rental_loss_allowed"} <= keys
+    assert {"rental_passive_simple", "passive_loss_allowed"} <= keys
 
 
 def test_inputs_magi_and_rental_income(planner_home: Path) -> None:

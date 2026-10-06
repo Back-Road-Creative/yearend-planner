@@ -209,8 +209,10 @@ def magi_part(cols: list[Column]) -> float:
 @dataclass
 class Result:
     lines: list[tuple[str, str, float, str]]  # (line, label, value, source)
-    total: float  # line 26, onto Schedule 1 line 5
+    total: float  # line 26, onto Schedule 1 line 5 (or line 41)
     notes: list[str]
+    ratio: float = 1.0  # the share of each passive loss allowed
+    ratio_src: str = ""
 
 
 LABELS = {
@@ -226,6 +228,70 @@ LABELS = {
 }
 
 
+def allowance(
+    cols: list[Column],
+    *,
+    magi: float,
+    separate: bool,
+    simple: str | None,
+    allowed: float | None,
+    k1_income: float = 0.0,
+    k1_losses: float = 0.0,
+) -> tuple[float, str, list[str]]:
+    """(The share of each passive loss Form 8582 allows, its source, notes).
+    Rental columns and K-1 passive items (planner.taxprep.k1) share one
+    allowance. ``simple`` is the rental_passive_simple answer and ``allowed``
+    the typed passive_loss_allowed: Form 8582's allowed losses in total
+    (Schedule E line 22, line 28 column (g) and line 33 column (c)). The
+    special allowance needs rentals to be the only passive activity, so a
+    K-1 passive item always takes the typed figure."""
+    notes: list[str] = []
+    pnet = passive_net(cols)
+    rental_losses = -sum(c.net for c in cols if c.passive and c.net < 0)
+    losses = rental_losses + k1_losses
+    income = rental_losses + pnet + k1_income  # Form 8582 lines 1a + 2a + 3a
+    if income >= losses:
+        return 1.0, "passive income covers the passive losses", notes
+    k1 = bool(k1_income or k1_losses)
+    if simple == "yes" and not k1:
+        five, cap = ALLOWANCE[separate]
+        line8 = min(max(five - max(magi, 0.0), 0.0) * 0.5, cap)
+        allow = income + min(-pnet, line8)  # Form 8582 lines 9 + 10
+        src = (
+            f"Form 8582 lines 9 + 10: the special allowance "
+            f"{min(-pnet, line8):,.0f} (50% of {five:,} less modified AGI "
+            f"{magi:,.0f}, at most {cap:,}) + passive income {income:,.0f}"
+        )
+    elif allowed is not None and (k1 or simple == "no"):
+        allow = min(float(allowed), losses)
+        src = "passive_loss_allowed (Form 8582)"
+        if float(allowed) > losses:
+            notes.append(
+                f"CHECK passive_loss_allowed {float(allowed):,.0f} is more than "
+                f"the passive losses {losses:,.0f}; the draft takes the losses"
+            )
+    else:
+        allow = income
+        src = "passive income only (the passive-loss answers are missing)"
+        notes.append(
+            "Schedule E allows a passive loss only up to the passive income "
+            "until "
+            + (
+                "passive_loss_allowed (Form 8582) is answered"
+                if k1
+                else "rental_passive_simple (and, when no, passive_loss_allowed "
+                "from Form 8582) is answered"
+            )
+        )
+    if losses - allow > 0.005:
+        notes.append(
+            f"Schedule E: {losses - allow:,.2f} of passive loss is not allowed "
+            "this year; it carries to next year's Form 8582 as a prior-year "
+            "unallowed loss (lines 1c, 2c, 3c)"
+        )
+    return allow / losses, src, notes
+
+
 def schedule(
     cols: list[Column],
     *,
@@ -233,47 +299,19 @@ def schedule(
     separate: bool,
     simple: str | None,
     allowed: float | None,
+    k1_income: float = 0.0,
+    k1_losses: float = 0.0,
 ) -> Result:
-    """Lines 3-26. ``simple`` is the rental_passive_simple answer and
-    ``allowed`` the typed rental_loss_allowed (Form 8582's total of line 22),
-    read only when the special-allowance conditions do not all hold."""
-    notes: list[str] = []
-    pnet = passive_net(cols)
-    losses = -sum(c.net for c in cols if c.passive and c.net < 0)
-    allow, allow_src = losses, "line 21 (no passive net loss)"
-    if pnet < 0:
-        income = losses + pnet  # Form 8582 line 1a
-        if simple == "yes":
-            five, cap = ALLOWANCE[separate]
-            line8 = min(max(five - max(magi, 0.0), 0.0) * 0.5, cap)
-            allow = income + min(-pnet, line8)  # Form 8582 lines 9 + 10
-            allow_src = (
-                f"Form 8582 lines 9 + 10: the special allowance "
-                f"{min(-pnet, line8):,.0f} (50% of {five:,} less modified AGI "
-                f"{magi:,.0f}, at most {cap:,}) + passive income {income:,.0f}"
-            )
-        elif simple == "no" and allowed is not None:
-            allow = min(float(allowed), losses)
-            allow_src = "rental_loss_allowed (Form 8582)"
-            if float(allowed) > losses:
-                notes.append(
-                    f"CHECK rental_loss_allowed {float(allowed):,.0f} is more than "
-                    f"the rental losses {losses:,.0f}; the draft takes the losses"
-                )
-        else:
-            allow = income
-            allow_src = "passive income only (the passive-loss answers are missing)"
-            notes.append(
-                "Schedule E line 22 allows a rental loss only up to the passive "
-                "income until rental_passive_simple (and, when no, "
-                "rental_loss_allowed from Form 8582) is answered"
-            )
-        if losses - allow > 0.005:
-            notes.append(
-                f"Schedule E: {losses - allow:,.2f} of rental loss is not allowed "
-                "this year; it carries to next year's Form 8582 as a prior-year "
-                "unallowed loss (line 1c)"
-            )
+    """Lines 3-26, with the passive-loss share from ``allowance``."""
+    ratio, ratio_src, notes = allowance(
+        cols,
+        magi=magi,
+        separate=separate,
+        simple=simple,
+        allowed=allowed,
+        k1_income=k1_income,
+        k1_losses=k1_losses,
+    )
     lines: list[tuple[str, str, float, str]] = []
     total_in = total_out = 0.0
     for c in cols:
@@ -295,13 +333,13 @@ def schedule(
             total_in += c.net
             continue
         if c.passive:
-            l22 = c.net * allow / losses
+            l22 = c.net * ratio
             lines.append(
                 (
                     "22" + c.letter,
                     LABELS["22"],
                     l22,
-                    f"{allow_src}, by its share of the losses",
+                    f"{ratio_src}, by its share of the losses",
                 )
             )
             total_out += l22
@@ -358,4 +396,4 @@ def schedule(
         notes.append(
             "Schedule E: properties past C go on a second page (lines 1-22 only)"
         )
-    return Result(lines, total, notes)
+    return Result(lines, total, notes, ratio, ratio_src)

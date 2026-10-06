@@ -1438,7 +1438,7 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("Draft 1040",),
     ),
     Need(
-        "rental_loss_allowed",
+        "passive_loss_allowed",
         "Rental loss allowed by Form 8582 (the total of Schedule E line 22)",
         "a rental loss when the special-allowance conditions do not all hold",
         "your Form 8582 (with its Worksheets 1, 5 and 6): the rental losses it "
