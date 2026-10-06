@@ -1,0 +1,26 @@
+# New York Form IT-201, page 4 (refundable credits, payments, refund, owed).
+# Lines 63-71 are the credits next year's safe harbor subtracts.
+form: NY-IT201
+years: [2025]
+match: ["IT-201 (20", "Enter amount from line 61"]
+year_pattern: 'IT-201 \((20\d\d)\)'
+issuer: NY
+boxes:
+  "62": {label: "Total taxes", pattern: 'Enter amount from line 61[\s.•]*62\s+AMOUNT'}
+  "63": {label: "Empire State child credit", pattern: 'Empire State child credit[\s.•]*63\s+AMOUNT'}
+  "64": {label: "NYS/NYC child and dependent care credit", pattern: 'child and dependent care credit[\s.•]*64\s+AMOUNT'}
+  "65": {label: "NYS earned income credit", pattern: 'NYS earned income credit \(EIC\)[\s.•]*65\s+AMOUNT'}
+  "66": {label: "NYS noncustodial parent EIC", pattern: 'NYS noncustodial parent EIC[\s.•]*66\s+AMOUNT'}
+  "67": {label: "Real property tax credit", pattern: 'Real property tax credit[\s.•]*67\s+AMOUNT'}
+  "68": {label: "College tuition credit", pattern: 'College tuition credit[\s.•]*68\s+AMOUNT'}
+  "69": {label: "NYC school tax credit (fixed amount)", pattern: 'also complete F on page 1\)[\s.•]*69\s+AMOUNT'}
+  "69a": {label: "NYC school tax credit (rate reduction amount)", pattern: 'NYC school tax credit \(rate reduction amount\)[\s.•]*69a\s+AMOUNT'}
+  "70": {label: "NYC earned income credit", pattern: 'NYC earned income credit[\s.•]*70\s+AMOUNT'}
+  "70a": {label: "NYC income tax elimination credit", pattern: 'NYC income tax elimination credit[\s.•]*70a\s+AMOUNT'}
+  "71": {label: "Other refundable credits", pattern: 'Other refundable credits \(Form IT-201-ATT, line 18\)[\s.•]*71\s+AMOUNT'}
+  "72": {label: "Total New York State tax withheld", pattern: 'Total New York State tax withheld[\s.•]*72\s+AMOUNT'}
+  "75": {label: "Total estimated tax payments", pattern: 'amount paid with Form IT-370[\s.•]*75\s+AMOUNT'}
+  "76": {label: "Total payments", pattern: 'Total payments \(add lines 63 through 75\)[\s.•]*76\s+AMOUNT'}
+  "77": {label: "Amount overpaid", pattern: 'subtract line 62 from line 76\)[\s.•]*77\s+AMOUNT'}
+  "78": {label: "Amount available for refund", pattern: 'subtract line 79 from line 77\)[\s.•]*78\s+AMOUNT'}
+  "80": {label: "Amount you owe", pattern: 'mail it with your return\.[\s.•]*80\s+AMOUNT'}
