@@ -60,12 +60,8 @@ HOUSEHOLD_NEEDED = {
     "HEAD_OF_HOUSEHOLD": "name the qualifying person (planner enter dependents "
     "YYYY-MM-DD [student|disabled], ...)",
 }
-# Once the people are named, what is still per person (units 2c and 3a-3).
-PEOPLE = (
-    "Not handled: a spouse's own HSA is not modeled; the HSA deduction and the "
-    "draft's Form 8889 are the first person's"
-)
-PEOPLE_TOUCH = ("draft", "esttax")
+# Once the people are named nothing about them stays tagged: the spouse's own
+# lines, Schedule SE and Form 8889 are theirs (units 3a-4, 3a-5 and 3a-7).
 
 
 @dataclass(frozen=True)
@@ -122,16 +118,6 @@ def gate(
                 HOUSEHOLD[filing_status],
                 HOUSEHOLD_NEEDED[filing_status],
                 PRICED,
-            )
-        )
-    elif spouse:
-        out.append(
-            Gap(
-                "household",
-                PEOPLE,
-                "have a preparer add the spouse's own HSA (their Form 8889), if "
-                "they have one",
-                PEOPLE_TOUCH,
             )
         )
     if state and state not in DRAFTED_STATES:

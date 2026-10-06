@@ -619,7 +619,8 @@ def gains(year: int = typer.Option(..., help="tax year", min=1990, max=2100)) ->
 
 @app.command()
 def hsa(year: int = typer.Option(..., help="tax year", min=1990, max=2100)) -> None:
-    """Form 8889: the HSA limit for your coverage and months, employer money
+    """Form 8889 (and a joint spouse's own): the HSA limit for the coverage and
+    months, employer money
     against it, the deduction, any excess, and distributions not spent on
     medical care. Once the year has ended its deduction feeds the Needed
     panel."""
@@ -629,10 +630,12 @@ def hsa(year: int = typer.Option(..., help="tax year", min=1990, max=2100)) -> N
     lay = layout()
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
-        h = form_8889.store(conn, lay, year)
+        forms = [form_8889.store(conn, lay, year, who=w) for w in form_8889.WHO]
     finally:
         conn.close()
-    typer.echo(form_8889.render(h), nl=False)
+    for h in forms:
+        if h.who == "you" or h.lines:
+            typer.echo(form_8889.render(h), nl=False)
 
 
 @app.command()
