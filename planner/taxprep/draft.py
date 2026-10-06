@@ -105,6 +105,7 @@ WITHHELD = (
     ("1099-K", "4"),
     ("1099-B", "4"),
     ("SSA-1099", "6"),
+    ("1099-G", "4"),
 )
 # Form 8962 line 28's repayment cap lives with the engine's credit settlement.
 repayment_cap = tax.repayment_cap
@@ -653,7 +654,16 @@ def build(lay: Layout, year: int) -> Draft:
         )
     se_src = " + ".join(s[0] for s in ses)
 
-    # Schedule 1
+    # Schedule 1: lines 1 and 7 (unit 3e-1) and 8c only when there is any
+    s1_1 = s1_7 = s1_9 = 0.0
+    if hh.salt_refund:
+        s1_1 = add(
+            "Sch 1",
+            "1",
+            "Taxable refunds of state and local income taxes",
+            hh.salt_refund,
+            "Needed panel state_refund_taxable (the Schedule 1 line 1 worksheet)",
+        )
     s1_3 = add(
         "Sch 1",
         "3",
@@ -661,18 +671,49 @@ def build(lay: Layout, year: int) -> Draft:
         profit + sp_profit,
         f"{profit_src} + the spouse's {sp_src}" if sp_profit else profit_src,
     )
-    s1_9 = 0.0
-    if hsa_sum("16"):
-        add(
+    if hh.unemployment:
+        s1_7 = add(
             "Sch 1",
-            "8f",
-            "Income from Form 8889",
-            hsa_sum("16"),
-            f"Form 8889 line 16{hsa_src}",
+            "7",
+            "Unemployment compensation",
+            hh.unemployment,
+            "Needed panel unemployment (1099-G box 1)",
         )
-        s1_9 = add("Sch 1", "9", "Total other income", hsa_sum("16"), "line 8f")
+    s1_8 = [
+        (ln, add("Sch 1", ln, label, value, src))
+        for ln, label, value, src in (
+            (
+                "8c",
+                "Cancellation of debt",
+                hh.cancelled_debt,
+                "Needed panel cancelled_debt (1099-C box 2, less exclusions)",
+            ),
+            (
+                "8f",
+                "Income from Form 8889",
+                hsa_sum("16"),
+                f"Form 8889 line 16{hsa_src}",
+            ),
+        )
+        if value
+    ]
+    if s1_8:
+        s1_9 = add(
+            "Sch 1",
+            "9",
+            "Total other income",
+            sum(x for _, x in s1_8),
+            " + ".join(f"line {ln}" for ln, _ in s1_8),
+        )
+    used = [
+        ln for ln, x in (("1", s1_1), ("3", s1_3), ("7", s1_7), ("9", s1_9)) if x
+    ] or ["3"]
     s1_10 = add(
-        "Sch 1", "10", "Additional income", s1_3 + s1_9, "3 + 9" if s1_9 else "line 3"
+        "Sch 1",
+        "10",
+        "Additional income",
+        s1_1 + s1_3 + s1_7 + s1_9,
+        " + ".join(used) if len(used) > 1 else f"line {used[0]}",
     )
     named = add(
         "Sch 1",
