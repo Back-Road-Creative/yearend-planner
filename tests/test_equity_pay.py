@@ -79,7 +79,7 @@ def test_w2_box_12_code_v() -> None:
         [
             "Form W-2 Wage and Tax Statement 2025",
             "a Employee's social security number XXX-XX-1234",
-            "b Employer identification number (EIN) 12-3456789",
+            "b Employer identification number (EIN) XX-XXX6789",
             "c Employer's name, address, and ZIP code Example Employer Inc (synthetic)",
             "1 Wages, tips, other compensation 52,000.00",
             "2 Federal income tax withheld 6,000.00",
