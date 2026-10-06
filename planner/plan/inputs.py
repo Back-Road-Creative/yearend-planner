@@ -34,7 +34,7 @@ from planner.ingest.needs import _needed
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import forecast
-from planner.taxprep import capgains, hsa, sche
+from planner.taxprep import capgains, hsa, k1, sche
 
 FILING = {
     "single": "SINGLE",
@@ -127,6 +127,7 @@ TAX_KEYS = (
     "qualified_dividends",
     "education",
     "rentals",
+    "k1s",
     "rental_passive_simple",
     "passive_loss_allowed",
     "rental_qbi",
@@ -218,6 +219,7 @@ class Inputs:
     scope: list[str] = field(default_factory=list)  # Not handled lines (also notes)
     coverage: list[coverage.Gap] = field(default_factory=list)  # every gap (2a)
     schedule_e: sche.Result | None = None  # Schedule E Part I (3e-2b)
+    schedule_k1: k1.Result | None = None  # Schedule E Parts II, III (3e-3a)
 
     def state(self, key: str) -> str:
         """KNOWN, ESTIMATE, UNKNOWN or NOT_APPLICABLE (an item never asked)."""
@@ -498,22 +500,36 @@ def build(
         )
     if ov.planned_hsa is not None:
         fields["hsa_contribution"] = int(round(ov.planned_hsa))
-    if value.get("rentals"):
-        cols = sche.columns(value["rentals"])
-        magi = (
-            _counted(fields)
-            + sche.magi_part(cols)
-            - fields.get("hsa_contribution", 0)
-            - fields.get("se_health_premiums", 0)
-        )
-        allowed = value.get("passive_loss_allowed")
-        out.schedule_e = sche.schedule(
-            cols,
-            magi=magi,
-            separate=fields["filing_status"] == "SEPARATE",
-            simple=value.get("rental_passive_simple"),
-            allowed=None if allowed is None else float(allowed),
-        )
+    if value.get("rentals") or value.get("k1s"):
+        _schedule_e(out, fields, value)
+    out.household = Household(**fields)
+    return out
+
+
+def _schedule_e(out: Inputs, fields: dict[str, Any], value: dict[str, Any]) -> None:
+    """Schedule E: Part I from the rentals (unit 3e-2b), Parts II and III from
+    the K-1s (unit 3e-3a), one Form 8582 allowance across both."""
+    cols = sche.columns(value.get("rentals") or [])
+    rows = k1.rows(value.get("k1s") or [])
+    k1_income, k1_losses = k1.passive_totals(rows)
+    magi = (
+        _counted(fields)
+        + sche.magi_part(cols)
+        + k1.nonpassive_net(rows)
+        - fields.get("hsa_contribution", 0)
+        - fields.get("se_health_premiums", 0)
+    )
+    allowed = value.get("passive_loss_allowed")
+    passive = {
+        "magi": magi,
+        "separate": fields["filing_status"] == "SEPARATE",
+        "simple": value.get("rental_passive_simple"),
+        "allowed": None if allowed is None else float(allowed),
+        "k1_income": k1_income,
+        "k1_losses": k1_losses,
+    }
+    if cols:
+        out.schedule_e = sche.schedule(cols, **passive)
         fields["rental_income"] = int(round(out.schedule_e.total))
         fields["rental_qbi"] = value.get("rental_qbi") == "yes"
         if fields["rental_qbi"] and any(c.kind == "royalty" for c in cols):
@@ -523,15 +539,78 @@ def build(
                 "(royalties are investment income, not a trade or business)"
             )
         out.notes.extend(out.schedule_e.notes)
-        if sche.passive_net(cols) < 0:
-            out.notes.append(
-                f"Form 8582 line 6 modified AGI {magi:,.0f}: AGI without the "
-                "passive rental loss, taxable Social Security, the IRA deduction "
-                "or the deductible part of SE tax, from the household's own "
-                "income lines"
-            )
-    out.household = Household(**fields)
-    return out
+        ratio, ratio_src = out.schedule_e.ratio, out.schedule_e.ratio_src
+    else:
+        ratio, ratio_src, notes = sche.allowance(cols, **passive)
+        out.notes.extend(notes)
+    if rows:
+        out.schedule_k1 = k1.schedule(rows, ratio, ratio_src)
+        _k1_fields(out, fields, value["k1s"], out.schedule_k1)
+    if sche.passive_net(cols) + k1_income - k1_losses < 0:
+        out.notes.append(
+            f"Form 8582 line 6 modified AGI {magi:,.0f}: AGI without the "
+            "passive losses, taxable Social Security, the IRA deduction "
+            "or the deductible part of SE tax, from the household's own "
+            "income lines"
+        )
+
+
+def _k1_fields(
+    out: Inputs, fields: dict[str, Any], entries: list[dict[str, Any]], r: k1.Result
+) -> None:
+    """The engine's pass-through inputs from the drafted K-1 rows."""
+    guaranteed = sum(e.get("guaranteed", 0) for e in entries)
+    fields["partnership_income"] = int(round(r.by_kind["partnership"] - guaranteed))
+    fields["s_corp_income"] = int(round(r.by_kind["scorp"]))
+    fields["trust_income"] = int(round(r.by_kind["trust"]))
+    fields["guaranteed_payments"] = guaranteed
+    fields["passive_pass_through"] = int(round(r.passive_pships))
+    you, spouse = k1.se_earnings(entries)
+    fields["k1_se"] = int(round(you))
+    if spouse and fields.get("spouse") is not None:
+        fields["spouse"] = replace(fields["spouse"], k1_se=int(round(spouse)))
+    elif spouse:
+        out.notes.append(
+            "a K-1 marked spouse has box 14 code A, but the spouse is not on "
+            "this return: their self-employment earnings are left out"
+        )
+    stated = k1.qbi(entries, ("partnership", "scorp"))
+    fields["k1_qbi"] = any("qbi" in e for e in entries if e["kind"] != "trust")
+    fields["trust_qbi"] = any("qbi" in e for e in entries if e["kind"] == "trust")
+    if fields["k1_qbi"] or fields["trust_qbi"]:
+        every = k1.qbi(entries, tuple(k1.FORMS))
+        fields["qbi_w2_wages"] = int(round(every["w2wages"]))
+        fields["qbi_ubia"] = int(round(every["ubia"]))
+    base = fields["partnership_income"] + fields["s_corp_income"]
+    if fields["k1_qbi"] and abs(stated["qbi"] - base) > 1:
+        out.notes.append(
+            f"the engine counts the partnership and S corporation income after "
+            f"the passive-loss limit ({base:,}) as QBI; the section 199A "
+            f"statements give {stated['qbi']:,.0f}, the figure Form 8995 line 1 "
+            "takes"
+        )
+    if fields["trust_qbi"] and fields["trust_income"] > 0:
+        out.notes.append(
+            "the engine's QBI deduction leaves out the estate or trust's section "
+            "199A amount (it is not in the engine's gross income); Form 8995 "
+            "line 1 adds it from the 1041 K-1 box 14 code I statement"
+        )
+    if not (fields["k1_qbi"] or fields["trust_qbi"]):
+        out.notes.append(
+            "no K-1 section 199A statement (qbi) is typed, so no K-1 income "
+            "counts toward the QBI deduction"
+        )
+    if r.passive_pships:
+        out.notes.append(
+            "the passive partnership and S corporation income is counted as net "
+            "investment income (Form 8960 line 4a)"
+        )
+    if any(e["kind"] == "trust" for e in entries):
+        out.notes.append(
+            "the engine leaves the estate or trust K-1 out of net investment "
+            "income; Form 8960 lines 4a and 5 add its passive and portfolio "
+            "parts (the 1041 K-1 box 14 code H statement)"
+        )
 
 
 def _forecast(

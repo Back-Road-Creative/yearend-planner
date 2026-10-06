@@ -33,6 +33,7 @@ from planner.ingest.needs import DOCS, load_profile, need_value
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import calendar
+from planner.taxprep import k1
 
 RECEIVED = "received"
 SUPERSEDED = "superseded"
@@ -70,6 +71,12 @@ DUE = {
     "1099-INT": (2, 15),
     "5498": (5, 31),
     "5498-SA": (5, 31),
+    # A K-1 comes with the entity's return: March 15 for a calendar-year
+    # partnership or S corporation (IRC 6031(b), 6037(b), 6072(b)), April 15
+    # for an estate or trust (IRC 6034A, 6072(a)); later when it extends.
+    "K-1 (1065)": (3, 15),
+    "K-1 (1120-S)": (3, 15),
+    "K-1 (1041)": (4, 15),
 }
 JAN_31 = (1, 31)
 AFTER_FILING = ("5498", "5498-SA")
@@ -87,6 +94,9 @@ WHERE = {
     "1099-C": "the creditor's mail or online account (a settled or forgiven debt)",
     "1099-MISC": "the payer's mail or online account (a tenant's or licensee's "
     "rent or royalty, a prize or other payment)",
+    "K-1 (1065)": "the partnership's investor portal or mail",
+    "K-1 (1120-S)": "the S corporation's mail or its accountant",
+    "K-1 (1041)": "the estate or trust's fiduciary or its accountant",
 }
 INSTITUTION = "the institution's tax center (Vanguard: My Accounts > Tax center)"
 # A placeholder issuer matches any issuer of that form.
@@ -100,6 +110,7 @@ ANY = (
     "each school",
     "the state agency",
     "the creditor",
+    "each entity",
 )
 TRANSACTION_FORMS = (
     (re.compile(r"dividend|capital gain", re.I), "1099-DIV"),
@@ -315,6 +326,9 @@ def _from_answers(
         p["kind"] == "royalty" for p in need_value(conn, lay, year, "rentals") or ()
     ):
         _add(out, year, "1099-MISC", "each payer", "royalties")
+    for e in need_value(conn, lay, year, "k1s") or ():
+        form = f"K-1 ({k1.FORMS[e['kind']]})"
+        _add(out, year, form, "each entity", "Schedule E Part II or III")
     if _positive(conn, lay, year, "ordinary_dividends"):
         _add(out, year, "1099-DIV", "each payer", "dividend income")
     if any(_positive(conn, lay, year, k) for k in ("premium_monthly", "slcsp_monthly")):

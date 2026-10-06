@@ -1974,6 +1974,63 @@ Pub. 527 Worksheet 5-1 lines 7a and 7b. `planner/taxprep/sche.py` drafts lines 3
 - **Checks.** A 1099-MISC box 1 or 2 above lines 23a or 23b is a CHECK. A royalty
   makes a 1099-MISC expected from each payer.
 
+## Schedule E Parts II and III: K-1s (Phase 10, unit 3e-3a)
+
+`planner enter k1s` takes one Schedule K-1 per entry, separated by semicolons. Each
+entry gives the kind (`partnership`, `scorp` or `trust`), then `passive` or
+`nonpassive` (nonpassive when you materially participated), then each box as a word
+and an amount. For example:
+`partnership passive ordinary -4000 rental 1200; scorp nonpassive ordinary 30000
+section179 2000 qbi 30000; trust passive ordinary 800 portfolio 300`, or `none`.
+
+| Word | Form 1065 | Form 1120-S | Form 1041 |
+| --- | --- | --- | --- |
+| ordinary | box 1 | box 1 | box 6 |
+| rental | box 2 | box 2 | box 7 |
+| otherrental | box 3 | box 3 | box 8 |
+| guaranteed | box 4c | | |
+| section179 | box 12 | box 11 | |
+| se | box 14 code A | | |
+| portfolio | | | box 5 |
+| deductions | | | box 9 |
+| qbi, w2wages, ubia | box 20 code Z | box 17 code V | box 14 code I |
+
+A leading `spouse` puts the box 14 code A earnings on the spouse's Schedule SE.
+`planner/taxprep/k1.py` drafts lines 28-37:
+
+- **Placement.** Every rental box is passive. Box 1 is passive unless the K-1 says
+  nonpassive.
+  - Line 28 takes partnerships and S corporations. Passive income goes in column (h)
+    and the allowed passive loss in (g). Nonpassive losses go in (i), section 179 in
+    (j), and nonpassive income plus guaranteed payments in (k).
+  - Line 33 takes estates and trusts in columns (c)-(f). Box 5 is column (f), and
+    box 9 is a deduction of the K-1's own kind.
+  - Lines 29-32 and 34-37 total them. Line 41 (26 + 32 + 37) goes to Schedule 1
+    line 5.
+- **Passive losses.** One Form 8582 share covers rentals and K-1s, worked out by
+  `sche.allowance`.
+  - When a K-1 has a passive item, the special allowance is not tried and
+    `rental_passive_simple` is not asked. `passive_loss_allowed` takes Form 8582's
+    allowed total for line 22, line 28 column (g) and line 33 column (c).
+  - Until that is answered, passive losses are allowed only up to passive income.
+  - The unallowed part carries forward (a note).
+- **Engine.** The net amounts after the passive-loss limit go into
+  `partnership_income` and `s_corp_income`.
+  - Guaranteed payments go into `miscellaneous_income`, because they are not QBI.
+  - The engine leaves estate and trust income out of gross income, so a trust gain is
+    priced as miscellaneous income and a trust loss as `estate_income`.
+  - The passive partnership and S corporation part is net investment income.
+  - Box 14 code A goes to `partnership_self_employment_net_earnings` and Schedule SE
+    line 2.
+- **QBI.** K-1 income counts toward the QBI deduction only when a section 199A
+  statement (`qbi`) is typed. Its W-2 wages and UBIA feed the engine's limits. A note
+  names any gap between the statement and the engine's base.
+- **Notes.** Basis and at-risk are taken as met: Form 7203 for an S corporation, the
+  partner's basis worksheet and Form 6198. Line 27 is drafted No. A trust's net
+  investment income is not priced (a note names Form 8960). Each K-1 makes a K-1
+  expected, due March 15 (1065, 1120-S) or April 15 (1041). Portfolio boxes (interest,
+  dividends, gains, royalties) come in unit 3e-3b.
+
 ## Coverage gate (Phase 10, unit 2a)
 
 `planner.coverage.gate` runs right after intake, before any plan or draft, and lists
