@@ -90,7 +90,8 @@ def test_coverage_state_gaps(lay: Layout) -> None:  # noqa: F811
     assert state_gaps("TX") == []  # no income tax, nothing to draft
     assert state_gaps("NC") == []
     assert state_gaps("CA") == []  # Form 540 drafted (unit 3d-6)
-    assert state_gaps("NY") and "NY return is not drafted" in state_gaps("NY")[0]
+    assert state_gaps("NY") == []  # Form IT-201 drafted (unit 3d-7)
+    assert state_gaps("PA") and "PA return is not drafted" in state_gaps("PA")[0]
     assert "not a state's two-letter code" in state_gaps("ZZ")[0]
 
 

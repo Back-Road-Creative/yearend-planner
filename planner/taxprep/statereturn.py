@@ -4,7 +4,8 @@ it adds (each with its heading and capability row), the filed-return template
 safe harbor carries and the key it carries under, the typed Needed keys and
 engine variables the return reads, and the function that lays its lines.
 
-NC's D-400 is the first entry, CA's Form 540 the second (unit 3d-6). A
+NC's D-400 is the first entry, CA's Form 540 the second (unit 3d-6), NY's
+IT-201 the third (unit 3d-7). A
 drafted state is a module beside d400.py, a template under templates/forms/
 (``issuer`` is the state's code; one per page when the return runs to several)
 and an entry here; the draft, ``planner close``, the rollover and the
@@ -15,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from planner.taxprep import ca540, d400
+from planner.taxprep import ca540, d400, ny201
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,23 @@ RETURNS: dict[str, StateReturn] = {
         keys=ca540.KEYS,
         engine=ca540.ENGINE,
         lay=ca540.lay_lines,
+    ),
+    "NY": StateReturn(
+        code="NY",
+        forms={ny201.FORM: ("NY Form IT-201", "ny_it201_draft")},
+        form=ny201.FORM,
+        template="NY-IT201",
+        boxes=("19", "33", "37", "39", "46", "59", "61", "62", "72", "75", "76")
+        + ("77", "78", "80"),
+        # IT-2105.9-I line 16 worksheet: lines 46 and 58 of the 2025 IT-201 less
+        # the credits on lines 63-71 (less a STAR credit check, not on the form).
+        tax_line="46",
+        carry="state_tax",  # prior_state_tax's estimate
+        prior=("46", "58", "-63", "-64", "-65", "-66", "-67", "-68", "-69")
+        + ("-69a", "-70", "-70a", "-71"),
+        keys=ny201.KEYS,
+        engine=ny201.ENGINE,
+        lay=ny201.lay_lines,
     ),
 }
 

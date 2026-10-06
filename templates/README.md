@@ -8,8 +8,8 @@ the capture when a row holds several amounts). A page is accepted only when
 every `required` box parses; otherwise the file lands in `data/inbox/UNMATCHED/`
 with the reason. A payer whose layout differs is a new template, not a code
 change. A template may set a literal `issuer` (the filed 1040 is `self`, the D-400
-is `NC`, the 540 `CA`) instead of relying on `issuer_pattern`. Pages of one form that a template
-splits (1040 page 1 and page 2, the 540's Sides 2-5) merge when they share form, year and issuer. Dashboard
+is `NC`, the 540 `CA`, the IT-201 `NY`) instead of relying on `issuer_pattern`. Pages of one form that a template
+splits (1040 page 1 and page 2, the 540's Sides 2-5, the IT-201's pages 2-4) merge when they share form, year and issuer. Dashboard
 page templates land in Phase 5.
 
 ## CSV templates (`templates/csv/`)
