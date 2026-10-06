@@ -39,7 +39,7 @@ ENGINE = (
 )
 KEYS = ("nc_additions", "nc_other_deductions", "nc_use_tax", "nc_withheld")
 US_INTEREST = (("1099-INT", "3"),)
-NC_WITHHELD = (("W-2", "17"), ("1099-R", "14"), ("1099-G", "11"))
+NC_WITHHELD = (("W-2", "17"), ("1099-R", "14"), ("1099-G", "11"), ("1099-MISC", "16"))
 TOLERANCE = 1.0
 
 Add = Callable[..., float]

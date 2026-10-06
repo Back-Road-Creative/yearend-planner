@@ -50,6 +50,7 @@ MONEY = {
     "unemployment": "unemployment",
     "state_refund_taxable": "salt_refund",
     "cancelled_debt": "cancelled_debt",
+    "other_income": "other_income",
     "short_term_gains": "short_term_gains",
     "long_term_gains": "long_term_gains",
     "ira_distributions": "ira_distributions",
@@ -96,6 +97,7 @@ TOTAL_INCOME_LINES = (
     "unemployment",
     "salt_refund",
     "cancelled_debt",
+    "other_income",
 )
 # Short- and long-term gains reach Form 1040 line 7 as one net figure, and a net
 # loss counts only up to this much a year (half for married filing separately):

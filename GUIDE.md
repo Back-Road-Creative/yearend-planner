@@ -140,7 +140,7 @@ merge as form `PA-PA40`), IL Form IL-1040 (issuer `IL`; front and back merge as 
 pages 2-4 merge as form `GA-500`), MI-1040 (issuer `MI`; pages 1-3 merge as
 form `MI-1040`), the Social
 Security Statement (monthly estimates at 62, 67 and 70, tax year = statement year),
-1099-NEC, 1099-K, 1098, 5498, 5498-SA, 1099-SA, 1099-G and 1099-C. A template may name a literal
+1099-NEC, 1099-K, 1098, 5498, 5498-SA, 1099-SA, 1099-G, 1099-C and 1099-MISC. A template may name a literal
 `issuer` for the taxpayer's own documents instead of a payer regex, and the line
 patterns tolerate the dot leaders the IRS prints. The D-400 template is verified on the
 lines the planner relies on (6, 12b, 15, 20a); the payment lines follow the printed form
@@ -1885,6 +1885,23 @@ canceled debt (box 2) and the creditor. The Needed panel asks `unemployment`,
 - **Expected forms.** A 1099-G is expected from the state agency when unemployment or a
   refund is entered, a 1099-C from the creditor when canceled debt is; last year's
   1099-G predicts this year's, last year's 1099-C does not (debt is canceled once).
+
+## 1099-MISC (Phase 10, unit 3e-2a)
+
+`templates/forms/1099-misc.yaml` reads Form 1099-MISC (Rev. April 2025, tax years 2025
+and 2026): box 1 rents, 2 royalties, 3 other income, 4 federal income tax withheld and 16
+state tax withheld.
+
+- **Other income.** Box 3 fills `other_income`: prizes, awards and other taxable income
+  no other line takes. It is Schedule 1 line 8z ("Other income"), so line 9 = 8c + 8f + 8z
+  and line 10 carries it to 1040 line 8; the engine prices it as `miscellaneous_income`,
+  added to any Form 8889 line 16 amount already there. Box 3 reported as business income
+  belongs on Schedule C (`se_income`) instead.
+- **Withholding.** Box 4 adds to `fed_withheld` (1040 line 25b); box 16 adds to
+  `nc_withheld` or `state_withheld`.
+- **Rents and royalties.** Boxes 1 and 2 are read and kept for Schedule E (unit 3e-2b).
+- **Expected forms.** A 1099-MISC is expected from each payer when other income is
+  entered; last year's 1099-MISC predicts this year's.
 
 ## Coverage gate (Phase 10, unit 2a)
 

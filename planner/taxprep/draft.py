@@ -106,6 +106,7 @@ WITHHELD = (
     ("1099-B", "4"),
     ("SSA-1099", "6"),
     ("1099-G", "4"),
+    ("1099-MISC", "4"),
 )
 # Form 8962 line 28's repayment cap lives with the engine's credit settlement.
 repayment_cap = tax.repayment_cap
@@ -693,6 +694,12 @@ def build(lay: Layout, year: int) -> Draft:
                 "Income from Form 8889",
                 hsa_sum("16"),
                 f"Form 8889 line 16{hsa_src}",
+            ),
+            (
+                "8z",
+                "Other income",
+                hh.other_income,
+                "Needed panel other_income (1099-MISC box 3)",
             ),
         )
         if value
