@@ -2,7 +2,8 @@
 # the Social Security wages and tips (boxes 3 and 7) Schedule SE line 8a takes,
 # the dependent care benefits (box 10) Form 2441 line 12 takes, the box 12
 # elective deferrals Form 8880 line 2 takes, and the Social Security and Medicare
-# tax withheld (boxes 4 and 6) Schedule 8812 line 21 takes.
+# tax withheld (boxes 4 and 6) Schedule 8812 line 21 takes, and the code V
+# nonstatutory option income the Needed panel's 1099-B basis items look for.
 form: W-2
 years: [2024, 2025, 2026]
 match: ["W-2", "Wage and Tax Statement"]
@@ -25,6 +26,7 @@ boxes:
   "12AA": {label: "Box 12 code AA: Roth 401(k) contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?AA\s+AMOUNT'}
   "12BB": {label: "Box 12 code BB: Roth 403(b) contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?BB\s+AMOUNT'}
   "12EE": {label: "Box 12 code EE: Roth governmental 457(b) contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?EE\s+AMOUNT'}
+  "12V": {label: "Box 12 code V: income from nonstatutory stock options", pattern: '\b12[a-d]?\s+(?:Code\s+)?V\s+AMOUNT'}
   "12W": {label: "Box 12 code W: employer and payroll HSA contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?W\s+AMOUNT'}
   "16": {label: "State wages, tips, etc.", pattern: "\\b16 State wages, tips, etc\\.?\\s+AMOUNT"}
   "17": {label: "State income tax", pattern: "\\b17 State income tax\\s+AMOUNT"}

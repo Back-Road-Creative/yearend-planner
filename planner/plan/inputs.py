@@ -20,6 +20,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from planner import coverage
+from planner.engine import tax
 from planner.engine.household import (
     PERSON_INPUTS,
     PERSON_SAVERS,
@@ -54,6 +55,7 @@ MONEY = {
     "state_refund_taxable": "salt_refund",
     "cancelled_debt": "cancelled_debt",
     "other_income": "other_income",
+    "stock_option_income": "stock_option_income",
     "short_term_gains": "short_term_gains",
     "long_term_gains": "long_term_gains",
     "ira_distributions": "ira_distributions",
@@ -101,6 +103,7 @@ TOTAL_INCOME_LINES = (
     "salt_refund",
     "cancelled_debt",
     "other_income",
+    "stock_option_income",
 )
 # The lines a typed total_income can be put on: the residual is ordinary income
 # of the owner's own naming, never wages by default when wages are known.
@@ -531,6 +534,10 @@ def build(
         rate_gains["foreign_tax_credit_potential"] = foreign + float(
             value.get("foreign_tax_carryover") or 0
         )
+    # Form 6251 line 2i (unit 3e-8): the incentive stock options exercised
+    iso = float(value.get("iso_amt_adjustment") or 0)
+    if iso:
+        rate_gains[tax.ISO] = iso
     if rate_gains:
         fields["tax_unit_inputs"] = {**fields.get("tax_unit_inputs", {}), **rate_gains}
     out.household = Household(**fields)

@@ -63,6 +63,10 @@ Schedule 3 line 4 (unit 3c-3).
 Foreign tax on Forms 1099-DIV (box 7) and 1099-INT (box 6) becomes the foreign tax credit on
 Schedule 3 line 1: by the election at $300 or less ($600 joint), else by Form 1116 for
 passive income, the Worksheet for Line 18 included (unit 3e-7).
+Forms 3921 and 3922 and W-2 box 12 code V are read: an incentive stock option spread is
+the AMT adjustment on Form 6251, which the draft lays out with its line 11 on Schedule 2
+line 2; ordinary income from a disqualifying sale goes on Schedule 1 line 8k, and the
+compensation a broker's basis leaves out is a Form 8949 code B row (unit 3e-8).
 The draft works the earned income credit on 1040 line 27a by the EIC worksheet and the
 EIC Table, with Schedule EIC for each qualifying child (unit 3c-4), and Schedule 8812's
 additional child tax credit line by line, Part II-B included (unit 3c-5).

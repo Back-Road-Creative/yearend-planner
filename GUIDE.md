@@ -1944,6 +1944,43 @@ dividends (0 when no form shows any).
   tax on Schedules K-1 and K-3, foreign capital gains (Worksheets A and B), lines 2, 5,
   12, 13, 16, 22 and 34, the asset method for line 4b, and Schedules B and C (Form 1116).
 
+## Equity pay: stock options and ESPP shares (Phase 10, unit 3e-8)
+
+Stock from your employer is taxed in three places, and the planner reads the forms behind
+each (Pub. 525, "Stock Options"). Drop Forms 3921 and 3922 from your stock plan's website
+in the inbox with the rest; each one is a separate exercise or purchase (IRC 6039), so a
+second form from the same employer is kept beside the first, and only a corrected copy of
+the same grant and exercise dates replaces it.
+
+- **Incentive stock options exercised (Form 3921).** Nothing is regular income at
+  exercise, but the spread is income for the alternative minimum tax: the panel's
+  `iso_amt_adjustment` adds (box 4 - box 3) x box 5 over the year's forms. Type a smaller
+  figure when some of those shares were sold the same year (that spread is wages or line
+  8k instead). The draft lays out Form 6251 whenever there is an ISO spread or AMT:
+  line 1a (Form 1040 line 14 less Schedule 1-A line 37, so the senior deduction is added
+  back), 1b (line 11b less 1a), 2a (the SALT deduction when you itemize, else the standard deduction), 2i, line
+  4, the exemption and its phase-out (line 5), the 26%/28% tax or the Part III figure the
+  engine works (line 7), the foreign tax credit (8), and line 10, Form 1040 line 16 plus
+  Schedule 2 line 1z less that credit. Line 11 is Schedule 2 line 2, and the draft
+  reprices Form 1040 lines 17 and 18 from it. The AMT paid on an ISO spread makes the
+  shares' AMT basis higher than their regular basis and can come back as a credit (Form
+  8801) in a later year; the draft says so.
+- **Sales that make ordinary income.** Selling ISO shares within 2 years of the grant or
+  1 year of the exercise, or any ESPP shares (Form 3922), makes part of the gain ordinary
+  income. When your W-2 box 1 leaves it out, type it as `stock_option_income`; it goes on
+  Schedule 1 line 8k. Nonstatutory options are wages already, shown in W-2 box 12 code V,
+  which the planner reads.
+- **The broker's basis.** For options granted from 2014 on, the 1099-B basis leaves out
+  the income already taxed. Type that income as `equity_basis_short` and
+  `equity_basis_long` (the stock plan's supplemental cost basis statement has it); each
+  becomes a Form 8949 row in box A or D with code B and a negative adjustment, and a
+  return that had no Form 8949 moves the 1099-B totals onto the form so the row has
+  somewhere to go (Schedule D lines 1b and 8b instead of 1a and 8a).
+- **Asked until you answer.** Like other rare items, each of these four is asked until
+  typed; type 0 when you have no employee stock.
+- **Not drafted, and named.** Form 6251 lines 2b-2h and 2j-3, Part III lines 12-40 (the
+  engine's figure is used), the AMT foreign tax credit and Form 8801.
+
 ## Earned income credit (Phase 10, unit 3c-4)
 
 The draft works Form 1040 line 27a by the instructions' EIC worksheet (2025): Worksheet A,
