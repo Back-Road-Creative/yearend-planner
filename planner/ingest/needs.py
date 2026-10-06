@@ -33,7 +33,7 @@ from planner.ingest.derive import county_from_zip
 from planner.ingest.pdf import base_issuer
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.taxprep import f4797, k1, refund, sche, schf, statereturn
+from planner.taxprep import annuity, f4797, k1, refund, sche, schf, statereturn
 
 PROFILE = "profile"
 PRIOR = "prior"  # the year before the plan year (the filed return)
@@ -73,7 +73,7 @@ class Need:
     why: str
     source: str  # the document that supplies it, with where to get it
     kind: str  # date | int | money | fraction | enum | monthly | dependents |
-    # education | rentals | k1s | farms | symbols | sales | str
+    # education | rentals | k1s | farms | annuities | symbols | sales | str
     scope: str = YEAR
     # (form, box) ledger lookups, summed; a "-" before the box subtracts it
     boxes: tuple[tuple[str, str], ...] = ()
@@ -308,8 +308,73 @@ def _r_docs(kind: str) -> Callable[[sqlite3.Connection, int | None], set[int]]:
     return docs
 
 
+def undetermined(facts: Iterable[db.FactRow]) -> dict[int, dict[str, Any]]:
+    """Each plan 1099-R that leaves the taxable amount to you (box 2b "Taxable
+    amount not determined" marked, or box 2a blank), its document id -> the
+    payer, owner and boxes 1, 5 and 9b: the Simplified Method figures it."""
+    facts = list(facts)
+    kinds = retirement_kind(facts)
+    read: dict[int, dict[str, Any]] = {}
+    for f in facts:
+        if f.form != "1099-R" or kinds.get(f.document_id) != "plan":
+            continue
+        doc = read.setdefault(f.document_id, {"issuer": f.issuer, "owner": f.owner})
+        doc[f.box] = f.text if f.text is not None else f.value
+    return {d: r for d, r in read.items() if r.get("2b") == "yes" or "2a" not in r}
+
+
+def _pension_docs(conn: sqlite3.Connection, year: int | None) -> set[int]:
+    facts = db.facts_for(conn, year, "1099-R", text=None)
+    left = undetermined(facts)
+    return {d for d, k in retirement_kind(facts).items() if k == "plan"} - set(left)
+
+
 ira_documents = _r_docs("ira")
 plan_documents = _r_docs("plan")
+
+
+def _annuities_asked(s: dict[str, Any]) -> bool:
+    """Asked once a pension line is settled: a plan 1099-R that leaves the
+    taxable amount to its owner settles it at 0 (``_pension_left``)."""
+    return "pension_income" in s or SPOUSE + "pension_income" in s
+
+
+def _undetermined_lead(
+    config: Path, conn: sqlite3.Connection, year: int, values: dict[str, Any]
+) -> tuple[Any, str] | None:
+    """None typed yet: nothing to ask when no plan 1099-R leaves the taxable
+    amount to you; otherwise each such 1099-R named with what it shows."""
+    del config, values
+    left = undetermined(db.facts_for(conn, year, "1099-R", text=None))
+    if not left:
+        return [], "no 1099-R from a plan leaves the taxable amount to you"
+    said = "; ".join(
+        f"{r['issuer']}{' (spouse)' if r['owner'] == 'spouse' else ''} box 1 "
+        f"{float(r.get('1') or 0):,.2f}"
+        + (f", box 9b {float(r['9b']):,.2f}" if r.get("9b") else "")
+        + (f", box 5 {float(r['5']):,.2f}" if r.get("5") else "")
+        for r in left.values()
+    )
+    return None, (
+        f"these 1099-Rs leave the taxable amount to you: {said}. Type each "
+        "annuity's cost and starting date (box 9b is the cost not yet recovered)"
+    )
+
+
+def _pension_left(owner: str) -> Callable[..., tuple[Any, str] | None]:
+    """No box 2a to sum because each of the owner's plan 1099-Rs leaves it to
+    them: 0 here, the annuities answer adds the Simplified Method's amount."""
+
+    def left(
+        config: Path, conn: sqlite3.Connection, year: int, values: dict[str, Any]
+    ) -> tuple[Any, str] | None:
+        del config, values
+        docs = undetermined(db.facts_for(conn, year, "1099-R", text=None))
+        if any(r["owner"] == owner for r in docs.values()):
+            return 0.0, "box 2a left blank: figured from annuities (Simplified Method)"
+        return None
+
+    return left
 
 
 def _qcd_code(
@@ -1915,7 +1980,30 @@ NEEDS: tuple[Need, ...] = (
         "money",
         boxes=(("1099-R", "2a"),),
         doc="f1099r",
-        docs=plan_documents,
+        docs=_pension_docs,
+        derive_text=_pension_left("you"),
+        unlocks=("MAGI headroom", "Draft 1040"),
+    ),
+    Need(
+        "annuities",
+        "Pensions and annuities with no taxable amount (Simplified Method), or none",
+        "Form 1040 line 5b: a 1099-R from a plan with box 2a blank or box 2b "
+        "(Taxable amount not determined) marked leaves the taxable part to you; "
+        "the Simplified Method Worksheet takes your cost back tax free over the "
+        "payments the IRS tables expect",
+        "your plan's annuity statement (your cost, the annuity starting date) and "
+        "last year's worksheet; box 9b of the 1099-R shows the cost not yet "
+        "recovered. One entry an annuity, separated by semicolons: annuity, "
+        "then spouse (your spouse's), then cost (your cost at the starting "
+        "date) and start (the starting date), and any of recovered (tax free "
+        "after 1986 in earlier years: last year's worksheet line 10), "
+        "beneficiary (their age at the starting date, for payments over both "
+        "your lives), age (yours at the starting date, if not from the birth "
+        "date), months (paid this year) and gross (box 1, when one person has "
+        "two). Example: " + annuity.EXAMPLE + ". Type none if there are none",
+        "annuities",
+        asked=_annuities_asked,
+        derive_text=_undetermined_lead,
         unlocks=("MAGI headroom", "Draft 1040"),
     ),
     Need(
@@ -2162,6 +2250,9 @@ def _with_spouse(needs: tuple[Need, ...]) -> tuple[Need, ...]:
                 source=f"the spouse's own: {n.source}",
                 owner="spouse",
                 asked=_spouse_asked(n.asked, n.key),
+                derive_text=_pension_left("spouse")
+                if n.key == "pension_income"
+                else n.derive_text,
             )
         )
     return tuple(out)
@@ -2549,6 +2640,8 @@ def parse_value(need: Need, text: str) -> Any:
         return k1.parse(need.key, s)
     if need.kind == "farms":
         return schf.parse(need.key, s)
+    if need.kind == "annuities":
+        return annuity.parse(need.key, s)
     if need.kind == "symbols":
         return _symbols(need.key, s)
     if need.kind == "sales":
