@@ -446,7 +446,7 @@ def test_schedule_1a_senior_deduction_phases_out(senior_lay: Layout) -> None:
     assert _need(d, "Sch 1-A", "34") == 1_500.0
     assert _need(d, "Sch 1-A", "35") == 4_500.0
     assert _need(d, "Sch 1-A", "36a") == 4_500.0
-    assert d.get("Sch 1-A", "36b") is None
+    assert d.get("Sch 1-A", "36b") is None  # a single return has no line 36b
     assert _need(d, "Sch 1-A", "37") == 4_500.0
     assert _need(d, "Sch 1-A", "38") == 4_500.0 == _need(d, "1040", "13b")
     assert _source(d, "1040", "13b") == "Sch 1-A line 38"

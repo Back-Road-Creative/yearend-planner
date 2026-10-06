@@ -59,6 +59,8 @@ ENGINE = (
     "net_investment_income_tax",
     "eitc",
     "refundable_ctc",
+    "ctc",
+    "ctc_qualifying_children",
     "income_tax_refundable_credits",
     "income_tax",
     "health_savings_account_ald",
@@ -128,6 +130,16 @@ ENGINE_LINE = {
     "37": "additional_senior_deduction",
 }
 SS_WAGES = (("W-2", "3"), ("W-2", "7"))  # Social Security wages and tips
+SCH_8812 = "Sch 8812"
+# Schedule 8812 per year: (a child under 17, its refundable most). P.L. 119-21
+# sec. 70104 sets $2,200 from 2025; Rev. Proc. 2024-40 (2025) and Rev. Proc.
+# 2025-32 (2026) hold the refundable part at $1,700.
+CTC_AMOUNTS = {2025: (2_200.0, 1_700.0), 2026: (2_200.0, 1_700.0)}
+CTC_CHILD_UNDER = 17  # line 4: under 17 at the end of the year
+ODC_AMOUNT = 500.0  # line 7, IRC 24(h)(4)
+CTC_FROM = (200_000.0, 400_000.0)  # line 9: other, married filing jointly
+CTC_CUT_PER = 1_000.0  # line 10 rounds the excess up to whole $1,000s
+CTC_CUT_RATE = 0.05  # line 11
 # The Needed-panel keys behind Schedule 1-A Parts II to IV.
 PART_KEYS = ("qualified_tips", "qualified_overtime", "car_loan_interest")
 TAX_KEYS = inputs.TAX_KEYS  # the Needed-panel keys a return reads
@@ -675,12 +687,13 @@ def build(lay: Layout, year: int) -> Draft:
         )
     l17 = add(f, "17", "Amount from Schedule 2, line 3", s2_3, "Sch 2 line 3")
     l18 = add(f, "18", "Lines 16 and 17", l16 + l17, "16 + 17")
+    ctc_14, ctc_27 = _schedule_8812(sheet, d, v, hh, l11, max(l18 - s3_8, 0.0))
     l19 = add(
         f,
         "19",
         "Child tax credit",
-        v["non_refundable_ctc"],
-        "engine non_refundable_ctc",
+        v["non_refundable_ctc"] if ctc_14 is None else ctc_14,
+        "engine non_refundable_ctc" if ctc_14 is None else "Sch 8812 line 14",
     )
     l20 = add(f, "20", "Amount from Schedule 3, line 8", s3_8, "Sch 3 line 8")
     l21 = add(f, "21", "Lines 19 and 20", l19 + l20, "19 + 20")
@@ -710,8 +723,8 @@ def build(lay: Layout, year: int) -> Draft:
         f,
         "28",
         "Additional child tax credit",
-        v["refundable_ctc"],
-        "engine refundable_ctc",
+        v["refundable_ctc"] if ctc_27 is None else ctc_27,
+        "engine refundable_ctc" if ctc_27 is None else "Sch 8812 line 27",
     )
     l29 = add(
         f,
@@ -773,6 +786,132 @@ def build(lay: Layout, year: int) -> Draft:
             "taxation and ACA MAGI"
         )
     return d
+
+
+def _schedule_8812(
+    sheet: _Sheet,
+    d: Draft,
+    v: dict[str, float],
+    hh: Household,
+    agi: float,
+    limit: float,
+) -> tuple[float | None, float | None]:
+    """Schedule 8812 for the household's dependents, and the 1040 dependents
+    list as a note: (line 14, line 27), or None for a line not drafted. Lines
+    4-17 are the form's own arithmetic, line 13 being `limit` (Credit Limit
+    Worksheet A: 1040 line 18 less the Schedule 3 credits). Lines 18a-26
+    (earned income, and Social Security tax with three or more children) are
+    not drafted, so line 27 is the engine's, checked against line 17."""
+    if not hh.dependents:
+        return None, None
+    listed = []
+    for n, dep in enumerate(hh.dependents, 1):
+        marks = [
+            m
+            for m, on in (
+                ("full-time student", dep.full_time_student),
+                ("disabled", dep.disabled),
+            )
+            if on
+        ]
+        credit = (
+            "child tax credit"
+            if dep.age < CTC_CHILD_UNDER
+            else "credit for other dependents"
+        )
+        listed.append(f"({n}) age {', '.join([str(dep.age), *marks])}, {credit}")
+    d.notes.append(
+        f"1040 dependents: {'; '.join(listed)}; type each name, SSN and "
+        "relationship from the Social Security card (the credits assume each "
+        "dependent and filer has a valid SSN and lived with you over half the year)"
+    )
+    amounts = CTC_AMOUNTS.get(d.year)
+    if amounts is None:
+        d.notes.append(
+            f"Schedule 8812 is not drafted: the {d.year} credit amounts are not "
+            "on file here; 1040 lines 19 and 28 are the engine's"
+        )
+        return None, None
+    child, refundable = amounts
+    add = sheet.add
+    f = SCH_8812
+    k = 1 if hh.filing_status == "JOINT" else 0
+    children = sum(dep.age < CTC_CHILD_UNDER for dep in hh.dependents)
+    others = len(hh.dependents) - children
+    if children != round(v["ctc_qualifying_children"]):
+        d.notes.append(
+            f"CHECK: Schedule 8812 line 4 counts {children} children under "
+            f"{CTC_CHILD_UNDER}; the engine counts "
+            f"{v['ctc_qualifying_children']:.0f}"
+        )
+    add(f, "1", "Adjusted gross income", agi, "1040 line 11b")
+    l3 = add(f, "3", "Modified AGI", agi, "line 1 (no income excluded on 2a-2c)")
+    add(f, "4", "Qualifying children under 17", children, "dependents under 17", 0)
+    l5 = add(
+        f, "5", "Line 4 times the child amount", children * child, f"4 x {child:,.0f}"
+    )
+    add(f, "6", "Other dependents", others, "dependents 17 or over", 0)
+    l7 = add(f, "7", "Line 6 times $500", others * ODC_AMOUNT, f"6 x {ODC_AMOUNT:,.0f}")
+    l8 = add(f, "8", "Lines 5 and 7", l5 + l7, "5 + 7")
+    l9 = add(f, "9", "Phase-out starts", CTC_FROM[k], "as printed")
+    over = l3 - l9
+    cut = 0.0
+    if over > 0:
+        l10 = add(
+            f,
+            "10",
+            "MAGI over the start, rounded up",
+            -(-over // CTC_CUT_PER) * CTC_CUT_PER,
+            "3 - 9, up to the next $1,000",
+        )
+        cut = add(f, "11", "Reduction", l10 * CTC_CUT_RATE, f"10 x {CTC_CUT_RATE:.0%}")
+    l12 = add(f, "12", "Credit before the tax limit", max(l8 - cut, 0.0), "8 - 11")
+    if abs(l12 - v["ctc"]) > TOLERANCE:
+        d.notes.append(
+            f"CHECK: Schedule 8812 line 12 {l12:,.2f} vs engine ctc {v['ctc']:,.2f}"
+        )
+    l13 = add(
+        f,
+        "13",
+        "Credit Limit Worksheet A",
+        limit,
+        "1040 line 18 less Sch 3 line 8 (each Schedule 3 credit taken as one "
+        "the worksheet subtracts)",
+    )
+    l14 = add(
+        f,
+        "14",
+        "Child tax credit and credit for other dependents",
+        min(l12, l13),
+        "min(12, 13)",
+    )
+    l16a = l12 - l14
+    if not children or l16a <= TOLERANCE:
+        if v["refundable_ctc"] > TOLERANCE:
+            d.notes.append(
+                f"CHECK: the engine's refundable_ctc {v['refundable_ctc']:,.2f} "
+                "where Schedule 8812 Part II-A has nothing to refund"
+            )
+        return l14, 0.0
+    l16a = add(f, "16a", "Line 12 less line 14", l16a, "12 - 14")
+    l16b = add(
+        f,
+        "16b",
+        "Children times the refundable most",
+        children * refundable,
+        f"4 x {refundable:,.0f}",
+    )
+    l17 = add(f, "17", "Smaller of 16a and 16b", min(l16a, l16b), "min(16a, 16b)")
+    l27 = add(
+        f,
+        "27",
+        "Additional child tax credit",
+        v["refundable_ctc"],
+        "engine refundable_ctc (lines 18a-26, earned income, not drafted)",
+    )
+    if l27 > l17 + TOLERANCE:
+        d.notes.append(f"CHECK: Schedule 8812 line 27 {l27:,.2f} over line 17")
+    return l14, l27
 
 
 def _schedule_se(
@@ -1011,7 +1150,10 @@ def _schedule_1a(
             f"out {', '.join(unasked)}: no figure is on file, so none is deducted; "
             "type each (0 if none) in the Needed panel"
         )
-    if hh.age >= SENIOR_AGE and not separate:
+    spouse_age = hh.spouse.age if hh.spouse is not None else None
+    head_65 = hh.age >= SENIOR_AGE
+    spouse_65 = bool(k) and spouse_age is not None and spouse_age >= SENIOR_AGE
+    if (head_65 or spouse_65) and not separate:
         add(SCH_1A, "31", "Modified AGI", magi, "line 3")
         add(SCH_1A, "32", "Phase-out starts", SENIOR_FROM[k], "as printed")
         over = magi - SENIOR_FROM[k]
@@ -1034,23 +1176,37 @@ def _schedule_1a(
             SCH_1A,
             "36a",
             "Your deduction",
-            l35,
-            f"line 35 (65 by year end, age {hh.age}; a valid SSN is assumed)",
+            l35 if head_65 else 0.0,
+            f"line 35 (65 by year end, age {hh.age}; a valid SSN is assumed)"
+            if head_65
+            else f"0 (age {hh.age} at year end, under {SENIOR_AGE})",
         )
+        l36b = 0.0
+        if k and spouse_age is not None:
+            l36b = add(
+                SCH_1A,
+                "36b",
+                "Your spouse's deduction",
+                l35 if spouse_65 else 0.0,
+                f"line 35 (65 by year end, age {spouse_age}; a valid SSN is assumed)"
+                if spouse_65
+                else f"0 (age {spouse_age} at year end, under {SENIOR_AGE})",
+            )
         form["37"] = add(
             SCH_1A,
             "37",
             "Enhanced deduction for seniors",
-            l36a,
-            "36a (line 36b is not drafted)",
+            l36a + l36b,
+            "36a + 36b" if k and spouse_age is not None else "36a",
         )
-    elif hh.age >= SENIOR_AGE:
+    elif head_65:
         skipped.add("37")
-    if k:  # the spouse may be 65 whatever the filer's age
+    if k and spouse_age is None:  # the spouse may be 65 whatever the filer's age
         d.notes.append(
             f"Schedule 1-A line 36b: a joint return adds the spouse's "
-            f"${SENIOR_AMOUNT:,.0f} (born before January 2, {d.year - 64}); the "
-            "household holds one person, so it is not drafted"
+            f"${SENIOR_AMOUNT:,.0f} if born before January 2, {d.year - 64}; the "
+            "spouse's birth date is not on file, so it is not drafted (planner "
+            "enter spouse_birth_date)"
         )
     if skipped:
         d.notes.append(
@@ -1230,6 +1386,7 @@ ORDER = (
     SCH_1A,
     "Sch 2",
     "Sch 3",
+    SCH_8812,
     "Sch B",
     "Sch C",
     "Sch D",
