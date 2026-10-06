@@ -283,7 +283,9 @@ def _filing(year: int) -> str:
 
 
 def _phase(th: dict[str, float], kind: str, status: str) -> tuple[float, float]:
-    key = "joint" if status == "JOINT" else "single"
+    # Pub. 590-A Table 1-2 and the Roth worksheet: "married filing jointly or
+    # qualifying surviving spouse"
+    key = "joint" if status in ("JOINT", "SURVIVING_SPOUSE") else "single"
     if status == "SEPARATE":
         return 0.0, 10000.0  # IRC 219(g)(2)(A)(iii), 408A(c)(3)(B)(ii)
     return float(th[f"{kind}_phaseout_{key}_start"]), float(

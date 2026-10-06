@@ -45,6 +45,8 @@ for the dependents, and each spouse's own Schedule SE. The spouse's documents go
 `data/inbox/spouse/` (or `planner owner <file> spouse`), so their wages, IRA and Social
 Security are theirs, and so are their Schedule SE and Form 8889 (the family HSA limit
 split between the spouses' HSAs).
+A qualifying surviving spouse is priced at joint rates for the two years after the
+year of death while a dependent child lives at home (`spouse_death_year`, unit 3b-1).
 Married filing separately stays
 **Not handled**. The state return drafted is NC's D-400; another state
 gets the engine's estimate and a **Not handled** line saying to have a preparer draft it.
