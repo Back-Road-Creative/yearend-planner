@@ -132,7 +132,8 @@ what differs).
 
 The same inbox reads last year's filed return and the rest of the year-end paperwork.
 Templates in `templates/forms/` now cover Form 1040 (both pages merge into one form,
-issuer `self`), Schedules 1, 2, 3, C, D and SE, NC Form D-400 (issuer `NC`), the Social
+issuer `self`), Schedules 1, 2, 3, C, D and SE, NC Form D-400 (issuer `NC`), CA Form 540 (issuer
+`CA`; Sides 2-5 merge into one form), the Social
 Security Statement (monthly estimates at 62, 67 and 70, tax year = statement year),
 1099-NEC, 1099-K, 1098, 5498, 5498-SA and 1099-SA. A template may name a literal
 `issuer` for the taxpayer's own documents instead of a payer regex, and the line
@@ -847,6 +848,45 @@ and its Schedule S. It uses the same engine run as the federal return.
   Form D-422), and the amended-return lines. A move or another state's
   income answered under **Where you lived** is a gap (unit 3d-5).
 
+## The CA return: Form 540 (unit 3d-6)
+
+For a California resident (`state: CA`), `planner draft` adds Form 540 from the
+same engine run as the federal return.
+
+- **Lines.** Line numbers, the Tax Table, the rate schedules (X, Y, Z), the
+  standard deduction ($5,706 single or separate, $11,412 otherwise) and the
+  exemption credits follow the 2025 Form 540 and its booklet. A test pins the
+  engine's 2025 schedules to the booklet's; a later year's schedule is the
+  engine's CPI projection, and line 31 says so.
+- **Line 31.** Up to $100,000 of taxable income, the Tax Table: the schedule at
+  the middle of the table's $100 row, in whole dollars. Above it, the rate
+  schedule, in whole dollars.
+- **Schedule CA.**
+  - Line 14 (subtractions): taxable Social Security, unemployment, US
+    obligations interest (1099-INT box 3) and a state refund, priced by the
+    engine, plus `ca_subtractions` you type.
+  - Line 16 (additions): the HSA deduction California does not allow, plus
+    `ca_additions` you type.
+- **Credits and other taxes.** Exemption credits (line 32), the dependent care
+  and renter's credits (40, 46), the AMT (61) and the Behavioral Health Services
+  Tax (62) are the engine's.
+- **Payments.**
+  - Line 71: CA withholding from W-2 box 17 and 1099-R box 14 (`state_withheld`).
+  - Line 72: the CA estimated payments from the bank export or typed.
+  - Lines 75-77: the CA EITC, young child and foster youth credits.
+- **Use tax.** Line 91 is `ca_use_tax` when typed; until then, the use tax table's
+  estimate for your income, and the draft says so. The line is never left blank.
+- **The end.** The draft ends on line 97/99/115 (refund) or line 100/111 (owed).
+- **Safe harbor.** Next year's CA safe harbor (540-ES worksheet line 19b) is
+  lines 48, 61 and 62. The draft carries line 64, the same sum since it leaves
+  line 63 empty; a filed 540 carries the three lines, so its line 63 is left out.
+- **Check.** Line 19 is compared with the engine's CA taxable income, with the
+  typed Schedule CA items put back. A gap is printed as `CHECK:`.
+- **Not drafted, and named.** Part-year and nonresident returns (Form 540NR),
+  Schedule G-1 and FTB 5870A (line 34), the other credits (43-45), other taxes
+  (63), 592-B and 593 withholding (73), the film credit (74), the health coverage
+  penalty (92, FTB 3853), contributions (110) and penalties and interest (112-113).
+
 ## The tax pack: one folder for the preparer (Phase 4l)
 
 `planner taxpack --year 2025` writes `out/tax-2025/`. Every file shows
@@ -1486,7 +1526,7 @@ every fact the planner cannot answer correctly. Each gap has a reason (starting
 - **Household**: the lines above. An unnamed spouse or qualifying person touches every
   priced panel and the draft; once named, only the draft and the estimated tax.
 - **State**: a state that taxes income and has no drafted return (the registry in
-  `planner/taxprep/statereturn.py`: NC's D-400). The plan's state income tax is
+  `planner/taxprep/statereturn.py`: NC's D-400, CA's 540). The plan's state income tax is
   the engine's estimate; the state return is not drafted (have a preparer draft it).
   Touches only the state return, so the federal draft stays ready. A state with no
   income tax has no gap; a value that is not a state's code is one that touches every

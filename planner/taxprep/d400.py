@@ -72,10 +72,12 @@ def lay_lines(
     year: int,
     agi: float,
     typed: Mapping[str, Any],
-    married: bool,
+    status: str,
 ) -> None:
     """Add the Schedule S and D-400 lines. ``paid`` is (date, amount, origin) for
-    each NC estimated payment; ``agi`` is 1040 line 11a."""
+    each NC estimated payment; ``agi`` is 1040 line 11a; ``status`` is the
+    filing status (Household.filing_status)."""
+    married = status == "JOINT"
     # Schedule S
     additions, add_src = _given(typed, "nc_additions")
     s16 = add(SCHED, "16", "Total additions (Part A)", additions, add_src)
