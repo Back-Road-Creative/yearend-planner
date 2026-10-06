@@ -1081,6 +1081,54 @@ NEEDS: tuple[Need, ...] = (
         asked=lambda s: s.get("state") == "NJ",
     ),
     Need(
+        "va_additions",
+        "VA additions to federal AGI (Schedule ADJ lines 1-2c)",
+        "added to federal AGI on Form 760 line 2: interest on other states' "
+        "bonds, the conformity addition and the other addition codes",
+        "Schedule ADJ lines 1 and 2a-2c and the addition codes in the Form 760 "
+        "instructions (type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "VA",
+    ),
+    Need(
+        "va_subtractions",
+        "VA subtractions the draft does not already count (Schedule ADJ lines 5a-6d)",
+        "subtracted on Form 760 line 7 with US obligations interest, the "
+        "unemployment compensation and the military and federal and state "
+        "employee subtractions the planner counts",
+        "Schedule ADJ lines 5a-6d: the disability income subtraction and the "
+        "subtraction codes in the Form 760 instructions that the planner does "
+        "not price (type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "VA",
+    ),
+    Need(
+        "va_deductions",
+        "VA deductions other than child care and Commonwealth Savers (Schedule "
+        "ADJ line 8)",
+        "subtracted on Form 760 line 13 with the child and dependent care "
+        "expenses and Commonwealth Savers contributions the planner counts",
+        "Schedule ADJ line 8 deduction codes 102, 103 and 105-109 in the Form "
+        "760 instructions: foster care, long-term care premiums, ... (type 0 "
+        "when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "VA",
+    ),
+    Need(
+        "va_use_tax",
+        "VA consumer's use tax owed (Form 760 line 33)",
+        "tax on internet, mail-order and out-of-state purchases no sales tax was "
+        "collected on",
+        "your purchase records, or the Sales Tax Estimation Table in the Form "
+        "760 instructions (type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "VA",
+    ),
+    Need(
         "wages",
         "Wages",
         "ordinary income",
