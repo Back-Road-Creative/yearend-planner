@@ -1,6 +1,6 @@
 """Unit 3e-3a: Schedules K-1 (Forms 1065, 1120-S, 1041) onto Schedule E Parts
-II and III, one Form 8582 allowance with Part I, and box 14 code A onto
-Schedule SE. Synthetic figures only."""
+II and III, their passive boxes through one Form 8582 with Part I (unit
+3e-4b), and box 14 code A onto Schedule SE. Synthetic figures only."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 from planner.ingest.needs import _needed, enter
 from planner.ledger import db
 from planner.plan import inputs
-from planner.taxprep import draft, expected, k1, sche
+from planner.taxprep import draft, expected, f8582, k1
 from tests.test_income_1099g import _lay
 
 MIXED = (
@@ -61,6 +61,10 @@ def test_parse_entries() -> None:
         ("trust passive portfolio -5", "out of range"),
         ("trust passive", "has no amounts"),
         ("spouse scorp nonpassive ordinary 5", "has no se"),
+        ("trust passive active rental 5", "active is for"),
+        ("partnership passive active ordinary -5 rental -5", "active is for"),
+        ("scorp passive active rental -5 otherrental 2", "active is for"),
+        ("partnership passive active ordinary 5", "active is for"),
     ],
 )
 def test_parse_errors(text: str, error: str) -> None:
@@ -81,12 +85,16 @@ def test_rows_place_each_box() -> None:
         )
     )
     assert (t.passive, t.loss, t.income) == ([("box 7", 300.0)], 700.0, 600.0)
-    assert k1.passive_totals([pship, scorp, t]) == (1500.0, 4000.0)
+    acts = k1.activities([pship, scorp, t])
+    assert [(a.name, a.where, a.income, a.loss) for a in acts] == [
+        ("partnership A", "Sch E, line 28A", 1200.0, 4000.0),
+        ("trust A", "Sch E, line 33A", 300.0, 0.0),
+    ]
     assert k1.nonpassive_net([pship, scorp, t]) == 27900.0
 
 
 def test_schedule_part2_lines() -> None:
-    r = k1.schedule(k1.rows(k1.parse("k1s", MIXED)), 1.0, "all")
+    r = k1.schedule(k1.rows(k1.parse("k1s", MIXED)), {"partnership A": 4000.0})
     got = _lines(r)
     assert (got["28A(g)"], got["28A(h)"], got["28A(k)"], got["28A(j)"]) == (
         4000.0,
@@ -102,38 +110,39 @@ def test_schedule_part2_lines() -> None:
 
 def test_schedule_part3_lines() -> None:
     r = k1.schedule(
-        k1.rows(k1.parse("k1s", "trust passive ordinary 800 portfolio 300")), 1.0, ""
+        k1.rows(k1.parse("k1s", "trust passive ordinary 800 portfolio 300")), {}
     )
     got = _lines(r)
     assert (got["33A(d)"], got["33A(f)"], got["37"]) == (800.0, 300.0, 1100.0)
     assert "32" not in got
 
 
-def _allow(
-    cols: list[sche.Column], allowed: float | None
-) -> tuple[float, str, list[str]]:
-    return sche.allowance(
-        cols,
-        magi=50_000.0,
-        separate=False,
-        simple="yes",
-        allowed=allowed,
-        k1_income=1200.0,
-        k1_losses=4000.0,
+def test_activities_through_form_8582() -> None:
+    # Part V only: the 4,000 loss is allowed against the 1,200 income.
+    rows = k1.rows(k1.parse("k1s", MIXED))
+    form = f8582.compute(k1.activities(rows), magi=50_000.0, separate=None)
+    assert form.allowed == {"partnership A": 1200.0}
+    assert k1.schedule(rows, form.allowed).by_kind["partnership"] == 0.0
+    # Box 2 with active participation is Part IV: the special allowance.
+    rows = k1.rows(k1.parse("k1s", "partnership passive active rental -6000"))
+    (act,) = k1.activities(rows)
+    assert act.active and act.loss == 6000.0
+    form = f8582.compute([act], magi=50_000.0, separate=None)
+    assert form.allowed == {"partnership A": 6000.0}
+    # A prior-year loss alone keeps the K-1 on Schedule E.
+    rows = k1.rows(
+        k1.parse(
+            "k1s", "scorp passive ordinary 3000 prior 1000; trust passive prior 500"
+        )
     )
-
-
-def test_allowance_with_k1_passive_takes_form_8582() -> None:
-    ratio, src, notes = _allow([], None)
-    assert ratio == pytest.approx(0.3) and src.startswith("passive income only")
-    assert any("2,800.00 of passive loss is not allowed" in n for n in notes)
-    ratio, src, _ = _allow([], 3000.0)
-    assert ratio == pytest.approx(0.75) and src.startswith("passive_loss_allowed")
-    _, _, notes = _allow([], 9000.0)
-    assert any(n.startswith("CHECK passive_loss_allowed") for n in notes)
-    # Rental income covers a K-1 passive loss: all of it is allowed.
-    cols = sche.columns(sche.parse("rentals", "rental rents 9000 days 365 personal 0"))
-    assert _allow(cols, None)[0] == 1.0
+    assert [(r.name, r.prior) for r in rows] == [
+        ("scorp A", 1000.0),
+        ("trust A", 500.0),
+    ]
+    form = f8582.compute(k1.activities(rows), magi=50_000.0, separate=None)
+    assert form.allowed == {"scorp A": 1000.0, "trust A": 500.0}
+    got = _lines(k1.schedule(rows, form.allowed))
+    assert (got["28A(g)"], got["28A(h)"], got["33A(c)"]) == (1000.0, 3000.0, 500.0)
 
 
 def test_k1_passive_loss_asks_form_8582(planner_home: Path) -> None:
@@ -142,8 +151,11 @@ def test_k1_passive_loss_asks_form_8582(planner_home: Path) -> None:
     enter(lay, 2025, "k1s", "partnership passive ordinary -500")
     conn = db.connect(lay.data / "ledger" / "planner.db")
     keys = {s.need.key for s in _needed(conn, lay, 2025).items}
+    assert "rental_active" in keys
+    enter(lay, 2025, "rentals", "none")
+    keys = {s.need.key for s in _needed(conn, lay, 2025).items}
     conn.close()
-    assert "passive_loss_allowed" in keys and "rental_passive_simple" not in keys
+    assert "rental_active" not in keys  # no rental to ask about
 
 
 def test_inputs_engine_fields(planner_home: Path) -> None:
@@ -191,16 +203,18 @@ def test_draft_k1_lines_reach_agi_and_schedule_se(planner_home: Path) -> None:
     assert not [n for n in d.notes if n.startswith("CHECK")]
 
 
-def test_draft_k1_with_rentals_shares_the_allowance(planner_home: Path) -> None:
+def test_draft_k1_with_rentals_through_form_8582(planner_home: Path) -> None:
     lay = _lay(planner_home)
     enter(lay, 2025, "rentals", "rental rents 1000 expenses 3000 days 365 personal 0")
     enter(lay, 2025, "k1s", "scorp passive ordinary -2000 rental 1000")
-    enter(lay, 2025, "passive_loss_allowed", "2000")
+    enter(lay, 2025, "rental_active", "yes")
     d = draft.build(lay, 2025)
-    # Losses 4,000 (2,000 rental, 2,000 box 1) and 2,000 allowed: half each.
-    assert (d.get("Sch E", "22A"), d.get("Sch E", "28A(g)")) == (-1000.0, 1000.0)
-    assert d.get("Sch E", "41") == -1000.0 + 1000.0 - 1000.0
-    assert d.get("Sch 1", "5") == -1000.0
+    # Part IV: the rental's 2,000 loss is inside the special allowance (line
+    # 9). Part V: the K-1's 2,000 loss gets its 1,000 of passive income.
+    assert (d.get("Form 8582", "3"), d.get("Form 8582", "11")) == (-3000.0, 3000.0)
+    assert (d.get("Sch E", "22A"), d.get("Sch E", "28A(g)")) == (-2000.0, 1000.0)
+    assert d.get("Sch E", "41") == -2000.0
+    assert d.get("Sch 1", "5") == -2000.0
     assert not [n for n in d.notes if n.startswith("CHECK")]
 
 

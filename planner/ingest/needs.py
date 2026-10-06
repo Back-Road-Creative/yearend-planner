@@ -252,11 +252,11 @@ _1040_ID = "the filing-status check boxes and address line; or type it"
 
 
 def _passive(s: dict[str, Any]) -> tuple[float, bool]:
-    """(Form 8582's passive net across Schedule E Part I and the K-1s, whether
-    any K-1 has a passive item)."""
-    income, losses = k1.passive_totals(k1.rows(s.get("k1s") or []))
-    rentals = sche.passive_net(sche.columns(s.get("rentals") or []))
-    return rentals + income - losses, bool(income or losses)
+    """(Form 8582 line 3 across Schedule E Part I and the K-1s, whether any
+    rental is a passive activity)."""
+    rentals = sche.activities(sche.columns(s.get("rentals") or []), active=True)
+    acts = rentals + k1.activities(k1.rows(s.get("k1s") or []))
+    return sum(a.overall for a in acts), bool(rentals)
 
 
 NEEDS: tuple[Need, ...] = (
@@ -1407,7 +1407,8 @@ NEEDS: tuple[Need, ...] = (
         "personal-use days (Schedule E line 2); expenses are the other operating "
         "costs together; direct is a rental-only cost not split by days; "
         "carryover and carrydep are last year's Pub. 527 Worksheet 5-1 lines 7a "
-        "and 7b. Type none if there are none",
+        "and 7b; prior is the property's prior-year unallowed passive loss (last "
+        "year's Form 8582 Part VII column (c)). Type none if there are none",
         "rentals",
         unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
     ),
@@ -1446,43 +1447,43 @@ NEEDS: tuple[Need, ...] = (
         "6b, 1120-S 5a and 5b, 1041 2a and 2b), royalties (1065 box 7, 1120-S "
         "6), stgain and ltgain (1065 boxes 8 and 9a, 1120-S 7 and 8a, 1041 3 "
         "and 4a), which go to Schedules B, E line 4 and D lines 5 and 12, on "
-        "top of the 1099s. Start with spouse when the "
+        "top of the 1099s; prior is the K-1's prior-year unallowed passive loss "
+        "(last year's Form 8582 Part VII column (c)), and active after passive "
+        "or nonpassive marks a box 2 rental you actively participated in. "
+        "Start with spouse when the "
         "self-employment earnings are your spouse's. Example: " + k1.EXAMPLE + ". "
         "Type none if there are none",
         "k1s",
         unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
     ),
     Need(
-        "rental_passive_simple",
-        "Do all the special-allowance conditions hold for your rentals (yes or no)",
-        "a rental loss is passive: the Form 8582 special allowance (up to "
-        "$25,000, phased out between $100,000 and $150,000 of modified AGI) "
-        "lets it offset other income only when they all hold",
-        "yes if all of these hold (Schedule E instructions, line 22, and Form "
-        "8582 instructions): rental real estate is your only passive activity "
-        "(no passive partnership, S corporation or trust interest); you have no "
-        "prior-year unallowed passive losses; you actively participated (you "
-        "made management decisions such as approving tenants and terms, and own "
-        "10% or more); you have no passive credits; no rental is held as a "
-        "limited partner or beneficiary; and if married filing separately, you "
-        "lived apart from your spouse all year. Otherwise no",
+        "rental_active",
+        "Did you actively participate in your rentals (yes or no)",
+        "Form 8582 Part II's special allowance (up to $25,000, phased out "
+        "between $100,000 and $150,000 of modified AGI) lets a rental loss "
+        "offset other income only for rental real estate with active "
+        "participation (Part IV)",
+        "yes if you (and your spouse) own 10% or more of each rental and made "
+        "the management decisions, such as approving tenants, setting rents "
+        "and approving repairs, and none is held as a limited partner (Form "
+        "8582 instructions, Special Allowance). Otherwise no",
         "enum",
         choices=("yes", "no"),
-        asked=lambda s: not _passive(s)[1] and _passive(s)[0] < 0,
+        asked=lambda s: _passive(s)[1] and _passive(s)[0] < 0,
         unlocks=("Draft 1040",),
     ),
     Need(
-        "passive_loss_allowed",
-        "Passive losses allowed by Form 8582 (Schedule E line 22, line 28 "
-        "column (g) and line 33 column (c) together)",
-        "a passive loss when the special-allowance conditions do not all hold, "
-        "or a K-1 has a passive item",
-        "your Form 8582 (with its Worksheets 1-6): the passive losses it allows "
-        "this year, as a positive amount; type 0 if none is allowed",
-        "money",
+        "lived_apart",
+        "Did you live apart from your spouse all year (yes or no)",
+        "married filing separately, a passive rental loss gets Form 8582's "
+        "special allowance ($12,500, phased out from $50,000 of modified AGI) "
+        "only when you lived apart all year",
+        "yes if you and your spouse did not live together at any time during "
+        "the year; otherwise no",
+        "enum",
+        choices=("yes", "no"),
         asked=lambda s: (
-            s.get("rental_passive_simple") == "no"
-            or (_passive(s)[1] and _passive(s)[0] < 0)
+            s.get("filing_status") == "married_separate" and _passive(s)[0] < 0
         ),
         unlocks=("Draft 1040",),
     ),
