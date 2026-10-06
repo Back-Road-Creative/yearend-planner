@@ -32,6 +32,7 @@ from planner.taxprep import (
     d400,
     f1116,
     f4797,
+    f6251,
     f8582,
     hsa,
     sche,
@@ -112,6 +113,7 @@ ENGINE = (
     "overtime_income_deduction",
     "auto_loan_interest_deduction",
     "additional_senior_deduction",
+    *f6251.ENGINE,
 )
 PRIOR = ("tax_unit_fpg",)
 WITHHELD = (
@@ -797,6 +799,12 @@ def build(lay: Layout, year: int) -> Draft:
                 f"Form 8889 line 16{hsa_src}",
             ),
             (
+                "8k",
+                "Stock options",
+                hh.stock_option_income,
+                "Needed panel stock_option_income (Pub. 525)",
+            ),
+            (
                 "8z",
                 "Other income",
                 hh.other_income,
@@ -1063,8 +1071,6 @@ def build(lay: Layout, year: int) -> Draft:
             f"${tax.TAX_TABLE_TOP:,.0f} is taxed by its $50 rows): {l16:,.2f}, "
             f"{table_gap:+,.2f} from the rate schedule's exact {regular:,.2f}"
         )
-    l17 = add(f, "17", "Amount from Schedule 2, line 3", s2_3, "Sch 2 line 3")
-    l18 = add(f, "18", "Lines 16 and 17", l16 + l17, "16 + 17")
 
     # Form 1116 and Schedule 3 line 1 (unit 3e-7)
     s3_1 = _form_1116(sheet, d, v, hh, facts, typed, year, l15, l16 + s2_1a)
@@ -1080,6 +1086,26 @@ def build(lay: Layout, year: int) -> Draft:
             },
         )
         v = tax.values(year, priced, (*ENGINE, *state_engine), PRIOR, OWN)
+
+    # Form 6251 (unit 3e-8): its line 11 is Schedule 2 line 2, which differs
+    # from the engine's AMT when line 16 follows the Tax Table.
+    if f6251.required(v):
+        amt = f6251.lay_lines(
+            add,
+            d.notes,
+            v,
+            year,
+            hh.filing_status,
+            l11,
+            l14,
+            d.get(SCH_1A, "37") or 0.0,
+            s3_1,
+            l16 + s2_1a,
+        )
+        s2_2 = _relay(d, "Sch 2", "2", amt, "Form 6251 line 11")
+        s2_3 = _relay(d, "Sch 2", "3", s2_1a + s2_2, "1z + 2")
+    l17 = add(f, "17", "Amount from Schedule 2, line 3", s2_3, "Sch 2 line 3")
+    l18 = add(f, "18", "Lines 16 and 17", l16 + l17, "16 + 17")
 
     # Form 2441 and Schedule 3
     s3_2 = _form_2441(sheet, d, v, hh, care, l11, l18 - s3_1)
@@ -1259,6 +1285,15 @@ def build(lay: Layout, year: int) -> Draft:
             "taxation and ACA MAGI"
         )
     return d
+
+
+def _relay(d: Draft, form: str, line: str, value: float, source: str) -> float:
+    """Re-lay one line already on the draft, in place; returns the value."""
+    value = round(value, 2)
+    for i, ln in enumerate(d.lines):
+        if (ln.form, ln.line) == (form, line):
+            d.lines[i] = dataclasses.replace(ln, value=value, source=source)
+    return value
 
 
 def _form_1116(
@@ -2630,6 +2665,7 @@ ORDER = (
 HEADINGS = {
     "1040": "Form 1040",
     "8949": "Form 8949",
+    f6251.FORM: "Form 6251 (alternative minimum tax)",
     "8889": "Form 8889 (health savings accounts)",
     hsa.SPOUSE_FORM: "Form 8889 (health savings accounts), the spouse's",
     "8962": "Form 8962",
@@ -2653,6 +2689,7 @@ FORM_CAPABILITY = {
     "Sch D": "schedule_d",
     "8949": "schedule_d",
     "4797": "schedule_d",
+    f6251.FORM: "equity_pay",
     f1116.FORM: "foreign_tax_credit",
     f1116.W18: "foreign_tax_credit",
     "Sch SE": "self_employment_tax",

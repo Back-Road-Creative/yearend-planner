@@ -93,6 +93,10 @@ class Template:
     boxes: tuple[Box, ...]
     source: str
     issuer: str | None = None  # literal, for the taxpayer's own documents
+    # (label, pattern) pairs naming one event of a form an issuer files once per
+    # event (Form 3921 per exercise): added to the issuer, so a second form is
+    # its own and only a corrected copy of the same event replaces it
+    event: tuple[tuple[str, re.Pattern[str]], ...] = ()
 
     def matches(self, text: str) -> bool:
         low = text.lower()
@@ -111,7 +115,10 @@ class Template:
         if self.issuer is not None:
             return self.issuer
         m = self.issuer_pattern.search(text)
-        return " ".join(m.group(1).split()) if m else "unknown"
+        name = " ".join(m.group(1).split()) if m else "unknown"
+        found = [(label, p.search(text)) for label, p in self.event]
+        said = ", ".join(f"{label} {e.group(1)}" for label, e in found if e)
+        return f"{name} ({said})" if said else name
 
     def parse_boxes(self, text: str) -> tuple[dict[str, tuple[str, Value]], list[str]]:
         found: dict[str, tuple[str, Value]] = {}
@@ -210,6 +217,9 @@ def load_template(path: Path) -> Template:
         boxes=boxes,
         source=path.name,
         issuer=None if raw.get("issuer") is None else str(raw["issuer"]),
+        event=tuple(
+            (str(k), _compile(str(v))) for k, v in raw.get("event", {}).items()
+        ),
     )
 
 
