@@ -484,8 +484,20 @@ capped at the regular installment plus what earlier ones left unused, and the
 penalty is the lower of the two methods, with the required installments named.
 A planned year-end conversion or sale counts in the last period only, so it is
 figured even with nothing typed. Income with over half in one quarter and no
-`income_by_period` raises a note naming it. The states' underpayment penalties
-are reported as unavailable.
+`income_by_period` raises a note naming it.
+Each state with its own rules charges its own form's penalty or interest on the
+same installments, withholding and payments (2025 forms): North Carolina
+(D-422), California (FTB 5805), New York (IT-2105.9), Georgia (500 UET) and
+Virginia (760C, to May 1) by the day until a payment clears the earliest
+shortfall, at the state's published rate; Michigan (MI-2210) the same at its
+daily factors, plus 10% of each period's shortfall (25% when nothing was paid
+in the period); Pennsylvania (REV-1630) counts a payment only in its own period
+and charges each shortfall to April 15; Ohio (IT/SD 2210) and New Jersey
+(NJ-2210 Option 1) charge each date's cumulative shortfall at the form's
+printed multiplier to the next date; Illinois (IL-2210) charges 2% of a
+shortfall paid within 30 days and 10% after. A date past a state's published
+rates takes the last one, named. Another taxing state is charged on the federal
+method, marked Estimated. The state's annualized method is not figured.
 
 ## The plan on one page (Phase 4e)
 
