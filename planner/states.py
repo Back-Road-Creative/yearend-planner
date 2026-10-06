@@ -255,7 +255,6 @@ STATES: dict[str, State] = {
     **{c: State(c, n, False, note=_NOTES.get(c, "")) for c, n in _NONE.items()},
     **{c: State(c, n, True, _RULES.get(c), _PAYEES.get(c)) for c, n in _TAXED.items()},
 }
-DRAFTED = ("NC",)  # the states whose return the draft lays out
 
 
 def label(code: str | None) -> str:

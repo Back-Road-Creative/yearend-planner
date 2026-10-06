@@ -23,10 +23,10 @@ from planner.config import safe_load
 from planner.engine.household import MissingInputError
 from planner.ledger import db
 from planner.paths import Layout
-from planner.taxprep import d400, draft
+from planner.taxprep import draft, statereturn
 
 TOLERANCE = 1.0
-FILERS = ("self", "NC")
+FILERS = ("self", *statereturn.RETURNS)  # a state template's issuer is its code
 # (filed form, template box) -> (draft form, draft line). Template boxes follow
 # the 2024 forms; the draft follows 2025's, so a few numbers differ.
 MAP: dict[tuple[str, str], tuple[str, str]] = {
@@ -71,11 +71,15 @@ MAP: dict[tuple[str, str], tuple[str, str]] = {
     ("1040-SCHSE", "13"): ("Sch SE", "13"),
     **{("1040-SCHD", b): ("Sch D", b) for b in ("7", "15", "16")},
     **{
-        ("NC-D400", b): (d400.FORM, b)
-        for b in ("6", "12b", "15", "20a", "21a", "23", "26a", "28", "34")
+        (r.template, b): (r.form, b)
+        for r in statereturn.RETURNS.values()
+        for b in r.boxes
     },
 }
-REQUIRED = {"federal": ("1040", "24"), "NC": ("NC-D400", "15")}
+REQUIRED = {
+    "federal": ("1040", "24"),
+    **{c: (r.template, r.tax_line) for c, r in statereturn.RETURNS.items()},
+}
 
 
 class NotFiledError(RuntimeError):
@@ -204,12 +208,13 @@ def close(lay: Layout, year: int, now: datetime | None = None) -> Closing:
         d = None
         out.notes.append(f"no draft to compare against: {exc}")
     if d is not None:
-        nc = d.get(d400.FORM, "15") is not None
-        if nc and " ".join(REQUIRED["NC"]) not in filed:
-            out.notes.append(
-                f"the draft has a D-400 but no filed {year} D-400 is on file; "
-                "drop it and close again to record it"
-            )
+        for code, ret in statereturn.RETURNS.items():
+            has_form = d.get(ret.form, ret.tax_line) is not None
+            if has_form and " ".join(REQUIRED[code]) not in filed:
+                out.notes.append(
+                    f"the draft has a {ret.form} but no filed {year} {ret.form} "
+                    "is on file; drop it and close again to record it"
+                )
         for key, value in sorted(filed.items()):
             form, box = key.split(" ", 1)
             target = MAP.get((form, box))

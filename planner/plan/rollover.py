@@ -38,6 +38,7 @@ LABELS = {
     "agi": "AGI carried from the draft (1040 line 11)",
     "total_tax": "Total tax carried from the draft (1040 line 24)",
     "nc_tax": "NC tax carried from the draft (D-400 line 15)",
+    "state_tax": "State tax carried from the draft (the return's tax line)",
     "st": "Short-term capital loss carried forward",
     "lt": "Long-term capital loss carried forward",
 }
@@ -176,7 +177,7 @@ def _filed_carryover(
 def carry(lay: Layout, year: int) -> Carry:
     """What ``year`` carries into the next: the filed figures once closed,
     else the draft's."""
-    from planner.taxprep import close, d400, draft
+    from planner.taxprep import close, draft, statereturn
 
     why = ""
     try:
@@ -205,7 +206,7 @@ def carry(lay: Layout, year: int) -> Carry:
     for key, (form, line) in (
         ("agi", ("1040", "11a")),
         ("total_tax", ("1040", "24")),
-        ("nc_tax", (d400.FORM, "15")),
+        *((r.carry, (r.form, r.tax_line)) for r in statereturn.RETURNS.values()),
     ):
         value = d.get(form, line)
         if value is not None:
