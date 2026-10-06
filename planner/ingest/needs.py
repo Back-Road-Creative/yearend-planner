@@ -36,6 +36,7 @@ from planner.paths import Layout
 from planner.taxprep import (
     annuity,
     f4797,
+    f5329,
     f8606,
     k1,
     refund,
@@ -82,8 +83,8 @@ class Need:
     why: str
     source: str  # the document that supplies it, with where to get it
     kind: str  # date | int | money | fraction | enum | monthly | dependents |
-    # education | rentals | k1s | farms | annuities | ira_basis | symbols | sales |
-    # str
+    # education | rentals | k1s | farms | annuities | ira_basis | early_exception |
+    # symbols | sales | str
     scope: str = YEAR
     # (form, box) ledger lookups, summed; a "-" before the box subtracts it
     boxes: tuple[tuple[str, str], ...] = ()
@@ -387,6 +388,29 @@ def _pension_left(owner: str) -> Callable[..., tuple[Any, str] | None]:
     return left
 
 
+def _early_settled(owner: str) -> Callable[..., tuple[Any, str] | None]:
+    """Nothing to ask (no exception to type) when none of the owner's 1099-Rs
+    is coded 1 or S, or when they were 59 1/2 all year (exception 12)."""
+
+    def settled(
+        config: Path, conn: sqlite3.Connection, year: int, values: dict[str, Any]
+    ) -> tuple[Any, str] | None:
+        del config
+        facts = list(db.facts_for(conn, year, "1099-R", text=None))
+        docs = f5329.read(facts, retirement_kind(facts))
+        if not any(
+            r["owner"] == owner and f5329.early_code(str(r.get("7") or ""))
+            for r in docs.values()
+        ):
+            return [], "no 1099-R coded 1 or S: no early distribution"
+        birth = values.get((SPOUSE if owner == "spouse" else "") + "birth_date")
+        if birth and f5329.aged(str(birth), year):
+            return [], "59 1/2 before the year: exception 12 covers a code 1 or S"
+        return None
+
+    return settled
+
+
 def _qcd_code(
     config: Path, conn: sqlite3.Connection, year: int, values: dict[str, Any]
 ) -> tuple[str | float | None, str] | None:
@@ -420,6 +444,14 @@ def _basis_asked(s: dict[str, Any], prefix: str = "") -> bool:
     """Asked when the person has an IRA distribution, a conversion or a
     traditional IRA contribution."""
     return any(float(s.get(prefix + k) or 0) > 0 for k in BASIS_TRIGGERS)
+
+
+def _early_asked(s: dict[str, Any], prefix: str = "") -> bool:
+    """Asked when the person has IRA or plan distributions."""
+    return any(
+        float(s.get(prefix + k) or 0) > 0
+        for k in ("ira_distributions", "pension_income")
+    )
 
 
 def _qcd_asked(s: dict[str, Any]) -> bool:
@@ -2079,6 +2111,24 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("MAGI headroom", "Roth conversion", "Draft 1040"),
     ),
     Need(
+        "early_exception",
+        "Exceptions to the 10% early distribution tax (Form 5329), or none",
+        "Form 5329 Part I: a 1099-R coded 1 (early, no known exception) or S (a "
+        "SIMPLE IRA in its first 2 years) owes 10% more tax, 25% for code S, on "
+        "the taxable part, less what an exception covers (Schedule 2 line 8)",
+        "the 2025 Form 5329 instructions, line 2: each exception's number (01-23) "
+        "and the amount it covers, separated by semicolons, with simple after one "
+        "that covers a SIMPLE IRA's coded S; payers code 1 even when you qualify "
+        "for medical (05), higher education (08), a first home (09, up to 10,000), "
+        "birth or adoption (19) and others. Example: "
+        + f5329.EXAMPLE
+        + ". Type none if no exception applies",
+        "early_exception",
+        asked=_early_asked,
+        derive_text=_early_settled("you"),
+        unlocks=("Draft 1040",),
+    ),
+    Need(
         "roth_ira_contribution",
         "Roth IRA contributions for the year (and ABLE contributions as the beneficiary)",
         "Form 8880 line 1, the saver's credit, with the traditional IRA contribution",
@@ -2260,6 +2310,7 @@ PERSON_HSA = (
 TWINS = (  # typed per person, outside the lists above
     "qcd",
     "ira_basis",
+    "early_exception",  # each spouse's own Form 5329 (3f-5)
     "ss_claim_age",  # each spouse's own record and claim (3f-4)
     "ss_estimate_62",
     "ss_estimate_67",
@@ -2281,6 +2332,8 @@ def _spouse_asked(
             return float(s.get(SPOUSE + "ira_distributions") or 0) > 0
         if key == "ira_basis":  # the spouse's own Form 8606
             return _basis_asked(s, SPOUSE)
+        if key == "early_exception":  # the spouse's own Form 5329
+            return _early_asked(s, SPOUSE)
         return head is None or head(s)
 
     return asked
@@ -2311,6 +2364,8 @@ def _with_spouse(needs: tuple[Need, ...]) -> tuple[Need, ...]:
                 asked=_spouse_asked(n.asked, n.key),
                 derive_text=_pension_left("spouse")
                 if n.key == "pension_income"
+                else _early_settled("spouse")
+                if n.key == "early_exception"
                 else n.derive_text,
             )
         )
@@ -2703,6 +2758,8 @@ def parse_value(need: Need, text: str) -> Any:
         return annuity.parse(need.key, s)
     if need.kind == "ira_basis":
         return f8606.parse(need.key, s)
+    if need.kind == "early_exception":
+        return f5329.parse(need.key, s)
     if need.kind == "symbols":
         return _symbols(need.key, s)
     if need.kind == "sales":
