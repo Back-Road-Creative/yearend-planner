@@ -50,6 +50,7 @@ INFO = (
     "1099-SA",
     "1099-G",
     "1099-C",
+    "1099-MISC",
     "5498",
     "5498-SA",
     "1095-A",
@@ -84,6 +85,8 @@ WHERE = {
     "1099-G": "the state agency's website (unemployment or tax department: "
     "1099-G lookup)",
     "1099-C": "the creditor's mail or online account (a settled or forgiven debt)",
+    "1099-MISC": "the payer's mail or online account (a tenant's or licensee's "
+    "rent or royalty, a prize or other payment)",
 }
 INSTITUTION = "the institution's tax center (Vanguard: My Accounts > Tax center)"
 # A placeholder issuer matches any issuer of that form.
@@ -306,6 +309,8 @@ def _from_answers(
         _add(out, year, "1099-G", "the state agency", "a state or local tax refund")
     if _positive(conn, lay, year, "cancelled_debt"):
         _add(out, year, "1099-C", "the creditor", "canceled debt")
+    if _positive(conn, lay, year, "other_income"):
+        _add(out, year, "1099-MISC", "each payer", "other income")
     if _positive(conn, lay, year, "ordinary_dividends"):
         _add(out, year, "1099-DIV", "each payer", "dividend income")
     if any(_positive(conn, lay, year, k) for k in ("premium_monthly", "slcsp_monthly")):
