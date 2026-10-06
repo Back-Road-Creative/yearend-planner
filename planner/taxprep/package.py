@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from planner import NOTICE
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import esttax
@@ -80,6 +81,7 @@ def html_page(d: draft.Draft) -> str:
         f"<h1>Draft {d.year} return</h1>",
         f"<p>policyengine-us {esc(d.engine_version)}. A draft to check against the "
         "forms, not a filing.</p>",
+        f"<p><strong>{esc(NOTICE)}</strong></p>",
     ]
     if d.not_ready:
         parts.append(f"<p><strong>{esc(d.not_ready)}</strong></p>")
@@ -261,7 +263,7 @@ def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
 
 
 def render(pack: Pack) -> str:
-    out = [f"Tax pack for {pack.year}: {pack.folder}"]
+    out = [f"Tax pack for {pack.year}: {pack.folder}", f"  {NOTICE}"]
     out.extend(f"  {name:24} {FILES[name]}" for name in pack.written)
     out.extend(f"note: {n}" for n in pack.notes)
     return "\n".join(out) + "\n"
