@@ -788,7 +788,10 @@ and its Schedule S. It uses the same engine run as the federal return.
 - **Tax and payments.**
   - Line 18 (use tax): `nc_use_tax` when typed; until then, the use tax table's
     estimate for your income, and the draft says so.
-  - Line 20a: NC withholding from W-2 box 17 and 1099-R box 14.
+  - Line 20a: NC withholding from W-2 box 17 and 1099-R box 14. On a joint return
+    line 20a is yours and line 20b the spouse's (2025 D-401 p. 15), from the documents
+    marked theirs (`data/inbox/spouse/` or `planner owner`; unit 3a-6); with none
+    marked and withholding on file, a note says how to mark them.
   - Line 21a: the NC estimated payments from the bank export or typed.
   - The draft ends on line 26a/27 (owed) or line 28/34 (refund).
 - **Check.** Line 14 is compared with the engine's NC taxable income, with the
