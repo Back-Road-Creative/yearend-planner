@@ -1,0 +1,12 @@
+# Michigan MI-1040, page 3 (the tax due or the refund). Merges with pages 1
+# (mi-1040.yaml) and 2 as form MI-1040. "2026" on this page is line 38's next
+# year, so the year is read from the header only.
+form: MI-1040
+years: [2025]
+match: ["MI-1040, Page 3 of 3", "REFUND OR TAX DUE"]
+year_pattern: '(20\d\d) (?:MICHIGAN Individual Income Tax Return MI-1040|MI-1040, Page)'
+issuer: MI
+boxes:
+  "36": {label: "You owe", pattern: 'YOU OWE\s+36\.\s+AMOUNT'}
+  "37": {label: "Overpayment", pattern: 'subtract line 25 from line 34[\s.]*37\.\s+AMOUNT'}
+  "39": {label: "Refund", pattern: 'REFUND\s+39\.\s+AMOUNT'}
