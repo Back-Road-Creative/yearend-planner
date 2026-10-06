@@ -32,7 +32,7 @@ from planner.engine.household import PERSON_INPUTS, PERSON_SAVERS
 from planner.ingest.derive import county_from_zip
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.taxprep import refund, sche, statereturn
+from planner.taxprep import k1, refund, sche, statereturn
 
 PROFILE = "profile"
 PRIOR = "prior"  # the year before the plan year (the filed return)
@@ -249,6 +249,15 @@ DOCS: dict[str, Doc] = {
 }
 _NONE = "no document supplies this; type it"
 _1040_ID = "the filing-status check boxes and address line; or type it"
+
+
+def _passive(s: dict[str, Any]) -> tuple[float, bool]:
+    """(Form 8582's passive net across Schedule E Part I and the K-1s, whether
+    any K-1 has a passive item)."""
+    income, losses = k1.passive_totals(k1.rows(s.get("k1s") or []))
+    rentals = sche.passive_net(sche.columns(s.get("rentals") or []))
+    return rentals + income - losses, bool(income or losses)
+
 
 NEEDS: tuple[Need, ...] = (
     Need(
@@ -1419,6 +1428,26 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("Draft 1040",),
     ),
     Need(
+        "k1s",
+        "Schedules K-1 from partnerships, S corporations, estates and trusts "
+        "(Schedule E Parts II and III), or none",
+        "Schedule 1 line 5: each K-1's business and rental income or loss, with "
+        "the passive-loss limit; box 14 code A goes to Schedule SE",
+        "each Schedule K-1 (Form 1065, 1120-S or 1041). One entry a K-1, "
+        "separated by semicolons: the kind (partnership, scorp or trust), then "
+        "passive, or nonpassive when you materially participated (Pub. 925: "
+        "500 hours, or the other tests), then each box as a word and amount: "
+        "ordinary (box 1, or 1041 box 6), rental (box 2, or 1041 box 7), "
+        "otherrental (box 3, or 1041 box 8), guaranteed (1065 box 4c), "
+        "section179 (1065 box 12, 1120-S box 11), se (1065 box 14 code A), "
+        "portfolio (1041 box 5), deductions (1041 box 9) and the section 199A "
+        "statement's qbi, w2wages and ubia. Start with spouse when the "
+        "self-employment earnings are your spouse's. Example: " + k1.EXAMPLE + ". "
+        "Type none if there are none",
+        "k1s",
+        unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
+    ),
+    Need(
         "rental_passive_simple",
         "Do all the special-allowance conditions hold for your rentals (yes or no)",
         "a rental loss is passive: the Form 8582 special allowance (up to "
@@ -1434,17 +1463,22 @@ NEEDS: tuple[Need, ...] = (
         "lived apart from your spouse all year. Otherwise no",
         "enum",
         choices=("yes", "no"),
-        asked=lambda s: sche.passive_net(sche.columns(s.get("rentals") or [])) < 0,
+        asked=lambda s: not _passive(s)[1] and _passive(s)[0] < 0,
         unlocks=("Draft 1040",),
     ),
     Need(
         "passive_loss_allowed",
-        "Rental loss allowed by Form 8582 (the total of Schedule E line 22)",
-        "a rental loss when the special-allowance conditions do not all hold",
-        "your Form 8582 (with its Worksheets 1, 5 and 6): the rental losses it "
-        "allows this year, as a positive amount; type 0 if none is allowed",
+        "Passive losses allowed by Form 8582 (Schedule E line 22, line 28 "
+        "column (g) and line 33 column (c) together)",
+        "a passive loss when the special-allowance conditions do not all hold, "
+        "or a K-1 has a passive item",
+        "your Form 8582 (with its Worksheets 1-6): the passive losses it allows "
+        "this year, as a positive amount; type 0 if none is allowed",
         "money",
-        asked=lambda s: s.get("rental_passive_simple") == "no",
+        asked=lambda s: (
+            s.get("rental_passive_simple") == "no"
+            or (_passive(s)[1] and _passive(s)[0] < 0)
+        ),
         unlocks=("Draft 1040",),
     ),
     Need(
@@ -2079,6 +2113,8 @@ def parse_value(need: Need, text: str) -> Any:
         return _education(need.key, s)
     if need.kind == "rentals":
         return sche.parse(need.key, s)
+    if need.kind == "k1s":
+        return k1.parse(need.key, s)
     if need.kind == "money":
         value = int(round(_number(need, s, "a dollar amount")))
         if value < 0 and need.key.removeprefix(SPOUSE) not in SIGNED:
