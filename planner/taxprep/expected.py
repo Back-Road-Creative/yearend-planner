@@ -97,6 +97,7 @@ WHERE = {
     "K-1 (1065)": "the partnership's investor portal or mail",
     "K-1 (1120-S)": "the S corporation's mail or its accountant",
     "K-1 (1041)": "the estate or trust's fiduciary or its accountant",
+    "1099-PATR": "the cooperative's mail or member portal",
 }
 INSTITUTION = "the institution's tax center (Vanguard: My Accounts > Tax center)"
 # A placeholder issuer matches any issuer of that form.
@@ -111,6 +112,8 @@ ANY = (
     "the state agency",
     "the creditor",
     "each entity",
+    "each cooperative",
+    "the USDA Farm Service Agency",
 )
 TRANSACTION_FORMS = (
     (re.compile(r"dividend|capital gain", re.I), "1099-DIV"),
@@ -329,6 +332,13 @@ def _from_answers(
     for e in need_value(conn, lay, year, "k1s") or ():
         form = f"K-1 ({k1.FORMS[e['kind']]})"
         _add(out, year, form, "each entity", "Schedule E Part II or III")
+    for e in need_value(conn, lay, year, "farms") or ():
+        if e.get("coop"):  # IRC 6044(e): by January 31
+            reason = "cooperative distributions (Schedule F line 3a)"
+            _add(out, year, "1099-PATR", "each cooperative", reason)
+        if e.get("program"):
+            reason = "agricultural program payments (Schedule F line 4a)"
+            _add(out, year, "1099-G", "the USDA Farm Service Agency", reason)
     if _positive(conn, lay, year, "ordinary_dividends"):
         _add(out, year, "1099-DIV", "each payer", "dividend income")
     if any(_positive(conn, lay, year, k) for k in ("premium_monthly", "slcsp_monthly")):

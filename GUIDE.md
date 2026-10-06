@@ -2073,6 +2073,50 @@ Schedule E: each rental property (Part I) and each K-1 with a passive box or a
 - **Not handled.** Part IX (a loss split across forms) and the commercial
   revitalization deduction are named, not drafted.
 
+## Schedule F: farming (Phase 10, unit 3e-5)
+
+`planner enter farms` takes one Schedule F per entry, separated by semicolons. Each
+entry starts with `farm`, then any flags, then each line as a word and amount:
+
+```
+planner enter farms "farm raised 60000 program 2000 feed 12000 fertilizer 4000 fuel 3000 depreciation 8000; farm spouse accrual sales 9000 begin 1000 end 800 feed 2000"
+```
+
+- **Flags.** `spouse` (your spouse's farm: their Schedule SE), `accrual` (the
+  accrual method), `nonmaterial` (you did not materially participate: line E is No)
+  and `notatrisk` (line 36b).
+- **Income, cash method (Part I).** `resale` and `basis` (lines 1a, 1b; 1c is the
+  difference), `raised` (2), `coop` and `cooptaxable` (3a, 3b), `program` and
+  `programtaxable` (4a, 4b), `cccelected` (5a), `cccforfeited` and `ccctaxable`
+  (5b, 5c), `cropins` and `cropinstaxable` (6a, 6b), `deferredin` (6d), `custom` (7)
+  and `otherincome` (8). A taxable amount you do not type is all of it; line 5c is
+  0 when the loans were elected as income on 5a. Line 9 adds 1c, 2, 3b, 4b, 5a, 5c,
+  6b, 6d, 7 and 8.
+- **Income, accrual method (Part III).** `sales` (37), the same coop, program, CCC
+  and crop insurance words (38a-41), `custom` (42), `otherincome` (43), and the
+  inventory `begin`, `purchased` and `end` (45, 46, 48). Line 50 is line 44 less
+  line 49 (or plus it, when ending inventory is above line 47) and goes to line 9.
+- **Expenses (Part II).** One word a line from 10 to 32a: `car`, `chemicals`,
+  `conservation`, `customhire`, `depreciation`, `benefits`, `feed`, `fertilizer`,
+  `freight`, `fuel`, `insurance`, `mortgage`, `interest`, `labor`, `pension`,
+  `rentequipment`, `rent`, `repairs`, `seeds`, `storage`, `supplies`, `taxes`,
+  `utilities`, `vet`, `other`. Line 12 is capped at 25% of gross income from
+  farming; with `conservationcarry` (last year's excess) the rest carries forward
+  (a note).
+- **Passive farms.** A `nonmaterial` farm is a Form 8582 Part V activity named
+  "farm A" (B, ...), with its `prior` unallowed loss; line 34 takes what Form 8582
+  allows ("PAL").
+- **Where it goes.** Each owner's line 34s go to Schedule 1 line 6 and their
+  Schedule SE line 1a, and to the engine's `farm_operations_income` (self-employment
+  tax, QBI, gross income, a loss through the engine's loss deduction). Ohio's
+  Schedule of Business Income line 6 reads the same figure.
+- **Expected forms.** `coop` expects a 1099-PATR from each cooperative; `program` a
+  1099-G from the USDA Farm Service Agency.
+- **Not handled.** The at-risk rules (Form 6198: `notatrisk` is a note), the excess
+  business loss (Form 461), farm income averaging (Schedule J), the Schedule SE farm
+  optional method, crop-share rent (Form 4835) and a former passive activity's
+  prior-year loss are named, not drafted.
+
 ## Coverage gate (Phase 10, unit 2a)
 
 `planner.coverage.gate` runs right after intake, before any plan or draft, and lists

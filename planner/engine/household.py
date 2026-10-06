@@ -78,6 +78,7 @@ class Person:
     # None = the engine takes their wages
     ss_wages: int | None = None
     k1_se: int = 0  # their K-1 (Form 1065) box 14 code A (unit 3e-3a)
+    farm_income: int = 0  # their Schedule F line 34s (unit 3e-5)
 
 
 @dataclass(frozen=True)
@@ -170,6 +171,9 @@ class Household:
     guaranteed_payments: int = 0
     passive_pass_through: int = 0
     k1_se: int = 0
+    # Schedule F line 34, summed over the head's farms (unit 3e-5): the
+    # engine's farm_operations_income (farm_income is Schedule J's)
+    farm_income: int = 0
     k1_qbi: bool = False  # partnership and S corporation income is QBI
     trust_qbi: bool = False
     qbi_w2_wages: int = 0
@@ -352,6 +356,8 @@ class Household:
             person["passive_partnership_s_corp_income"] = {y: self.passive_pass_through}
         if self.k1_se:
             person["partnership_self_employment_net_earnings"] = {y: self.k1_se}
+        if self.farm_income:
+            person["farm_operations_income"] = {y: self.farm_income}
         if self.qbi_w2_wages:
             person["w2_wages_from_qualified_business"] = {y: self.qbi_w2_wages}
         if self.qbi_ubia:
@@ -372,6 +378,8 @@ class Household:
                 people["s"]["taxable_earnings_for_social_security"] = {y: sp.ss_wages}
             if sp.k1_se:
                 people["s"]["partnership_self_employment_net_earnings"] = {y: sp.k1_se}
+            if sp.farm_income:
+                people["s"]["farm_operations_income"] = {y: sp.farm_income}
         for i, d in enumerate(self.dependents, 1):
             people[f"d{i}"] = {
                 "age": {y: d.age},
