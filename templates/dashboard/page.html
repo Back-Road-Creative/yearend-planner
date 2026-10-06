@@ -46,12 +46,14 @@ th.num { text-align:right; }
 tr.under td { color:var(--unavailable); font-weight:600; }
 .done { color:var(--actual); font-weight:600; }
 .stale { margin:.5rem 0 0; padding:.4rem .6rem; border-left:4px solid var(--estimate); background:var(--panel); }
+.notice { margin:.25rem 0; font-weight:600; }
 @media print { #drop, form, button { display:none !important; } body { background:#fff; } section { break-inside:avoid; } }
 </style>
 </head>
 <body>
 <header>
   <h1>Year-end tax &amp; retirement plan {{ p.year }}</h1>
+  <p class="notice">{{ notice }}</p>
   <p>as of {{ p.as_of }} · policyengine-us {{ p.engine }} (tax years {{ p.years_text }}{% if p.next_missing %}; {{ p.next_missing }} is not published{% endif %}) · {{ p.update_check }} ·
   {% if p.limits %}limits {% for y, how in p.limits.coverage.items() %}{{ y }} ({{ how }}){% if not loop.last %}, {% endif %}{% endfor %} ·{% endif %}
   {% if p.needed_count %}<a href="#needed">{{ p.needed_count }} needed</a>{% else %}<span class="done">nothing needed</span>{% endif %}
