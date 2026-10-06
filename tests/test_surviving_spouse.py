@@ -14,12 +14,12 @@ import pytest
 
 from planner import coverage
 from planner.engine.tax import compute, thresholds
-from planner.ingest.needs import enter, need_for, needed, parse_value
+from planner.ingest.needs import enter, needed
 from planner.paths import Layout
 from planner.plan import inputs, levers
 
 
-def _home(planner_home: Path, died: str | None = "2025") -> Layout:
+def _home(planner_home: Path, died: str | None = "2025-03-01") -> Layout:
     home = Layout(planner_home)
     home.ensure()
     for key, text in (
@@ -31,7 +31,7 @@ def _home(planner_home: Path, died: str | None = "2025") -> Layout:
     ):
         enter(home, 2026, key, text)
     if died:
-        enter(home, 2026, "spouse_death_year", died)
+        enter(home, 2026, "spouse_death_date", died)
     return home
 
 
@@ -40,15 +40,9 @@ def test_a_surviving_spouse_is_asked_the_year_of_death_and_the_children(
 ) -> None:
     home = _home(planner_home, died=None)
     asked = {s.need.key: s.state for s in needed(home, 2026).items}
-    assert asked["spouse_death_year"] == "missing"
+    assert asked["spouse_death_date"] == "missing"
     assert asked["dependents"] == "actual"
     assert "spouse_birth_date" not in asked
-
-
-def test_the_year_of_death_is_a_year() -> None:
-    assert parse_value(need_for("spouse_death_year"), "2025") == 2025
-    with pytest.raises(ValueError, match="spouse_death_year"):
-        parse_value(need_for("spouse_death_year"), "20255")
 
 
 def test_a_surviving_spouse_with_a_child_has_no_household_gap(

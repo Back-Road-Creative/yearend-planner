@@ -13,8 +13,8 @@ contribution and a typed total income for the year.
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass, field
-from datetime import date
+from dataclasses import dataclass, field, replace
+from datetime import date, timedelta
 from typing import Any
 
 from planner import coverage
@@ -156,6 +156,7 @@ class Inputs:
     # before the birthday (65 and over: the standard deduction, Schedule 1-A).
     tax_age: int | None = None
     spouse_tax_age: int | None = None  # the same, for a joint return's spouse
+    spouse_death: str | None = None  # a joint spouse who died in the year (3b-3)
     notes: list[str] = field(default_factory=list)
     overrides: Overrides = field(default_factory=Overrides)
     scope: list[str] = field(default_factory=list)  # Not handled lines (also notes)
@@ -175,10 +176,13 @@ class Inputs:
         return [k for k in self.unknown if k in TAX_KEYS]
 
 
-def age_at_year_end(birth: str, year: int) -> int:
+def age_on(birth: str, day: date) -> int:
     b = date.fromisoformat(birth)
-    end = date(year, 12, 31)
-    return end.year - b.year - ((end.month, end.day) < (b.month, b.day))
+    return day.year - b.year - ((day.month, day.day) < (b.month, b.day))
+
+
+def age_at_year_end(birth: str, year: int) -> int:
+    return age_on(birth, date(year, 12, 31))
 
 
 def tax_age(birth: str, year: int) -> int:
@@ -266,6 +270,22 @@ def build(
             },
         )
         out.spouse_tax_age = tax_age(spouse, year)
+        died = value.get("spouse_death_date")
+        if died and died != "none" and date.fromisoformat(str(died)).year == year:
+            # A spouse who died in the year is the age they were at death, and
+            # 65 only if 65 then, reached the day before the birthday (Pub. 501).
+            death = date.fromisoformat(str(died))
+            fields["spouse"] = replace(fields["spouse"], age=age_on(spouse, death))
+            out.spouse_tax_age = age_on(spouse, death + timedelta(days=1))
+            out.spouse_death = death.isoformat()
+            out.notes.append(
+                f"the spouse died {death.isoformat()}: the joint return carries the "
+                f"spouse's income to that date and yours for all of {year}; type "
+                "the spouse's figures to that date. For "
+                f"{year + 1} and {year + 2} the status is qualifying_surviving_spouse "
+                "while a dependent child lives at home, otherwise single or "
+                "head_of_household (2025 Form 1040 instructions)"
+            )
     fields["dependents"] = tuple(
         Dependent(
             age=age_at_year_end(str(d["birth_date"]), year),
@@ -280,7 +300,7 @@ def build(
         fields["filing_status"],
         spouse="spouse" in fields,
         dependents=len(fields["dependents"]),
-        death_year=value.get("spouse_death_year"),
+        death_year=coverage.death_year(value.get("spouse_death_date")),
         year=year,
     )
     out.scope = [g.reason for g in out.coverage if g.area == "household"]
