@@ -24,7 +24,7 @@ from planner.ingest.pdf import parse_texts
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import inputs
-from planner.taxprep import draft
+from planner.taxprep import draft, f5329
 from tests.test_forms import F1099R, TEMPLATES
 
 IRA = "IRA Custodian (synthetic)"
@@ -212,7 +212,7 @@ def test_qcd_reduced_by_this_years_ira_deduction_at_70_and_a_half(
     ],
 )
 def test_half_birthday(born: str, half: date) -> None:
-    assert inputs.half_birthday(born, 70) == half
+    assert f5329.half_birthday(born, 70) == half
 
 
 def test_spouse_qcd_asked_only_with_the_spouses_ira() -> None:
