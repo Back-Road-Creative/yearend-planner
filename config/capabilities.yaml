@@ -84,6 +84,11 @@ income_1099g_1099c:
   evidence: implemented
   tests: ["tests/test_income_1099g.py"]
   note: "Form 1099-G (Rev. March 2024) and 1099-C (Rev. April 2025) read by templates 1099-g.yaml and 1099-c.yaml (unit 3e-1): Schedule 1 line 7 unemployment (box 1), line 1 the taxable part of a state or local refund (box 2) by the 2025 instructions' State and Local Income Tax Refund Worksheet (none taxable when last year's 1040 line 12 is within the standard deduction plus the age amounts, otherwise asked with the cap; married filing separately always asked), line 8c canceled debt (1099-C box 2, the Form 982 exclusions typed), line 9 = 8c + 8f, line 10 = 1 + 3 + 7 + 9; 1099-G box 4 onto 1040 line 25b and box 11 onto the state return's withholding; priced by the engine as unemployment_compensation, salt_refund_income and debt_relief; expected forms from the answers, and a 1099-C not predicted from last year's; blindness and the full worksheet with Schedule A lines 5d-5e are left to the preparer"
+income_1099misc:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_income_1099misc.py"]
+  note: "Form 1099-MISC (Rev. April 2025) read by template 1099-misc.yaml (unit 3e-2a): box 3 other income onto Schedule 1 line 8z (line 9 = 8c + 8f + 8z), priced by the engine as miscellaneous_income; box 4 onto 1040 line 25b and box 16 onto the state return's withholding; boxes 1 and 2 (rents, royalties) read for Schedule E; expected from each payer when other income is entered"
 aca_slcsp_county:
   status: verified
   evidence: implemented

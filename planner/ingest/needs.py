@@ -56,6 +56,14 @@ FILING = (
 # medicaid_work_requirement_start; tests/test_config.py holds them equal).
 MEDICAID_WORK_FROM = 2027
 
+# State withholding: W-2 box 17, 1099-R box 14, 1099-G box 11, 1099-MISC box 16.
+STATE_WITHHELD = (
+    ("W-2", "17"),
+    ("1099-R", "14"),
+    ("1099-G", "11"),
+    ("1099-MISC", "16"),
+)
+
 
 @dataclass(frozen=True)
 class Need:
@@ -683,9 +691,10 @@ NEEDS: tuple[Need, ...] = (
         "fed_withheld",
         "Federal income tax withheld",
         "credited evenly to the four installments",
-        "W-2 box 2, 1099-R box 4, 1099-G box 4 (zero when nothing withholds)",
+        "W-2 box 2, 1099-R box 4, 1099-G box 4, 1099-MISC box 4 (zero when "
+        "nothing withholds)",
         "money",
-        boxes=(("W-2", "2"), ("1099-R", "4"), ("1099-G", "4")),
+        boxes=(("W-2", "2"), ("1099-R", "4"), ("1099-G", "4"), ("1099-MISC", "4")),
         doc="w2",
         unlocks=("Estimated tax",),
     ),
@@ -693,9 +702,10 @@ NEEDS: tuple[Need, ...] = (
         "nc_withheld",
         "NC income tax withheld",
         "credited evenly to the four installments",
-        "W-2 box 17, 1099-R box 14, 1099-G box 11 (zero when nothing withholds)",
+        "W-2 box 17, 1099-R box 14, 1099-G box 11, 1099-MISC box 16 (zero when "
+        "nothing withholds)",
         "money",
-        boxes=(("W-2", "17"), ("1099-R", "14"), ("1099-G", "11")),
+        boxes=STATE_WITHHELD,
         doc="w2",
         unlocks=("Estimated tax", "State return draft"),
         asked=lambda s: s.get("state") == "NC",
@@ -704,9 +714,10 @@ NEEDS: tuple[Need, ...] = (
         "state_withheld",
         "State income tax withheld (a state other than NC)",
         "credited to the state's installments",
-        "W-2 box 17, 1099-R box 14, 1099-G box 11 (zero when nothing withholds)",
+        "W-2 box 17, 1099-R box 14, 1099-G box 11, 1099-MISC box 16 (zero when "
+        "nothing withholds)",
         "money",
-        boxes=(("W-2", "17"), ("1099-R", "14"), ("1099-G", "11")),
+        boxes=STATE_WITHHELD,
         doc="w2",
         unlocks=("Estimated tax", "State return draft"),
         asked=lambda s: _other_taxing_state(s),
@@ -1359,6 +1370,18 @@ NEEDS: tuple[Need, ...] = (
         "taxable, so type the taxable part; type 0 if none",
         "money",
         boxes=(("1099-C", "2"),),
+        unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
+    ),
+    Need(
+        "other_income",
+        "Other income (prizes, awards, and other payments not wages or business)",
+        "ordinary income (Schedule 1 line 8z)",
+        "Form 1099-MISC box 3, from whoever paid you; prizes and awards, "
+        "punitive damages and other taxable income no other line takes; not "
+        "business income (Schedule C) or rents and royalties (Schedule E); "
+        "type 0 if none",
+        "money",
+        boxes=(("1099-MISC", "3"),),
         unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
     ),
     Need(
