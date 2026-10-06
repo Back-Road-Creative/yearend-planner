@@ -8,8 +8,11 @@ credited to the installment whose window it falls in, so a late payment never
 cures an earlier shortfall. The federal Form 2210 penalty is the lower of the
 regular method (``penalty``) and the annualized method (Schedule AI, when
 income came unevenly or a planned year-end item is entered) on the payments
-made plus the plan's later installments; the states' own penalties are
-reported as unavailable."""
+made plus the plan's later installments. Each state with its own rules
+charges its own underpayment penalty or interest on the same payments
+(``states.PenaltyRule``: its form's rates, day count and how it applies a
+payment); another taxing state is charged on the federal method, marked
+Estimated."""
 
 from __future__ import annotations
 
@@ -146,7 +149,7 @@ class Agency:
     installments: list[Installment] = field(default_factory=list)
     next_due: str | None = None
     next_amount: float = 0.0
-    penalty: float | None = None  # Form 2210 (federal); None: unavailable
+    penalty: float | None = None  # underpayment penalty or interest (penalty_label)
     schedule_ai: list[float] | None = None  # Schedule AI line 27, when figured
     notes: list[str] = field(default_factory=list)
     separate: bool = False  # married filing separately: the halved AGI lines
@@ -291,12 +294,97 @@ def _interest(
         y, q = (y + 1, 1) if q == 4 else (y, q + 1)
 
 
+def _published(pen: states.PenaltyRule, day: date, late: set[str]) -> float:
+    """The rate a state's form charges on ``day`` as published; a day past the
+    published rates takes the last one, added to ``late``."""
+    iso = day.isoformat()
+    rate = pen.rates[0][1]
+    for start, value in pen.rates:
+        if start <= iso:
+            rate = value
+    if pen.through and iso > pen.through:
+        late.add(pen.through)
+    return rate
+
+
+def _daily(
+    pen: states.PenaltyRule, amount: float, start: date, end: date, late: set[str]
+) -> float:
+    """``amount`` unpaid the days after ``start`` through ``end``, each at its
+    day's rate over the form's basis (the calendar year's 365 or 366 when it
+    names none)."""
+    total = 0.0
+    day = start + timedelta(days=1)
+    while day <= end:
+        basis = pen.basis or (366 if calendar.isleap(day.year) else 365)
+        total += _published(pen, day, late) / basis
+        day += timedelta(days=1)
+    return amount * total
+
+
+def _span(pen: states.PenaltyRule, start: date, end: date, late: set[str]) -> float:
+    """A column method's factor from one date to the next: the days at each
+    rate over the basis, or the months times the rate over 12 (NJ), rounded
+    as the form prints it."""
+    if pen.monthly:
+        months = (end.year - start.year) * 12 + end.month - start.month
+        factor = months * _published(pen, start + timedelta(days=1), late) / 12
+    else:
+        factor = _daily(pen, 1.0, start, end, late)
+    return round(factor, pen.places) if pen.places is not None else factor
+
+
+def _end(year: int, agency: str) -> date:
+    """The day the agency stops charging: the following April 15 (May 1 for
+    Virginia, its return's due date)."""
+    pen = rules(agency)[0].penalty
+    return date(year + 1, *(pen.end if pen is not None else (4, 15)))
+
+
+def span_factors(year: int, agency: str) -> list[float]:
+    """Each installment's column factor on a column-method state's form (OH
+    IT/SD 2210 line 15, the NJ-2210 multipliers)."""
+    pen = rules(agency)[0].penalty
+    if pen is None or pen.method != "column":
+        raise ValueError(f"{agency} does not charge by column")
+    dues = due_dates(year, agency)
+    late: set[str] = set()
+    ends = [*dues[1:], _end(year, agency)]
+    return [_span(pen, a, b, late) for a, b in zip(dues, ends, strict=True)]
+
+
+def penalty_label(agency: str) -> str:
+    """How a line names the agency's charge ("Form D-422 interest")."""
+    if agency == FED:
+        return "Form 2210 penalty"
+    pen = rules(agency)[0].penalty
+    return f"{pen.form} {pen.word}" if pen else "Form 2210 penalty (federal method)"
+
+
+def _windows(
+    dues: list[date], owes: list[float], credits: list[tuple[date, float]]
+) -> list[tuple[float, bool]]:
+    """Each installment's shortfall when a payment counts only in its own
+    window (after the date before, through its own) and an overpayment
+    carries forward, never back; and whether anything landed in the window."""
+    out = []
+    pool = 0.0
+    before: date | None = None
+    for due, owe in zip(dues, owes, strict=True):
+        inside = [a for w, a in credits if (before is None or w > before) and w <= due]
+        pool += sum(inside)
+        out.append((max(owe - pool, 0.0), bool(inside)))
+        pool = max(pool - owe, 0.0)
+        before = due
+    return out
+
+
 def _settle(
     amount: float,
     when: date,
     shortfalls: list[list[Any]],
     end: date,
-    missing: set[tuple[int, int]],
+    charge: Any,
 ) -> tuple[float, float]:
     """Apply a payment to the earliest open shortfalls first: (what is left of
     it, the penalty on what it paid off)."""
@@ -306,7 +394,7 @@ def _settle(
             break
         pay = min(item[1], amount)
         if pay > 0:
-            owed += _interest(pay, item[0], min(when, end), missing)
+            owed += charge(pay, item[0], min(when, end))
             item[1] -= pay
             amount -= pay
     shortfalls[:] = [s for s in shortfalls if s[1] > 0.005]
@@ -329,45 +417,94 @@ def penalty(
     what is left carries forward, and each shortfall is charged from its due
     date until paid or the 15th of the following April (IRC 6654(a), (b)).
     ``required``: each installment's own amount instead (Schedule AI line 27,
-    the annualized method)."""
+    the annualized method).
+
+    A state with its own ``PenaltyRule`` is charged on its form's method
+    instead, on the same installments, withholding and payments: its rates
+    and day count, from its business-day dates where the form counts from
+    them, to its end date; a taxing state without one on the federal method."""
     rule = rules(agency)[0]
+    pen = rule.penalty if agency != FED else None
     dated = schedule(year, agency)
     nominal = [date(year + off, m, d) for _, (off, m, d), _ in rule.installments()]
+    dues = [due for _, due, _ in dated] if pen is not None and pen.shifted else nominal
     shares = [share for _, _, share in dated]
     parts = [b - a for a, b in zip([0.0, *shares[:-1]], shares, strict=True)]
-    end = date(year + 1, 4, 15)
-    credits: list[tuple[date, float]] = []
+    end = _end(year, agency)
+    estimates: list[tuple[date, float]] = []
     for when, amount in paid:
-        for due, (_, moved, _) in zip(nominal, dated, strict=True):
+        for due, (_, moved, _) in zip(dues, dated, strict=True):
             if due < when <= moved:
                 when = due
                 break
-        credits.append((when, amount))
-    for due, part in zip(nominal, parts, strict=True):
-        credits.append((due, withheld * part))
+        estimates.append((when, amount))
+    credits = estimates + [
+        (due, withheld * part) for due, part in zip(dues, parts, strict=True)
+    ]
     credits.sort(key=lambda c: c[0])
-    shortfalls: list[list[Any]] = []
     missing: set[tuple[int, int]] = set()
-    pool = owed = 0.0
-    underpaid: list[float] = []
-    i = 0
+    late: set[str] = set()
     owes = required or [annual * part for part in parts]
-    for due, owe in zip(nominal, owes, strict=True):
-        while i < len(credits) and credits[i][0] <= due:
-            left, cost = _settle(credits[i][1], credits[i][0], shortfalls, end, missing)
-            pool += left
-            owed += cost
-            i += 1
-        short = max(owe - pool, 0.0)
-        pool = max(pool - owe, 0.0)
-        underpaid.append(r(short))
-        if short > 0.005:
-            shortfalls.append([due, short])
-    for when, amount in credits[i:]:
-        owed += _settle(amount, when, shortfalls, end, missing)[1]
-    for start, amount in shortfalls:
-        owed += _interest(amount, start, end, missing)
+
+    def charge(amount: float, start: date, stop: date) -> float:
+        if pen is None:
+            return _interest(amount, start, stop, missing)
+        if pen.method == "tiered":
+            days = (stop - start).days
+            return amount * next(share for upto, share in pen.tiers if days <= upto)
+        return _daily(pen, amount, start, stop, late)
+
+    owed = 0.0
+    underpaid: list[float] = []
+    if pen is not None and pen.method == "column":
+        ends = [*dues[1:], end]
+        cum = 0.0
+        for due, stop, owe in zip(dues, ends, owes, strict=True):
+            cum += owe
+            short = max(cum - sum(a for w, a in credits if w <= due), 0.0)
+            underpaid.append(r(short))
+            owed += short * _span(pen, due, stop, late)
+    elif pen is not None and pen.method == "window":
+        for due, (short, _) in zip(dues, _windows(dues, owes, credits), strict=True):
+            underpaid.append(r(short))
+            owed += charge(short, due, end)
+    else:
+        shortfalls: list[list[Any]] = []
+        pool = 0.0
+        i = 0
+        for due, owe in zip(dues, owes, strict=True):
+            while i < len(credits) and credits[i][0] <= due:
+                left, cost = _settle(
+                    credits[i][1], credits[i][0], shortfalls, end, charge
+                )
+                pool += left
+                owed += cost
+                i += 1
+            short = max(owe - pool, 0.0)
+            pool = max(pool - owe, 0.0)
+            underpaid.append(r(short))
+            if short > 0.005:
+                shortfalls.append([due, short])
+        for when, amount in credits[i:]:
+            owed += _settle(amount, when, shortfalls, end, charge)[1]
+        for start, amount in shortfalls:
+            owed += charge(amount, start, end)
+    if pen is not None and pen.addition is not None:
+        # MI-2210 Part 3: a share of each period's own shortfall, the larger
+        # when no estimated payment landed in the period
+        some, none = pen.addition
+        for (short, _), (_, paid_in) in zip(
+            _windows(dues, owes, credits), _windows(dues, owes, estimates), strict=True
+        ):
+            owed += short * (some if paid_in else none)
     notes = []
+    if late and pen is not None:
+        last = pen.rates[-1][1]
+        shown = f"{last:g} a day" if pen.basis == 1.0 else f"{last * 100:g}%"
+        notes.append(
+            f"{pen.form} rates are published through {pen.through}; the last "
+            f"published {shown} stands in after it"
+        )
     if missing:
         quarters = ", ".join(f"{y} Q{q}" for y, q in sorted(missing))
         last = UNDERPAYMENT_RATES[max(UNDERPAYMENT_RATES)]
@@ -449,19 +586,39 @@ def _agency(
             f"{name}: installment(s) {', '.join(str(i.n) for i in missed)} were short "
             "on their due dates; a later payment does not cure that"
         )
-    if name == FED:
-        # the payments made, then the plan's own later installments on their
-        # due dates (what cash_flows pays); the balance with the return is
-        # paid on the April date the penalty stops at anyway
-        credits = [(date.fromisoformat(p.date), p.amount) for p in ag.payments]
-        running = total_paid
-        for inst in ag.installments:
-            if date.fromisoformat(inst.due) >= as_of:
-                need = r(max(inst.required - running, 0.0))
-                running = r(running + need)
-                if need:
-                    credits.append((date.fromisoformat(inst.due), need))
-        pen = penalty(year, name, 0.0 if small else annual, withheld, credits)
+    # the payments made, then the plan's own later installments on their due
+    # dates (what cash_flows pays); the balance with the return is paid on the
+    # date the penalty stops at anyway
+    credits = [(date.fromisoformat(p.date), p.amount) for p in ag.payments]
+    running = total_paid
+    for inst in ag.installments:
+        if date.fromisoformat(inst.due) >= as_of:
+            need = r(max(inst.required - running, 0.0))
+            running = r(running + need)
+            if need:
+                credits.append((date.fromisoformat(inst.due), need))
+    pen = penalty(year, name, 0.0 if small else annual, withheld, credits)
+    ag.penalty = pen.amount
+    ag.notes.extend(f"{name}: {note}" for note in pen.notes)
+    if name != FED:
+        prule = rule.penalty
+        if prule is None:
+            ag.notes.append(
+                f"{name}: Estimated: the state's own underpayment penalty is not "
+                "in the planner; the federal Form 2210 method and rates stand in"
+            )
+        else:
+            ag.notes.extend(f"{name}: {note}" for note in prule.notes)
+        label = penalty_label(name)
+        if pen.amount:
+            how = prule.how if prule is not None else "the federal regular method"
+            ag.notes.append(
+                f"{name}: {label} {pen.amount:,.2f} ({how}; the remaining "
+                "installments paid in full on their due dates)"
+            )
+        else:
+            ag.notes.append(f"{name}: no {label}")
+    else:
         method = "regular"
         if periods is not None and pen.amount:
             ai_req = schedule_ai.installments(periods, annual)
@@ -476,13 +633,12 @@ def _agency(
                     "the remaining installments paid in full on their due dates"
                 )
                 pen, method = alt, "annualized"
+                ag.penalty = pen.amount
             else:
                 ag.notes.append(
                     f"{name}: the annualized method (Schedule AI) gives "
                     f"{alt.amount:,.2f}, no lower than the regular method"
                 )
-        ag.penalty = pen.amount
-        ag.notes.extend(f"{name}: {note}" for note in pen.notes)
         if method == "annualized":
             pass
         elif pen.amount:
@@ -495,10 +651,6 @@ def _agency(
             )
         else:
             ag.notes.append(f"{name}: no Form 2210 penalty (regular method)")
-    else:
-        ag.notes.append(
-            f"{name}: the state's underpayment penalty not computed (unavailable)"
-        )
     return ag
 
 
@@ -568,8 +720,8 @@ def cash_flows(et: EstTax) -> tuple[list[Flow], list[str]]:
         if ag.penalty:
             if owed < 0:
                 notes.append(
-                    f"{ag.name}: the Form 2210 penalty {ag.penalty:,.2f} comes "
-                    "out of the refund"
+                    f"{ag.name}: the {penalty_label(ag.name)} {ag.penalty:,.2f} "
+                    "comes out of the refund"
                 )
             else:
                 flows.append(Flow(filing.isoformat(), ag.name, ag.penalty, "penalty"))

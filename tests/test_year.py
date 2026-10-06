@@ -392,7 +392,7 @@ def test_planned_sales_and_conversion_tax_reach_the_cash_line(lots: Layout) -> N
     fed = et.agencies[0]
     assert fed.penalty is not None and fed.penalty > 0
     assert through_jan + due == pytest.approx(
-        sum(ag.current_tax - ag.withheld for ag in et.agencies) + fed.penalty,
+        sum(ag.current_tax - ag.withheld + (ag.penalty or 0.0) for ag in et.agencies),
         abs=0.02,
     )
     assert any("Form 2210 penalty" in n for n in g.notes)
