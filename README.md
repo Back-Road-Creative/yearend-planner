@@ -66,7 +66,8 @@ additional child tax credit line by line, Part II-B included (unit 3c-5).
 `planner separate` prices a joint couple's two married-filing-separately returns, each
 on that spouse's own documents, against the joint return (unit 3b-2; not in a
 community property state). Filing as married filing separately stays
-**Not handled**. The state return drafted is NC's D-400; another state
+**Not handled**. The state returns drafted are listed in one registry,
+`planner/taxprep/statereturn.py` (NC's D-400 today; unit 3d-4); another state
 gets the engine's estimate and a **Not handled** line saying to have a preparer draft it.
 A document no template reads is named the same way. Each panel and drafted form is tagged
 verified, estimated or not handled, and the tax pack's `coverage.csv` lists why.
