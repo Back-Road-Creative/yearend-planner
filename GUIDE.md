@@ -281,9 +281,16 @@ archived copy, so nothing already counted is lost; type the scanned values with
 
 Every account number the exports name is an account; the planner asks for each
 one's kind exactly once through the Needed panel (`planner enter
-account:12345678 taxable`, one of `taxable`, `trad_ira`, `inherited_ira`, `roth`,
-`hsa`, `cash`) and, for an inherited IRA, the date of death that starts the
-10-year clock. An inherited IRA whose owner had already begun RMDs also owes a
+account:12345678 taxable`, one of `taxable`, `trad_ira`, `simple_ira`,
+`inherited_ira`, `roth`, `hsa`, `gov_457b`, `cash`) and, for an inherited IRA, the
+date of death that starts the 10-year clock. A SIMPLE IRA is asked for its first
+contribution date (`account:<number>:simple`): for 2 years from it the account
+converts or rolls only to another SIMPLE IRA and a withdrawal before 59 1/2 owes
+25%, so it counts as convertible, and `planner convert` takes it, only after that.
+A governmental 457(b) is asked whether you have left that employer
+(`account:<number>:separated yes`); once you have, it counts as accessible, since
+its payouts owe no 10% additional tax, except money rolled in from another plan or
+an IRA (`account:<number>:rolled`), which stays locked until 59 1/2. An inherited IRA whose owner had already begun RMDs also owes a
 yearly RMD inside the 10 years: `planner account <number> --annual-rmd` (or
 `--no-annual-rmd`) records it, and `planner status` notes an inherited IRA
 whose answer is missing. `planner account <number> --name ... --type ... --balance ...`

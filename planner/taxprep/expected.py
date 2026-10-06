@@ -132,7 +132,7 @@ TRANSACTION_FORMS = (
 )
 IRA_OUT = re.compile(r"distribution|withdrawal|conversion|rmd", re.I)
 CONTRIBUTION = re.compile(r"contribution", re.I)
-IRA_TYPES = ("trad_ira", "inherited_ira", "roth")
+IRA_TYPES = ("trad_ira", "simple_ira", "inherited_ira", "roth")
 
 
 @dataclass
@@ -293,10 +293,10 @@ def _from_accounts(
                 if pattern.search(text):
                     _add(out, year, form, who, f"{row.type.lower()} in {row.account}")
                     break
-        elif kind in IRA_TYPES and row.kind == "transaction":
+        elif kind in (*IRA_TYPES, "gov_457b") and row.kind == "transaction":
             if IRA_OUT.search(text):
                 _add(out, year, "1099-R", who, f"money out of {row.account}")
-            elif CONTRIBUTION.search(text):
+            elif CONTRIBUTION.search(text) and kind != "gov_457b":  # W-2 box 12 G
                 _add(out, year, "5498", who, f"contribution to {row.account}")
         elif kind == "hsa" and row.kind == "transaction":
             if IRA_OUT.search(text):

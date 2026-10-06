@@ -31,8 +31,22 @@ from planner.ingest.derive import Gap, gaps
 from planner.ledger import db
 from planner.paths import Layout
 
-TYPES = ("taxable", "trad_ira", "inherited_ira", "roth", "hsa", "cash")
+TYPES = (
+    "taxable",
+    "trad_ira",
+    "simple_ira",
+    "inherited_ira",
+    "roth",
+    "hsa",
+    "gov_457b",
+    "cash",
+)
 SPENDABLE = ("taxable", "cash")
+CONVERTIBLE = ("trad_ira", "simple_ira")  # a SIMPLE IRA once its 2 years pass
+# IRC 72(t)(6) and 408(d)(3)(G): for 2 years from the employer's first deposit a
+# SIMPLE IRA rolls or converts only to another SIMPLE IRA, and a withdrawal
+# before 59 1/2 owes 25% instead of 10%
+SIMPLE_MONTHS = 24
 UNKNOWN = "unknown"
 INHERITED_YEARS = 10  # the SECURE Act window for a non-spouse inherited IRA
 ACCOUNT_FIELDS = (
@@ -40,6 +54,12 @@ ACCOUNT_FIELDS = (
     "type",
     "date_of_death",
     "annual_rmd",  # inherited IRA: the owner had begun RMDs, so yearly RMDs apply
+    "first_contribution",  # SIMPLE IRA: the first deposit starts the 2-year window
+    # governmental 457(b) (IRC 457(d)(1)(A), Pub. 575): money is paid out on leaving
+    # the employer, and only what was rolled in from another plan or an IRA owes
+    # the 10% additional tax before 59 1/2
+    "separated",
+    "rolled_in",
     "balance",
     "balance_date",
 )
@@ -77,15 +97,19 @@ def save_account(lay: Layout, number: str, **fields: Any) -> dict[str, Any]:
         raise ValueError(f"account {number}: unknown field(s) {', '.join(unknown)}")
     if fields.get("type") is not None and fields["type"] not in TYPES:
         raise ValueError(f"account {number}: type must be one of {', '.join(TYPES)}")
-    rmd = fields.get("annual_rmd")
-    if rmd is not None and not isinstance(rmd, bool):
-        if str(rmd).strip().lower() not in YES:
-            raise ValueError(f"account {number}: annual_rmd must be yes or no")
-        fields["annual_rmd"] = YES[str(rmd).strip().lower()]
-    if fields.get("date_of_death") is not None:
-        fields["date_of_death"] = date.fromisoformat(
-            str(fields["date_of_death"])
-        ).isoformat()
+    for flag in ("annual_rmd", "separated"):
+        said = fields.get(flag)
+        if said is not None and not isinstance(said, bool):
+            if str(said).strip().lower() not in YES:
+                raise ValueError(f"account {number}: {flag} must be yes or no")
+            fields[flag] = YES[str(said).strip().lower()]
+    for day in ("date_of_death", "first_contribution"):
+        if fields.get(day) is not None:
+            fields[day] = date.fromisoformat(str(fields[day])).isoformat()
+    if fields.get("rolled_in") is not None:
+        fields["rolled_in"] = float(fields["rolled_in"])
+        if not 0 <= fields["rolled_in"] < float("inf"):
+            raise ValueError(f"account {number}: rolled_in must be 0 or more")
     accounts = load_accounts(lay)
     entry = accounts.setdefault(number, {})
     entry.update({k: v for k, v in fields.items() if v is not None})
@@ -188,6 +212,8 @@ class Status:
         default_factory=list
     )  # acct, death, by
     annual_rmd: dict[str, bool] = field(default_factory=dict)  # inherited acct
+    convertible: float = 0.0  # traditional IRAs and SIMPLE IRAs past 2 years
+    simple_free: dict[str, str] = field(default_factory=dict)  # acct: 2 years end
     gaps: list[Gap] = field(default_factory=list)  # YTD vs the filed 1099s
     notes: list[str] = field(default_factory=list)
 
@@ -196,6 +222,82 @@ class Status:
         short = sum(lot.gain for lot in self.lots if lot.term == "short")
         long = sum(lot.gain for lot in self.lots if lot.term != "short")
         return round(short, 2), round(long, 2)
+
+
+def simple_free(entry: dict[str, Any]) -> date | None:
+    """The day a SIMPLE IRA's 2-year window ends (None when its first
+    contribution date is not entered)."""
+    first = entry.get("first_contribution")
+    if first is None:
+        return None
+    return add_months(date.fromisoformat(str(first)), SIMPLE_MONTHS)
+
+
+def _plan_accounts(
+    st: Status, accounts: dict[str, dict[str, Any]], birth: Any, year: int
+) -> float:
+    """Convertible balances, SIMPLE IRA windows and the governmental 457(b)
+    money open without the 10% additional tax, which is returned."""
+    from planner.taxprep.f5329 import aged
+
+    old = birth is not None and aged(str(birth), year)
+    held: dict[tuple[str, str], float] = {}
+    for p in st.positions:
+        held[(p.account, p.type)] = held.get((p.account, p.type), 0.0) + p.value
+    open_ = 0.0
+    for (number, kind), value in sorted(held.items()):
+        entry = accounts.get(number, {})
+        if kind == "trad_ira":
+            st.convertible += value
+        elif kind == "simple_ira":
+            free = simple_free(entry)
+            if free is None:
+                st.notes.append(
+                    f"SIMPLE IRA {number}: first contribution date not entered; it "
+                    f"does not count as convertible (planner enter "
+                    f"account:{number}:simple YYYY-MM-DD)"
+                )
+                continue
+            st.simple_free[number] = free.isoformat()
+            if free.isoformat() <= st.as_of:
+                st.convertible += value
+            else:
+                st.notes.append(
+                    f"SIMPLE IRA {number}: inside its 2-year window until "
+                    f"{free.isoformat()}: it cannot convert or roll to a traditional "
+                    "IRA, and a withdrawal before 59 1/2 owes a 25% additional tax"
+                )
+        elif kind == "gov_457b":
+            if entry.get("separated") is None:
+                st.notes.append(
+                    f"457(b) {number}: whether you have left that employer not "
+                    f"entered; counted as locked (planner enter "
+                    f"account:{number}:separated yes or no)"
+                )
+            elif not entry["separated"]:
+                st.notes.append(
+                    f"457(b) {number}: still with that employer; counted as locked "
+                    "(an in-service withdrawal depends on the plan's terms)"
+                )
+            elif old:
+                open_ += value
+            elif entry.get("rolled_in") is None:
+                st.notes.append(
+                    f"457(b) {number}: money rolled in from another plan or an IRA "
+                    f"not entered; counted as locked (planner enter "
+                    f"account:{number}:rolled 0 when none)"
+                )
+            else:
+                rolled = min(float(entry["rolled_in"]), value)
+                open_ += value - rolled
+                if rolled:
+                    st.notes.append(
+                        f"457(b) {number}: {rolled:,.2f} rolled in from another plan "
+                        "or an IRA owes the 10% additional tax before 59 1/2; that "
+                        "part counts as locked"
+                    )
+    st.convertible = round(st.convertible, 2)
+    return open_
 
 
 def rmd_text(st: Status, account: str) -> str:
@@ -360,7 +462,9 @@ def status(lay: Layout, year: int, as_of: date | None = None) -> Status:
         roth_basis = (st.roth_contributions or 0.0) + st.seasoned
         st.total = round(sum(p.value for p in st.positions), 2)
         st.untyped = round(sum(p.value for p in st.positions if p.type == UNKNOWN), 2)
-        st.accessible = round(spendable + min(st.roth_balance, roth_basis), 2)
+        accounts = load_accounts(lay)
+        plan = _plan_accounts(st, accounts, profile.get("birth_date"), year)
+        st.accessible = round(spendable + min(st.roth_balance, roth_basis) + plan, 2)
         st.locked = round(st.total - st.accessible - st.untyped, 2)
         st.ytd_income = {
             f.box: f.value
@@ -371,7 +475,7 @@ def status(lay: Layout, year: int, as_of: date | None = None) -> Status:
         st.carryforward = need_value(conn, lay, year, "prior_capital_loss_carryforward")
         peak_cents, st.peak_date = db.record_peak(conn, db.to_cents(st.total), today)
         st.peak = db.from_cents(peak_cents)
-        for number, entry in sorted(load_accounts(lay).items()):
+        for number, entry in sorted(accounts.items()):
             if entry.get("type") != "inherited_ira":
                 continue
             death = entry.get("date_of_death")
