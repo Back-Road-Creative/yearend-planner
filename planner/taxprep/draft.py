@@ -60,6 +60,7 @@ ENGINE = (
     "taxable_income",
     "income_tax_before_credits",
     "adjusted_net_capital_gain",
+    *tax.SDTW_VARS,
     "alternative_minimum_tax",
     "non_refundable_ctc",
     "income_tax_non_refundable_credits",
@@ -1022,7 +1023,7 @@ def build(lay: Layout, year: int) -> Draft:
     # Form 1040 tax and credits
     regular = v["income_tax_before_credits"] - v["alternative_minimum_tax"]
     tax_16, table_gap = tax.line_16(
-        regular, l15, v["adjusted_net_capital_gain"], year, hh.filing_status
+        regular, l15, tax.preferential(v), year, hh.filing_status
     )
     l16 = add(
         f,

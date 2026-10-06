@@ -697,7 +697,15 @@ taxable income the tax is the table row's (the tax on the row's midpoint,
 rounded to the dollar), not the rate schedule's exact figure, so the draft can
 be a few dollars off the engine and a note gives the gap. With qualified
 dividends or capital gains only the ordinary part is priced by the table (the
-Qualified Dividends and Capital Gain Tax Worksheet). Every line drawn from a
+Qualified Dividends and Capital Gain Tax Worksheet). With 28% rate gain
+(collectibles) or unrecaptured section 1250 gain, Schedule D lines 18 and 19,
+the tax is the Schedule D Tax Worksheet's instead, and the table prices its
+line 21. The engine's own path for those gains is wrong (it bands them at the
+0% threshold rather than the 24% bracket top, adds 28% of all the 28% rate gain
+on top of the rate schedule, and never takes the worksheet's line 46 when that
+is smaller), so the planner replaces it with the worksheet's 47 lines; a filer
+in the 12% bracket with $10,000 of collectibles gain pays 12% on it, not
+$2,800 more. Every line drawn from a
 document names it to the page: form, box, issuer, file name and page, for
 example `W-2 box 2 (Employer; w2-2025.pdf p.1)`.
 
