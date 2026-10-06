@@ -5,9 +5,10 @@ safe harbor carries and the key it carries under, the typed Needed keys and
 engine variables the return reads, and the function that lays its lines.
 
 NC's D-400 is the first entry, CA's Form 540 the second (unit 3d-6), NY's
-IT-201 the third (unit 3d-7), PA's PA-40 the fourth (unit 3d-8). A
-drafted state is a module beside d400.py, a template under templates/forms/
-(``issuer`` is the state's code; one per page when the return runs to several)
+IT-201 the third (unit 3d-7), PA's PA-40 the fourth (unit 3d-8), IL's
+IL-1040 the fifth (unit 3d-9). A drafted state is a module beside d400.py, a
+template under templates/forms/ (``issuer`` is the state's code; one per page
+when the return runs to several)
 and an entry here; the draft, ``planner close``, the rollover and the
 coverage gate read this table, so nothing else names a state's return."""
 
@@ -16,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from planner.taxprep import ca540, d400, ny201, pa40
+from planner.taxprep import ca540, d400, il1040, ny201, pa40
 
 
 @dataclass(frozen=True)
@@ -110,6 +111,22 @@ RETURNS: dict[str, StateReturn] = {
         keys=pa40.KEYS,
         engine=pa40.ENGINE,
         lay=pa40.lay_lines,
+    ),
+    "IL": StateReturn(
+        code="IL",
+        forms={il1040.FORM: ("IL Form IL-1040", "il_1040_draft")},
+        form=il1040.FORM,
+        template="IL-IL1040",
+        boxes=("1", "9", "10", "11", "14", "16", "18", "19", "21", "23", "25")
+        + ("26", "29", "30", "31", "32", "33", "38", "41"),
+        # IL-2210 Step 2 lines 1-2: the prior year's lines 14 and 22 less the
+        # credits on lines 15, 16, 17, 28, 29 and 30.
+        tax_line="14",
+        carry="state_tax",  # prior_state_tax's estimate
+        prior=("14", "22", "-15", "-16", "-17", "-28", "-29", "-30"),
+        keys=il1040.KEYS,
+        engine=il1040.ENGINE,
+        lay=il1040.lay_lines,
     ),
 }
 
