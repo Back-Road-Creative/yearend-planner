@@ -66,7 +66,9 @@ additional child tax credit line by line, Part II-B included (unit 3c-5).
 Form 1099-G and Form 1099-C are read onto Schedule 1: unemployment (line 7), the taxable
 part of a state refund by the instructions' worksheet (line 1) and canceled debt (line
 8c), with their withholding (unit 3e-1). Form 1099-MISC box 3 is other income on
-Schedule 1 line 8z, and its boxes 4 and 16 are withholding (unit 3e-2a).
+Schedule 1 line 8z, and its boxes 4 and 16 are withholding (unit 3e-2a). Schedule E
+Part I drafts rentals and royalties, applies the vacation-home rules (Pub. 527) and
+the Form 8582 special allowance, and carries line 26 to Schedule 1 line 5 (unit 3e-2b).
 `planner separate` prices a joint couple's two married-filing-separately returns, each
 on that spouse's own documents, against the joint return (unit 3b-2; not in a
 community property state). Filing as married filing separately stays

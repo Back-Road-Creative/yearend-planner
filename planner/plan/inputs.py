@@ -34,7 +34,7 @@ from planner.ingest.needs import _needed
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import forecast
-from planner.taxprep import capgains, hsa
+from planner.taxprep import capgains, hsa, sche
 
 FILING = {
     "single": "SINGLE",
@@ -126,6 +126,9 @@ TAX_KEYS = (
     "ordinary_dividends",
     "qualified_dividends",
     "education",
+    "rentals",
+    "rental_passive_simple",
+    "rental_loss_allowed",
     "aotc_refundable_barred",
     "savers_barred",
 )
@@ -213,6 +216,7 @@ class Inputs:
     ranges: dict[str, tuple[float, float]] = field(default_factory=dict)
     scope: list[str] = field(default_factory=list)  # Not handled lines (also notes)
     coverage: list[coverage.Gap] = field(default_factory=list)  # every gap (2a)
+    schedule_e: sche.Result | None = None  # Schedule E Part I (3e-2b)
 
     def state(self, key: str) -> str:
         """KNOWN, ESTIMATE, UNKNOWN or NOT_APPLICABLE (an item never asked)."""
@@ -444,22 +448,7 @@ def build(
             raise OverrideError(
                 f"total_income_line {line} has its own forecast; drop one of them"
             )
-        net = int(fields.get("short_term_gains", 0)) + int(
-            fields.get("long_term_gains", 0)
-        )
-        limit = (
-            CAPITAL_LOSS_LIMIT_MFS
-            if fields["filing_status"] == "SEPARATE"
-            else CAPITAL_LOSS_LIMIT
-        )
-        lines = ("wages", *TOTAL_INCOME_LINES)
-        others = sum(int(fields.get(k, 0)) for k in lines if k != line) + max(
-            net, -limit
-        )
-        if (sp := fields.get("spouse")) is not None:  # a joint total is the couple's
-            others += sp.wages + sum(
-                getattr(sp, k) for k in TOTAL_INCOME_LINES if k in PERSON_INPUTS
-            )
+        others = _counted(fields, skip=line)
         rest = int(round(ov.total_income)) - others
         if rest < 0:
             raise OverrideError(
@@ -475,7 +464,8 @@ def build(
             out.estimates.remove(key)
         out.notes.append(
             f"total_income {ov.total_income:,.0f} typed: {line} {rest:,} = the total "
-            f"less {others:,} of other income counted (Social Security excluded); "
+            f"less {others:,} of other income counted (Social Security and "
+            "Schedule E excluded); "
             "planned items are added on top"
         )
     # overrides
@@ -507,6 +497,31 @@ def build(
         )
     if ov.planned_hsa is not None:
         fields["hsa_contribution"] = int(round(ov.planned_hsa))
+    if value.get("rentals"):
+        cols = sche.columns(value["rentals"])
+        magi = (
+            _counted(fields)
+            + sche.magi_part(cols)
+            - fields.get("hsa_contribution", 0)
+            - fields.get("se_health_premiums", 0)
+        )
+        allowed = value.get("rental_loss_allowed")
+        out.schedule_e = sche.schedule(
+            cols,
+            magi=magi,
+            separate=fields["filing_status"] == "SEPARATE",
+            simple=value.get("rental_passive_simple"),
+            allowed=None if allowed is None else float(allowed),
+        )
+        fields["rental_income"] = int(round(out.schedule_e.total))
+        out.notes.extend(out.schedule_e.notes)
+        if sche.passive_net(cols) < 0:
+            out.notes.append(
+                f"Form 8582 line 6 modified AGI {magi:,.0f}: AGI without the "
+                "passive rental loss, taxable Social Security, the IRA deduction "
+                "or the deductible part of SE tax, from the household's own "
+                "income lines"
+            )
     out.household = Household(**fields)
     return out
 
@@ -563,3 +578,22 @@ def _forecast(
                 f"{key} full year {s.full_year:,.0f} (low {s.low:,.0f}, "
                 f"high {s.high:,.0f})"
             )
+
+
+def _counted(fields: dict[str, Any], skip: str | None = None) -> int:
+    """Form 1040 line 9 less Social Security, Schedule E and the ``skip`` line:
+    wages and the other income lines, the net capital gain or the allowed loss,
+    and a joint spouse's wages and income lines."""
+    net = int(fields.get("short_term_gains", 0)) + int(fields.get("long_term_gains", 0))
+    limit = (
+        CAPITAL_LOSS_LIMIT_MFS
+        if fields["filing_status"] == "SEPARATE"
+        else CAPITAL_LOSS_LIMIT
+    )
+    lines = ("wages", *TOTAL_INCOME_LINES)
+    others = sum(int(fields.get(k, 0)) for k in lines if k != skip) + max(net, -limit)
+    if (sp := fields.get("spouse")) is not None:  # a joint total is the couple's
+        others += sp.wages + sum(
+            getattr(sp, k) for k in TOTAL_INCOME_LINES if k in PERSON_INPUTS
+        )
+    return others
