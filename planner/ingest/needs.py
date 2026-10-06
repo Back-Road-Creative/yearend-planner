@@ -1403,6 +1403,22 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
     ),
     Need(
+        "rental_qbi",
+        "Is your rental real estate a trade or business for the QBI deduction "
+        "(yes or no)",
+        "Form 1040 line 13: rental income counts for the 20% qualified business "
+        "income deduction only when the rental is a trade or business",
+        "yes if the rentals meet the Rev. Proc. 2019-38 safe harbor (separate "
+        "books and records for each enterprise, 250 or more hours of rental "
+        "services a year, contemporaneous logs of those hours) or are otherwise "
+        "a section 162 trade or business. No for a triple-net lease, a home you "
+        "used personally more than 14 days, or a rental you just hold",
+        "enum",
+        choices=("yes", "no"),
+        asked=lambda s: any(p["kind"] == "rental" for p in s.get("rentals") or ()),
+        unlocks=("Draft 1040",),
+    ),
+    Need(
         "rental_passive_simple",
         "Do all the special-allowance conditions hold for your rentals (yes or no)",
         "a rental loss is passive: the Form 8582 special allowance (up to "

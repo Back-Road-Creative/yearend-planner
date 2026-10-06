@@ -129,6 +129,7 @@ TAX_KEYS = (
     "rentals",
     "rental_passive_simple",
     "rental_loss_allowed",
+    "rental_qbi",
     "aotc_refundable_barred",
     "savers_barred",
 )
@@ -514,6 +515,13 @@ def build(
             allowed=None if allowed is None else float(allowed),
         )
         fields["rental_income"] = int(round(out.schedule_e.total))
+        fields["rental_qbi"] = value.get("rental_qbi") == "yes"
+        if fields["rental_qbi"] and any(c.kind == "royalty" for c in cols):
+            out.notes.append(
+                "the engine's QBI deduction counts the royalties' net with the "
+                "rentals; Form 8995 line 1 takes only the qualifying rentals "
+                "(royalties are investment income, not a trade or business)"
+            )
         out.notes.extend(out.schedule_e.notes)
         if sche.passive_net(cols) < 0:
             out.notes.append(
