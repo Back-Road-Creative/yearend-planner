@@ -310,6 +310,10 @@ def _from_answers(
         _add(out, year, "1099-C", "the creditor", "canceled debt")
     if _positive(conn, lay, year, "other_income"):
         _add(out, year, "1099-MISC", "each payer", "other income")
+    if any(
+        p["kind"] == "royalty" for p in need_value(conn, lay, year, "rentals") or ()
+    ):
+        _add(out, year, "1099-MISC", "each payer", "royalties")
     if _positive(conn, lay, year, "ordinary_dividends"):
         _add(out, year, "1099-DIV", "each payer", "dividend income")
     if any(_positive(conn, lay, year, k) for k in ("premium_monthly", "slcsp_monthly")):

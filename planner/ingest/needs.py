@@ -32,7 +32,7 @@ from planner.engine.household import PERSON_INPUTS, PERSON_SAVERS
 from planner.ingest.derive import county_from_zip
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.taxprep import refund, statereturn
+from planner.taxprep import refund, sche, statereturn
 
 PROFILE = "profile"
 PRIOR = "prior"  # the year before the plan year (the filed return)
@@ -72,7 +72,7 @@ class Need:
     why: str
     source: str  # the document that supplies it, with where to get it
     kind: str  # date | int | money | fraction | enum | monthly | dependents |
-    # education | str
+    # education | rentals | str
     scope: str = YEAR
     # (form, box) ledger lookups, summed; a "-" before the box subtracts it
     boxes: tuple[tuple[str, str], ...] = ()
@@ -1385,6 +1385,53 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
     ),
     Need(
+        "rentals",
+        "Rental real estate and royalties (Schedule E Part I), or none",
+        "Schedule 1 line 5: each property's rents or royalties less its expenses, "
+        "with the vacation-home and passive-loss limits",
+        "your rent roll, leases and receipts; 1099-MISC box 1 (rents) and box 2 "
+        "(royalties); the lender's 1098 for the rental's mortgage; last year's "
+        "Form 4562 for depreciation. One entry a property, separated by "
+        "semicolons: rental rents 18000 mortgage 4000 taxes 2000 expenses 3000 "
+        "depreciation 3000 days 300 personal 0; royalty royalties 1200 expenses "
+        "100 depletion 50. days are the fair rental days and personal the "
+        "personal-use days (Schedule E line 2); expenses are the other operating "
+        "costs together; direct is a rental-only cost not split by days; "
+        "carryover and carrydep are last year's Pub. 527 Worksheet 5-1 lines 7a "
+        "and 7b. Type none if there are none",
+        "rentals",
+        unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
+    ),
+    Need(
+        "rental_passive_simple",
+        "Do all the special-allowance conditions hold for your rentals (yes or no)",
+        "a rental loss is passive: the Form 8582 special allowance (up to "
+        "$25,000, phased out between $100,000 and $150,000 of modified AGI) "
+        "lets it offset other income only when they all hold",
+        "yes if all of these hold (Schedule E instructions, line 22, and Form "
+        "8582 instructions): rental real estate is your only passive activity "
+        "(no passive partnership, S corporation or trust interest); you have no "
+        "prior-year unallowed passive losses; you actively participated (you "
+        "made management decisions such as approving tenants and terms, and own "
+        "10% or more); you have no passive credits; no rental is held as a "
+        "limited partner or beneficiary; and if married filing separately, you "
+        "lived apart from your spouse all year. Otherwise no",
+        "enum",
+        choices=("yes", "no"),
+        asked=lambda s: sche.passive_net(sche.columns(s.get("rentals") or [])) < 0,
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "rental_loss_allowed",
+        "Rental loss allowed by Form 8582 (the total of Schedule E line 22)",
+        "a rental loss when the special-allowance conditions do not all hold",
+        "your Form 8582 (with its Worksheets 1, 5 and 6): the rental losses it "
+        "allows this year, as a positive amount; type 0 if none is allowed",
+        "money",
+        asked=lambda s: s.get("rental_passive_simple") == "no",
+        unlocks=("Draft 1040",),
+    ),
+    Need(
         "tax_exempt_interest",
         "Tax-exempt interest",
         "ACA MAGI and Social Security taxation (Form 1040 line 2a)",
@@ -2014,6 +2061,8 @@ def parse_value(need: Need, text: str) -> Any:
         return _dependents(need.key, s)
     if need.kind == "education":
         return _education(need.key, s)
+    if need.kind == "rentals":
+        return sche.parse(need.key, s)
     if need.kind == "money":
         value = int(round(_number(need, s, "a dollar amount")))
         if value < 0 and need.key.removeprefix(SPOUSE) not in SIGNED:

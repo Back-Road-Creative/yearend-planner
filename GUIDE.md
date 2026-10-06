@@ -1931,9 +1931,44 @@ state tax withheld.
   belongs on Schedule C (`se_income`) instead.
 - **Withholding.** Box 4 adds to `fed_withheld` (1040 line 25b); box 16 adds to
   `nc_withheld` or `state_withheld`.
-- **Rents and royalties.** Boxes 1 and 2 are read and kept for Schedule E (unit 3e-2b).
+- **Rents and royalties.** Boxes 1 and 2 are checked against Schedule E (unit 3e-2b).
 - **Expected forms.** A 1099-MISC is expected from each payer when other income is
   entered; last year's 1099-MISC predicts this year's.
+
+## Schedule E Part I (Phase 10, unit 3e-2b)
+
+`planner enter rentals` takes one entry a property, separated by semicolons and
+lettered A, B, C in order: `rental rents 18000 mortgage 4000 taxes 2000 expenses 3000
+depreciation 3000 days 300 personal 0; royalty royalties 1200 expenses 100 depletion 50`,
+or `none`. `days` and `personal` are Schedule E line 2's fair rental and personal-use
+days; `expenses` is the other operating costs together (drafted on line 19); `direct` is
+a rental-only cost that is not split by days; `carryover` and `carrydep` are last year's
+Pub. 527 Worksheet 5-1 lines 7a and 7b. `planner/taxprep/sche.py` drafts lines 3-26:
+
+- **Personal use.** Every expense is split by rental days over rental plus personal
+  days. A dwelling is used as a home when its personal days are more than 14 and more
+  than 10% of the rental days. A home rented under 15 days reports neither rents nor
+  expenses. A home rented 15 days or more goes through Worksheet 5-1: interest, taxes
+  and direct costs come first, then operating costs up to what is left, then
+  depreciation. The rest carries to next year (a note). The worksheet takes the
+  itemizer's lines 2a-2b, and a note names the standard-deduction path.
+- **Passive losses.** A rental that is not a home is passive. When its net is a loss
+  and `rental_passive_simple` is yes, Form 8582 Part II allows passive income plus the
+  special allowance:
+  - The allowance is 50% of $150,000 less modified AGI, at most $25,000 ($75,000 and
+    $12,500 married filing separately, living apart).
+  - Modified AGI comes from the household's own income lines, without the passive
+    loss, taxable Social Security, the IRA deduction or the deductible part of SE tax.
+  - The allowed loss is split by each property's share of the losses (line 22). The
+    disallowed part carries to next year (a note).
+  - When the answer is no, `rental_loss_allowed` takes the Form 8582 figure. Until
+    either is answered, only passive income is allowed.
+  - A royalty or home loss is not passive.
+- **Totals.** Lines 23a-23e, 24 and 25 are drafted. Line 26 goes to Schedule 1 line 5,
+  and the engine prices it as `rental_income`, whose loss reaches AGI through
+  `loss_ald`. A typed `total_income` excludes Schedule E, which is added on top.
+- **Checks.** A 1099-MISC box 1 or 2 above lines 23a or 23b is a CHECK. A royalty
+  makes a 1099-MISC expected from each payer.
 
 ## Coverage gate (Phase 10, unit 2a)
 
