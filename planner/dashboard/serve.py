@@ -8,7 +8,14 @@ One request at a time (the ledger is a single SQLite file). Each action
 a categorised bank row, a confirm, the tax pack) runs (a filed return
 dropped or confirmed closes its year),
 leaves a one-line result on the page, and redirects back to it, so the page
-always shows the ledger as it is now."""
+always shows the ledger as it is now.
+
+Speed (unit 7e): the server is up before ``planner run`` does any slow step.
+Until the refresh is done the page is the last one written (``out/index.html``)
+under a line saying which step is running, and it reloads itself every two
+seconds; actions wait for the refreshed page. Once live, the gathered page is
+kept while nothing under ``data/`` or ``config/`` changes and no action has
+run, so a reload with nothing new does not recompute it."""
 
 from __future__ import annotations
 
@@ -17,9 +24,11 @@ import email.policy
 import re
 import secrets
 import sqlite3
+import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
+from html import escape
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -36,6 +45,79 @@ from planner.taxprep import close, expected, package, schedule_c
 HOST = "127.0.0.1"
 MAX_BODY = 200 * 1024 * 1024  # one drop of documents
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._ ()-]+")
+WARMING = "planner-refreshing"  # marks the page shown while the refresh runs
+
+
+@dataclass
+class Progress:
+    """Which of ``planner run``'s steps is running, for the console and for
+    the page shown meanwhile."""
+
+    steps: tuple[str, ...]
+    echo: Callable[[str], None] = print
+    started: float = field(default_factory=time.monotonic)
+    current: str = ""
+
+    def elapsed(self) -> float:
+        return time.monotonic() - self.started
+
+    def step(self, name: str) -> None:
+        self.current = name
+        n = self.steps.index(name) + 1
+        self.echo(f"[{n}/{len(self.steps)}] {name} ({self.elapsed():.0f} s)")
+
+    def status(self) -> str:
+        if not self.current:
+            return "starting"
+        n = self.steps.index(self.current) + 1
+        return (
+            f"refreshing: step {n} of {len(self.steps)}, {self.current} "
+            f"({self.elapsed():.0f} s so far)"
+        )
+
+
+def warming_page(previous: str | None, status: str) -> str:
+    """The page while the refresh runs: the last page written, or a short one
+    on the first run, under the step that is running; it reloads itself."""
+    note = (
+        f'<p id="{WARMING}" role="status" style="padding:.6em 1em;'
+        "background:#fff3c4;color:#3b2f00;border:1px solid #c9a227;"
+        f'font:1rem system-ui,sans-serif">{escape(status)}. This page '
+        "reloads itself; actions wait until the refresh is done.</p>"
+    )
+    reload_ = '<meta http-equiv="refresh" content="2">'
+    if previous:
+        head = re.search(r"<head[^>]*>", previous, re.IGNORECASE)
+        body = re.search(r"<body[^>]*>", previous, re.IGNORECASE)
+        if head and body:
+            return (
+                previous[: head.end()]
+                + reload_
+                + previous[head.end() : body.end()]
+                + note
+                + previous[body.end() :]
+            )
+    return (
+        '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
+        f"{reload_}<title>Planner: refreshing</title></head>"
+        f'<body style="font:1rem system-ui,sans-serif;margin:2em">{note}'
+        "<p>No page yet: this is the first run in this folder.</p></body></html>\n"
+    )
+
+
+def fingerprint(lay: Layout) -> tuple[object, ...]:
+    """Every file under data/ and config/ by size and change time, and the
+    date: the page is gathered again when any of them moves."""
+    seen: list[tuple[str, int, int]] = []
+    for top in (lay.data, lay.config):
+        for p in sorted(top.rglob("*")) if top.is_dir() else []:
+            try:
+                st = p.stat()
+            except OSError:
+                continue  # removed while listing; the next listing differs
+            if p.is_file():
+                seen.append((p.as_posix(), st.st_size, st.st_mtime_ns))
+    return (date.today().isoformat(), *seen)
 
 
 @dataclass
@@ -45,14 +127,25 @@ class App:
     as_of: date | None = None
     token: str = ""
     message: str = ""
+    ready: bool = True
+    progress: Progress | None = None
+    kept: tuple[tuple[object, ...], page.Page] | None = None
 
     def __post_init__(self) -> None:
         self.token = self.token or secrets.token_urlsafe(24)
 
     def html(self) -> str:
+        if not self.ready:
+            prev = self.lay.out / "index.html"
+            status = self.progress.status() if self.progress else "starting"
+            text = prev.read_text(encoding="utf-8") if prev.is_file() else None
+            return warming_page(text, status)
         msg, self.message = self.message, ""
-        pg = page.gather(self.lay, self.year, self.as_of)
-        return render.html(pg, self.token, msg)
+        key = fingerprint(self.lay)
+        if self.kept is None or self.kept[0] != key:
+            pg = page.gather(self.lay, self.year, self.as_of)
+            self.kept = (fingerprint(self.lay), pg)  # gathering may write
+        return render.html(self.kept[1], self.token, msg)
 
     def upload(self, files: list[tuple[str, bytes]]) -> str:
         inbox = self.lay.data / "inbox"
@@ -329,6 +422,14 @@ def handler(app: App) -> type[BaseHTTPRequestHandler]:
                 self._drain()
                 self._refuse()
                 return
+            if not app.ready:
+                self._drain()
+                self._send(
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    "still refreshing; try again when the page reloads\n",
+                    "text/plain",
+                )
+                return
             size = int(self.headers.get("Content-Length") or 0)
             if size > MAX_BODY:
                 self._send(
@@ -337,6 +438,7 @@ def handler(app: App) -> type[BaseHTTPRequestHandler]:
                 return
             body = self.rfile.read(size)
             app.message = ROUTES[route](app, self.headers.get("Content-Type", ""), body)
+            app.kept = None  # an action always shows a freshly gathered page
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header("Location", f"/?token={app.token}")
             self.send_header("Content-Length", "0")
