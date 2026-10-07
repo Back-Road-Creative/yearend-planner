@@ -1505,6 +1505,38 @@ whole year. It is a static copy for printing and backup. `planner run` (Phase
   names, file names and OCR text. It loads nothing from the internet. It
   prints cleanly, with the forms hidden.
 
+### Tested in a real browser (unit 7g)
+
+`tests/test_browser.py` opens the live page in headless Chromium through
+Playwright, using a synthetic planner folder. It checks four things:
+
+- **Drag and drop.** The test drags a synthetic Social Security statement
+  onto the page through the page's own drag and drop code. The drop zone
+  lights up. The file is read, and the reloaded page shows "1 file(s)
+  received: 1 imported" under Last action, with the question that statement
+  answers gone. The test builds the drag in the page itself, because a
+  browser test cannot drag a file in from the desktop. This test found a real
+  bug: the page used to follow the server's redirect before reloading, which
+  used up the Last action message, so a dropped file never showed its result.
+- **Keyboard only.** Pressing Tab reaches every link, field and button on
+  the page, and each one shows a visible focus outline (3 pixels, in the
+  accent colour). Every field has a name that a screen reader can say. Using
+  only the keyboard, the test answers a question (types a date and presses
+  Enter). It also adds a document: Space opens the file picker on the file
+  field, then Tab and Enter press Add.
+- **200% zoom.** A 1280-pixel window at 200% zoom has a 640-pixel layout.
+  At that width the page never needs a sideways scroll, and every control
+  stays inside the window. A wide table scrolls inside its own box.
+- **Contrast.** Every piece of visible text, in the light scheme and in the
+  dark scheme, meets WCAG AA contrast: 4.5 to 1, or 3 to 1 for large text.
+  The check covers every colour class the page uses, even ones the synthetic
+  page does not show at the moment. To pass in the dark scheme, buttons use
+  dark text on the light accent, links use the accent colour, and the "not
+  handled" badge is outlined.
+
+CI installs Chromium and fails if it is missing. On a developer machine, the
+tests skip until `uv run playwright install chromium` has been run.
+
 ## The one command: `planner run` (Phase 5b)
 
 `planner run` is the program's front door.

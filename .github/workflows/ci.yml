@@ -20,6 +20,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --frozen --extra dev
+      # tests/test_browser.py drives the live page in headless Chromium
+      - run: uv run playwright install ${{ matrix.os == 'ubuntu-latest' && '--with-deps ' || '' }}chromium
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy planner tests
@@ -27,6 +29,7 @@ jobs:
       - run: uv run pytest ${{ matrix.os == 'ubuntu-latest' && '--cov=planner --cov-report=term --cov-fail-under=93' || '' }}
         env:
           PYTHONUTF8: "1"
+          PLANNER_BROWSER_TESTS: required
 
   # Known-vulnerable dependencies (pip-audit on uv.lock) and secrets anywhere in
   # history (gitleaks, checksum-pinned binary; findings are redacted).
