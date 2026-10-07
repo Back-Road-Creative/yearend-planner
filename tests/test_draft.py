@@ -311,7 +311,7 @@ def test_sch1_line3_links_schedule_c_line31(sc_lay: Layout) -> None:
     assert _need(d, "1040", "8") == _need(d, "Sch 1", "10") == _need(d, "Sch C", "31")
     assert any("home office" in n and "not built" in n for n in d.notes)
     text = draft.render(d)
-    assert "Schedule C\n" in text and "Schedule 1-A\n" in text
+    assert "Schedule C [verified]\n" in text and "Schedule 1-A [verified]\n" in text
 
 
 def test_a_typed_figure_that_is_not_schedule_c_is_flagged(sc_lay: Layout) -> None:

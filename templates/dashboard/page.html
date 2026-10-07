@@ -18,8 +18,10 @@ main { max-width:1100px; margin:0 auto; padding:16px; }
 section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 16px; margin:0 0 14px; }
 section h2 { margin:0 0 8px; font-size:16px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .tag { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; padding:1px 6px; border-radius:4px; border:1px solid currentColor; }
+.cov { font-size:11px; padding:1px 6px; border-radius:4px; background:var(--line); } .cov.not-handled { color:var(--unavailable); font-weight:600; }
 .tag.actual { color:var(--actual); } .tag.estimate { color:var(--estimate); } .tag.unavailable { color:var(--unavailable); }
 pre { margin:0; white-space:pre-wrap; word-break:break-word; font:13px/1.4 ui-monospace, Consolas, monospace; }
+ul.ready { list-style:none; margin:.5rem 0; padding:0; }
 ul.notes { margin:6px 0 0; padding-left:18px; color:var(--muted); font-size:13px; }
 .need { border-top:1px solid var(--line); padding:10px 0; }
 .need:first-of-type { border-top:0; }
@@ -74,8 +76,14 @@ tr.under td { color:var(--unavailable); font-weight:600; }
 
 <section id="needed">
   <h2>Needed <span class="tag {{ 'actual' if not p.needed_count else 'unavailable' }}">{{ p.needed_count }} open</span></h2>
-  {% if not p.needed_count and not p.set_aside %}<p class="done">Nothing more is needed: every input is on hand.</p>
-  {% elif not p.needed_count %}<p class="stale">No open questions, but {{ p.set_aside }} set aside: not ready. The figures that rest on them are estimates; answer them (Set aside, below) before acting on the plan or handing it to a preparer.</p>{% endif %}
+  <ul class="ready" id="readiness">{% for a in p.readiness %}<li class="{{ 'done' if a.ready else 'stale' }}">{{ a.line }}</li>{% endfor %}</ul>
+  {% if not p.needed_count and p.set_aside %}<p class="stale">No open questions, but {{ p.set_aside }} set aside: the figures that rest on them are estimates; answer them (Set aside, below) before acting on the plan or handing it to a preparer.</p>{% endif %}
+  {% if p.coverage %}
+  <div class="doc" id="coverage">
+    <h3>Not handled <small>({{ p.coverage|length }} open)</small></h3>
+    <ul class="notes">{% for g in p.coverage %}<li>{{ g.reason }}<br><strong>Needed:</strong> {{ g.needed }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
   {% for g in p.needed_groups %}
   <div class="doc"{% if g.doc %} id="doc-{{ g.doc.key }}"{% endif %}>
     <h3>{{ g.title }} <small>({{ g.items|length }} open)</small></h3>
@@ -221,7 +229,7 @@ tr.under td { color:var(--unavailable); font-weight:600; }
 
 {% for panel in p.panels %}
 <section id="{{ panel.name }}">
-  <h2>{{ panel.title }} <span class="tag {{ panel.tag }}">{{ panel.tag }}</span></h2>
+  <h2>{{ panel.title }} <span class="tag {{ panel.tag }}">{{ panel.tag }}</span> <span class="cov {{ panel.coverage|replace(' ', '-') }}">{{ panel.coverage }}</span></h2>
   <pre>{{ panel.lines|join('\n') }}</pre>
   {% if panel.notes %}<ul class="notes">{% for n in panel.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
   {% for t in panel.tables %}
@@ -238,7 +246,7 @@ tr.under td { color:var(--unavailable); font-weight:600; }
   <details><summary>{{ p.draft.lines|length }} lines across the federal and state forms</summary>
   <div class="scroll"><table>
     <tr><th>Form</th><th>Line</th><th>Label</th><th>Amount</th><th>Source</th></tr>
-    {% for ln in p.draft.lines %}<tr><td>{{ ln.form }}</td><td>{{ ln.line }}</td><td>{{ ln.label }}</td><td class="num">{{ '{:,.2f}'.format(ln.value) }}</td><td>{{ ln.source }}</td></tr>{% endfor %}
+    {% for ln in p.draft.lines %}<tr><td>{{ ln.form }} <span class="cov {{ p.draft.tag(ln.form)|replace(' ', '-') }}">{{ p.draft.tag(ln.form) }}</span></td><td>{{ ln.line }}</td><td>{{ ln.label }}</td><td class="num">{{ '{:,.2f}'.format(ln.value) }}</td><td>{{ ln.source }}</td></tr>{% endfor %}
   </table></div></details>
   {% if p.draft.notes %}<ul class="notes">{% for n in p.draft.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
   {% else %}

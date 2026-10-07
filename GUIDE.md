@@ -62,7 +62,13 @@ Reference cases (hand-worked, $1 tolerance) are in `tests/test_tax.py` and, ship
 every release, in `planner/engine/reference.yaml`; the engine's
 coverage of each rule the planner relies on is recorded in `config/capabilities.yaml`.
 Every row there names the test that proves it (`tests/test_config.py` fails a verified or
-partial row that cites none, or one whose test does not exist). The poverty-line cases sit
+partial row that cites none, or one whose test does not exist). The engine prices a
+household of more than one person (unit 3a-1): `Household` takes a `spouse` (a joint
+return's second person, with their own wages, self-employment income, IRA figures and
+Social Security) and `dependents` (age, full-time student, disabled), and every person
+figure the planner reads is the tax unit's sum; a sweep moves the first person's input
+only. A spouse on any return but a joint one is refused. The profile does not ask for
+them yet. The poverty-line cases sit
 on both sides of each line: 138% (Medicaid) and 400% (premium tax credit), with the credit
 worked by hand from the Rev. Proc. 2025-25 table; they ship in `reference.yaml`, so
 `planner update` holds a release whose engine moves any of them. One known engine
@@ -196,8 +202,9 @@ assumptions, SS estimates) go to `data/profile/assumptions.yaml`, which is creat
 list and the plan shows it as unavailable; `--undo` puts it back. The loop is done when `planner needed` prints
 `nothing needed`; `--all` shows the covered items with their source. A list emptied by
 setting items aside (`dont-have`, or a waived late form) prints `nothing left to answer,
-N set aside: not ready` instead, and the page says the same: the figures that rest on
-those items are estimates, not ready to act on or hand to a preparer.
+N set aside: not ready` instead: the figures that rest on those items are estimates.
+An empty list is not readiness; the page gives three answers (see *Readiness* under
+*Coverage gate*).
 
 Every kind of item in the Needed panel can be closed on the live page. Every
 don't-have and every waiver can be undone there; a row you categorised is changed
@@ -323,6 +330,10 @@ tax it adds, the ACA credit it costs, a warning when qualified dividends spill
 into 15%, and the cash needed from outside the IRA. The profile's
 `conversion_margin` is kept below each line, `conversion_cap` is the hard cap
 and `conversion_objective` picks the recommendation; the rest stay on the page.
+The tax a candidate adds must come out of cash on hand above `cash_target`: a
+candidate that would dip into the reserve is cut to the largest amount whose tax
+fits, with a note naming both numbers, or dropped when nothing fits (Phase 10,
+2d). With no account typed `cash` the check is skipped and the page says so.
 Record the one you make with `planner convert`.
 
 ## Planners: spending and the glide path (Phase 4b)
@@ -341,8 +352,12 @@ statement figure for that age, else the nearest lower one), the
 accessible-bucket check (taxable plus cash plus Roth basis against the floor
 through `ira_access_age`), three stress rows (a 30% drop in year one, 5%
 inflation, floor returns), and the month-by-month cash line for this year and
-next: SE deposits and dividends from the ledger's rows for the months already
-run and their run-rate after, living cost at the band, `mortgage_monthly`,
+next: SE deposits (bank deposits categorised `receipts`), wages paid in
+(`pay`), other deposits and dividends from the ledger's rows for the months
+already run, and the run-rate of receipts and pay after. A deposit categorised
+`transfer`, `refund` or `loan` is not counted as income; one with no category
+counts once in the `other` column, and a note names it so you can give it one
+(`planner categorize`). Living cost at the band, `mortgage_monthly`,
 `premium_monthly`, estimated payments from `planner esttax` (payments already
 made, in the month they were paid; each later installment at what its safe-harbor
 figure still lacks, so a missed quarter is made up at the next due date; next
@@ -358,6 +373,11 @@ supply counts nothing and is named in the notes. A planned conversion moves no
 cash itself; its tax is in the estimated payments and the `tax due` month, and
 a note gives the tax it adds. None of this needs `--cash-in`. The cash bucket
 is carried month by month and the first month under `cash_target` is named.
+It starts from the cash accounts' balance on their `balance_date`: that
+month's flows after the date run forward from it, later months add their net,
+and earlier months are worked back from it, so a deposit the balance already
+holds is not counted twice. A balance with no date (or dated outside the year)
+starts the line on January 1, and a note says so.
 
 The glide path also runs the comfort-floor line: the same spending rule at
 `return_floor` every year, printed beside the on-track line in the `comfort
@@ -424,18 +444,38 @@ that rests on an unknown (an income item, or a sale with no cost basis) opens
 with "NOT READY for a preparer", and so do its tax-pack page and notes. The page is also written to
 `out/plan-<year>.md` (personal, gitignored; `--no-write` skips it).
 
+Each income stream is carried to December 31 (Phase 10, unit 2c). A
+statement's year-to-date figure counts only through its last row's date, and
+the plan's notes say so when nothing covers the rest of the year. `planner
+forecast <stream> --year <year>` types the rest: a pay schedule (`--cadence
+biweekly --amount 2,400 --next 2026-10-09`; weekly, semimonthly, monthly,
+quarterly, annual and once work the same way), a `--remaining` amount, or a
+`--full-year` figure, which replaces the forecast instead of adding to it. A pay
+stub with no statement behind it starts a stream with `--ytd 40,000 --through
+2026-09-30`; a schedule with no amount so far leaves the stream unknown, never
+zero. `--low` and `--high` bound an uncertain stream and the notes show the
+full-year range. A stream whose annual form is in (a W-2, a 1099, a typed value)
+keeps it and its forecast is not used. `planner forecast --year <year>` lists
+every stream: owner, kind of income, so far, through, rest of year, full year
+and range. One owner per line until the spouse is a full person; a spouse's
+stream needs a joint return.
+
 From a terminal `planner plan` first asks the few typed fields, and each has an
 option so a script or Task Scheduler never waits (`--no-ask` skips the
 questions; Enter skips one):
 
 - **Total income** (`--total-income`): your own full-year figure when the YTD
-  ledger lags. Wages become the total less the other income the ledger counts
+  ledger lags. Wages (or the line `--total-income-line` names: se_income,
+  interest, non_qualified_dividends, ira_distributions) become the total less
+  the other income the ledger counts
   (business, interest, dividends, gains, IRA distributions and the conversions
   recorded so far; Social Security is left to the engine). Gains and losses
   count as one net figure, and a net loss only up to 3,000 (1,500 married
   filing separately), as on Form 1040 line 7. The Q4 dividends,
   planned sales and conversion below are added on top. A total below the other
-  income is refused and says by how much.
+  income is refused and says by how much, and so is a line that has its own
+  forecast. The Q4 dividends are refused beside a dividend forecast: the same
+  dividends would count twice.
 - **Q4 dividends, planned short-term and long-term sales**
   (`--q4-dividends`, `--sales-st`, `--sales-lt`): added to the year. A loss may
   be typed in parentheses.
@@ -464,8 +504,9 @@ installments use the same shift.
 tax bill or the ACA credit, each sized from the ledger, priced through the
 engine and shown beside its deadline and friction (automatic, a trade, a
 trade inside a wash-sale window, needs outside cash, irreversible). Net is
-federal tax (income + SE) plus NC tax minus the ACA credit, saved or spent
-against doing nothing; friction is never folded into the number.
+federal tax (Form 1040 line 24, which holds any repayment of an advance ACA
+credit above the credit allowed) plus NC tax, less refundable credits and the
+ACA credit paid out above the advance, saved or spent against doing nothing; friction is never folded into the number.
 
 - **Get under a line**: pairing losses against the year's realized gains
   (only enough loss to net the gain to 0; a lot can be sold in part, lots
@@ -516,7 +557,14 @@ with every watched line. It refuses what the menu would never stack: two moves
 that move the same dollars (apply one), a key listed twice, a `--set` size at or
 under 0, and a size past what the move can move (a lowering move's sized amount;
 for a conversion the IRA balance, for a gain harvest the long-term gain held, for
-an inherited-IRA withdrawal its balance). `planner thresholds --year 2026` prints the sourced
+an inherited-IRA withdrawal its balance). One feasibility check (Phase 10, 2d)
+backs the menu, `whatif` and conversion sizing: moves that give more shares
+held over a year than the taxable account holds, a gain harvest past the gain
+left once the gifts are made, or traditional and Roth contributions past the one
+IRA limit they share are refused by `whatif` and priced alone on the menu. A
+set that takes more cash by its deadline (contributions paid in, tax added)
+than is on hand above `cash_target` is shown, not refused: `whatif` prints a
+`cash:` line and the menu a note. `planner thresholds --year 2026` prints the sourced
 limits and checks the ones the engine also carries; a mismatch (the engine's
 2026 IRA limit is still 7,000 against Notice 2025-67's 7,500) means the engine
 prices with its own value until policyengine-us updates. Engine runs are
@@ -552,7 +600,8 @@ first rule wins), and `--row bank:T-3 --as supplies` sets one row, which beats
 any rule. Categories are the Schedule C lines (receipts, returns, advertising,
 car, commissions, contract_labor, insurance, interest, legal_professional,
 office, rent_equipment, rent_property, repairs, supplies, taxes_licenses,
-travel, meals, utilities, wages, other) plus `personal` and `transfer`, which
+travel, meals, utilities, wages, other) plus `personal`, `transfer`, `pay`
+(wages paid to you), `refund` and `loan`, which
 are left out. Rules and row choices are kept in `data/profile/categories.yaml`
 and apply to every later export.
 
@@ -1119,7 +1168,7 @@ itself in the window it keeps open.
 ## Scope guard: one person (Phase 10, unit 0b)
 
 The household the engine prices has one member: no spouse and no dependents. For the
-filing statuses whose answer turns on a second person, `planner.plan.inputs.NOT_HANDLED`
+filing statuses whose answer turns on a second person, `planner.coverage.HOUSEHOLD`
 holds one line each, and `inputs.build` puts it in `Inputs.scope` and the notes:
 
 - Married filing jointly: the spouse's income, age, deductions and credits are left out,
@@ -1132,4 +1181,42 @@ holds one line each, and `inputs.build` puts it in `Inputs.scope` and the notes:
 The line leads the dashboard's alerts (kind `scope`), reaches the draft return's notes,
 `planner magi` and the tax pack's notes. A single filer has none. The tag stays until the
 household model (unit 3a) adds the spouse and dependents.
+
+## Coverage gate (Phase 10, unit 2a)
+
+`planner.coverage.gate` runs right after intake, before any plan or draft, and lists
+every fact the planner cannot answer correctly. Each gap has a reason (starting
+`Not handled:`), a Needed line saying what to do, and the sections it touches:
+
+- **Household**: the one-person lines above. Touches every priced panel and the draft.
+- **State**: a state other than NC. The plan's state income tax is the engine's
+  estimate; the state return is not drafted (have a preparer draft it). Touches only
+  the state return, so the federal draft stays ready.
+- **Document**: each file in `data/inbox/UNMATCHED/`. Anything on it is left out, so it
+  touches every priced panel and the draft until its figures are typed with
+  `planner enter` or the file is moved out because it holds no tax figures.
+
+Every panel and every drafted form carries a coverage tag: **not handled** when a gap
+touches it, else **verified** when its row in `config/capabilities.yaml` is verified,
+else **estimated**. The dashboard lists the gaps at the top of Needed (each counts as
+one open item); `planner draft` prints the tag beside each form heading and a gap that
+touches the draft makes it NOT READY for a preparer; the tax pack writes
+`coverage.csv`, a row per drafted form (tag, why, what to do) and a row per gap.
+
+### Readiness (unit 2a-2)
+
+The top of Needed, and `planner dashboard`, give three answers, each `yes` or `no` with
+its reasons (the first five, then a count):
+
+- **Ready to plan**: nothing open on the Needed list and no gap in a planner section
+  (household or an unread document). Estimates are fine here; each is tagged.
+- **Ready to act**: that, and no item set aside that a move rests on (the glide path,
+  spending, MAGI, levers, conversion, withdrawals, estimated tax, cash buffer). A waived
+  form holds back every move: the income on it may be missing.
+- **Ready for a preparer**: nothing open, nothing set aside, nothing still an estimate,
+  no gap of any kind (a state return not drafted included), the tax year ended and the
+  draft built.
+
+Marking an item *don't have* or waiving a form empties the list but never makes the plan
+ready to act or to hand to a preparer.
 

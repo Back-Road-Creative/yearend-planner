@@ -11,6 +11,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from typing import Any
 
+from planner import coverage
 from planner.engine import feed
 from planner.engine import limits as limits_
 from planner.engine.household import MissingInputError
@@ -23,7 +24,7 @@ from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import rollover
 from planner.plan import year as year_plan
-from planner.plan.inputs import FILING, Overrides, scope_gaps
+from planner.plan.inputs import FILING, Overrides
 from planner.taxprep import close, draft, expected, schedule_c
 
 ACTUAL, ESTIMATE, UNAVAILABLE = "actual", "estimate", "unavailable"
@@ -43,6 +44,21 @@ TITLES = {
     "cash": "Cash buffer",
     "washsales": "Wash sales",
     "calendar": "Deadlines",
+}
+# Ready to plan, to act, for a preparer (Page.readiness).
+Readiness = tuple[coverage.Answer, coverage.Answer, coverage.Answer]
+# The capability row behind each panel's coverage tag (unit 2a).
+PANEL_CAPABILITY = {
+    "glide": "glide_path_and_monthly_cash",
+    "spending": "spending_band",
+    "magi": "magi_projection_lines",
+    "levers": "lever_optimizer",
+    "conversion": "roth_conversion_candidates",
+    "forms": "expected_forms",
+    "esttax": "estimated_tax",
+    "cash": "glide_path_and_monthly_cash",
+    "washsales": "wash_sales",
+    "calendar": "deadline_calendar",
 }
 # Top to bottom, as the plan lays the page out.
 ORDER = (
@@ -88,6 +104,7 @@ class Panel:
     lines: list[str]
     notes: list[str]
     tables: list[year_plan.Table] = field(default_factory=list)
+    coverage: str = coverage.ESTIMATED  # verified | estimated | not handled
 
 
 @dataclass
@@ -106,7 +123,8 @@ class Page:
     draft: draft.Draft | None = None
     draft_blocked: str = ""
     pending: list[Pending] = field(default_factory=list)
-    scope: list[str] = field(default_factory=list)  # Not handled: the household
+    scope: list[str] = field(default_factory=list)  # Not handled: household, state
+    coverage: list[coverage.Gap] = field(default_factory=list)  # the gate's gaps
     alerts: list[Alert] = field(default_factory=list)
     limits: limits_.Limits | None = None
     stale_days: int | None = None  # set once STALE_DAYS have passed
@@ -152,12 +170,34 @@ class Page:
 
     @property
     def needed_count(self) -> int:
-        return len(self.needed) + len(self.late_forms) + (1 if self.loose_rows else 0)
+        loose = 1 if self.loose_rows else 0
+        return len(self.needed) + len(self.late_forms) + loose + len(self.coverage)
 
     @property
     def set_aside(self) -> int:
         """Inputs marked don't have and late forms waived: off the list, not on hand."""
         return len(self.dont_have) + len(self.waived_forms)
+
+    @property
+    def readiness(self) -> Readiness:
+        """Ready to plan, to act, for a preparer (unit 2a-2)."""
+        return coverage.readiness(
+            self.coverage,
+            open_items=self.needed_count - len(self.coverage),
+            set_aside=[
+                *(coverage.Item(s.need.label, s.need.unlocks) for s in self.dont_have),
+                *(
+                    coverage.Item(f"{e.form} from {e.issuer} (waived)")
+                    for e in self.waived_forms
+                ),
+            ],
+            estimates=[
+                coverage.Item(s.need.label, s.need.unlocks) for s in self.estimates
+            ],
+            year=self.year,
+            year_open=date.fromisoformat(self.as_of) <= date(self.year, 12, 31),
+            draft_blocked=self.draft_blocked,
+        )
 
     def panel(self, name: str) -> Panel:
         return next(p for p in self.panels if p.name == name)
@@ -337,9 +377,25 @@ def gather(
     except MissingInputError as exc:
         page.draft_blocked = str(exc)
     page.pending = _pending(lay)
-    status = next((s for s in rep.items if s.need.key == "filing_status"), None)
-    if status is not None and status.value in FILING:
-        page.scope = scope_gaps(FILING[str(status.value)])
+    answer = {s.need.key: s.value for s in rep.items}
+    status = answer.get("filing_status")
+    state = answer.get("state")
+    page.coverage = coverage.gate(
+        lay,
+        str(state) if state else None,
+        FILING.get(str(status)) if status else None,
+    )
+    page.scope = [g.reason for g in page.coverage if g.area != "document"]
+    rows = coverage.statuses(lay)
+    page.panels = [
+        replace(
+            pn,
+            coverage=coverage.tag(
+                page.coverage, pn.name, rows.get(PANEL_CAPABILITY[pn.name])
+            ),
+        )
+        for pn in page.panels
+    ]
     page.closings = [
         c for c in (close.latest(lay, y) for y in (year - 1, year)) if c is not None
     ]

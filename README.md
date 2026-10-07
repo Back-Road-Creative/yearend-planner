@@ -20,7 +20,7 @@ no account, no cloud, no AI at runtime.
    last year's return, and statements (PDF, CSV or a phone photo).
 5. Work the **Needed** panel. It groups what the plan still lacks by document: each group
    shows the exact download path, the outputs that document unlocks, and every figure it
-   closes. Upload that document, or type the figure, or mark it as one you don't have. Repeat until the panel says *nothing needed*. (If you marked items as ones you don't have, it says how many were set aside and that the plan is not ready: the figures resting on them are estimates.)
+   closes. Upload that document, or type the figure, or mark it as one you don't have. Repeat until the panel says *nothing needed*. The panel then answers three questions apart: ready to plan, ready to act, ready for a preparer. Items you marked as ones you don't have empty the list but keep the last two at *no*.
 
 The rest of the page is the plan: projected income against each cliff, the Roth
 conversion size, estimated tax due dates, wash-sale warnings, the levers with a what-if,
@@ -40,7 +40,9 @@ priced as that one person and tagged **Not handled** first in the alerts, in the
 return's notes, in `planner magi` and in the tax pack, because a spouse or a qualifying
 person changes the answer and neither is entered. Treat those figures as one person's
 share, not the household's return. The state return drafted is NC's D-400; another state
-gets the engine's estimate and a note that no return is drafted.
+gets the engine's estimate and a **Not handled** line saying to have a preparer draft it.
+A document no template reads is named the same way. Each panel and drafted form is tagged
+verified, estimated or not handled, and the tax pack's `coverage.csv` lists why.
 
 ## Commands
 
