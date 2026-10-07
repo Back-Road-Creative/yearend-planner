@@ -2014,6 +2014,29 @@ def dashboard(
         typer.echo(answer.line)
 
 
+@app.command()
+def health(
+    year: int | None = typer.Option(
+        None, help="plan year; default the active year", min=1990, max=2100
+    ),
+    as_of: str | None = AS_OF,
+) -> None:
+    """Five separate answers: app, data completeness, calculation, decision
+    readiness, tax-pack readiness. Reports only; repairs nothing."""
+    from datetime import date
+
+    from planner import health as health_
+    from planner.plan import rollover
+
+    lay = layout()
+    lay.ensure()
+    today = date.fromisoformat(as_of) if as_of else date.today()
+    active = year or rollover.active_year(lay, today)
+    typer.echo(
+        health_.render(active, today, health_.summary(lay, active, today)), nl=False
+    )
+
+
 TASK_NAME = "Year-End Planner"
 
 
