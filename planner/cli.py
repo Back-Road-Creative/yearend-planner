@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -2085,6 +2086,29 @@ def dashboard(
 
 
 @app.command()
+def timing() -> None:
+    """Measure the speed budgets on this computer with a made-up household in
+    a throwaway folder: first screen (3 s), refresh (15 s), cold run (90 s),
+    and the one-time first run. Takes a few minutes; nothing of yours is read.
+    Each measure is added to data/timing.csv. Exit 1 when one is over."""
+    from planner import timing as tm
+
+    lay = layout()
+    lay.ensure()
+    typer.echo(f"measuring on {tm.machine()} (a few minutes)")
+    try:
+        results = tm.measure(Path(__file__).resolve().parent.parent)
+    except tm.TimingError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    for r in results:
+        typer.echo(r.line())
+    typer.echo(f"recorded in {tm.record(lay, results)}")
+    if not all(r.ok for r in results):
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def health(
     year: int | None = typer.Option(
         None, help="plan year; default the active year", min=1990, max=2100
@@ -2187,8 +2211,9 @@ def run(
         True, "--update-check/--no-update-check", help="look for a newer release"
     ),
 ) -> None:
-    """The one command: read the inbox, run every planner and the draft return,
-    write out/index.html, then serve the page on this computer and open it.
+    """The one command: serve the page on this computer and open it at once
+    (the last page, with the step that is running), read the inbox, run every
+    planner and the draft return, write out/index.html, then show it live.
     Drop files on the page, answer the Needed panel, confirm OCR values and
     build the tax package there. --quiet (Task Scheduler) stops after the
     static page."""
@@ -2205,58 +2230,88 @@ def run(
     lay = layout()
     lay.ensure()
     _swap_staged(lay)
-    # the first run records the pinned engine's output as the baseline every
-    # later engine is held to; a new engine version is recorded the same way
-    try:
-        baseline_note = verify.ensure_baseline(lay.root)
-    except ValueError as exc:
-        baseline_note = f"engine baseline: {exc}"
-    if baseline_note:
-        typer.echo(baseline_note)
-    # the update check comes first (at most weekly, so rarely a wait); its
-    # outcome is on disk before the page is built, so the header shows it
-    update_line = feed.check(lay) if update_check else ""
-    if update_line:
-        typer.echo(update_line)
-    rep = _ingest(lay)
-    typer.echo(
-        f"inbox: {len(rep.imported)} imported, {len(rep.pending)} awaiting "
-        f"confirm, {len(rep.duplicates)} duplicate, {len(rep.unmatched)} not read"
-    )
     today = date.fromisoformat(as_of) if as_of else None
-    for closing in close_.on_drop(lay, today or date.today()):
-        typer.echo(close_.render(closing), nl=False)
-    ro = rollover.refresh(lay, today)
-    if ro is not None and ro.new:
-        typer.echo(rollover.render(ro), nl=False)
-    active = year or rollover.active_year(lay, today or date.today())
-    for got in snaps.refresh(lay, active, today or date.today()):
-        if got.new and got.snapshot:
-            typer.echo(f"snapshot: {got.year} {got.snapshot.kind} recorded")
-    typer.echo(f"limits: {limits.summary(limits.refresh(lay, active))}")
-    pg = page.gather(lay, active, today)
-    typer.echo(f"written {render.write_static(lay, pg)}")
-    typer.echo(f"{pg.needed_count} needed, {len(pg.alerts)} alert(s)")
-    if backup_.settle(lay):
-        typer.echo("restore kept: data-previous/ removed")
-    if quiet:
-        return
-    app_ = serve.App(lay, active, today)
-    notes = [rollover.render(ro).splitlines()[0]] if ro is not None and ro.new else []
-    app_.message = "\n".join([*notes, *([update_line] if update_line else [])])
-    srv = serve.server(app_, port)
-    address = serve.url(app_, srv)
-    typer.echo(f"serving {address}  (Ctrl+C to stop)")
-    if open_browser:
-        import webbrowser
+    prog = serve.Progress(RUN_STEPS, typer.echo)
+    app_ = serve.App(lay, year or 0, today, ready=False, progress=prog)
+    srv = None
+    if not quiet:
+        # the page is up before any slow step (unit 7e): the last page, with
+        # the step that is running, until the refreshed one replaces it
+        srv = serve.server(app_, port)
+        address = serve.url(app_, srv)
+        worker = threading.Thread(target=srv.serve_forever, daemon=True)
+        worker.start()
+        typer.echo(f"serving {address}  (Ctrl+C to stop)")
+        if open_browser:
+            import webbrowser
 
-        webbrowser.open(address)
+            webbrowser.open(address)
     try:
-        srv.serve_forever()
+        # the first run records the pinned engine's output as the baseline
+        # every later engine is held to; a new engine version is recorded the
+        # same way
+        prog.step("engine baseline")
+        try:
+            baseline_note = verify.ensure_baseline(lay.root)
+        except ValueError as exc:
+            baseline_note = f"engine baseline: {exc}"
+        if baseline_note:
+            typer.echo(baseline_note)
+        # the update check comes first (at most weekly, so rarely a wait); its
+        # outcome is on disk before the page is built, so the header shows it
+        prog.step("update check")
+        update_line = feed.check(lay) if update_check else ""
+        if update_line:
+            typer.echo(update_line)
+        prog.step("inbox")
+        rep = _ingest(lay)
+        typer.echo(
+            f"inbox: {len(rep.imported)} imported, {len(rep.pending)} awaiting "
+            f"confirm, {len(rep.duplicates)} duplicate, {len(rep.unmatched)} not read"
+        )
+        prog.step("closing and new year")
+        for closing in close_.on_drop(lay, today or date.today()):
+            typer.echo(close_.render(closing), nl=False)
+        ro = rollover.refresh(lay, today)
+        if ro is not None and ro.new:
+            typer.echo(rollover.render(ro), nl=False)
+        active = year or rollover.active_year(lay, today or date.today())
+        prog.step("snapshots and limits")
+        for got in snaps.refresh(lay, active, today or date.today()):
+            if got.new and got.snapshot:
+                typer.echo(f"snapshot: {got.year} {got.snapshot.kind} recorded")
+        typer.echo(f"limits: {limits.summary(limits.refresh(lay, active))}")
+        prog.step("page")
+        pg = page.gather(lay, active, today)
+        typer.echo(f"written {render.write_static(lay, pg)}")
+        typer.echo(f"{pg.needed_count} needed, {len(pg.alerts)} alert(s)")
+        if backup_.settle(lay):
+            typer.echo("restore kept: data-previous/ removed")
+        typer.echo(f"done in {prog.elapsed():.0f} s")
+        if srv is None:
+            return
+        notes = [rollover.render(ro).splitlines()[0]] if ro and ro.new else []
+        app_.year = active
+        app_.message = "\n".join([*notes, *([update_line] if update_line else [])])
+        app_.ready = True
+        while worker.is_alive():
+            worker.join(1.0)  # a timed join lets Ctrl+C through on Windows
     except KeyboardInterrupt:
         typer.echo("stopped")
     finally:
-        srv.server_close()
+        if srv is not None:
+            srv.shutdown()
+            srv.server_close()
+
+
+RUN_STEPS = (
+    "engine baseline",
+    "update check",
+    "inbox",
+    "closing and new year",
+    "snapshots and limits",
+    "page",
+)
 
 
 def _lever_amounts(pairs: list[str]) -> dict[str, float]:

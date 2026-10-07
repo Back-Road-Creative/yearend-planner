@@ -500,6 +500,11 @@ crash_recovery:
   evidence: implemented
   tests: ["tests/test_crash.py"]
   note: "unit 7b: restore, ledger upgrade backup, ingest, update swap, tax pack and rollover each survive a kill or full disk part way; the next run finishes or undoes the step"
+speed_budgets:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_speed.py"]
+  note: "unit 7e: planner run serves the last page with the running step before any slow step; a reload with nothing changed reuses the gathered page; planner timing measures first screen 3 s, refresh 15 s, cold run 90 s on this computer with a made-up household"
 update_safety:
   status: verified
   evidence: implemented
