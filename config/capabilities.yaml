@@ -480,6 +480,11 @@ close_year:
   evidence: implemented
   tests: ["tests/test_close.py", "tests/test_serve.py::test_dropping_filed_return_closes_year"]
   note: "planner close; test_reference_return_zero_delta_full matches a hand-worked 1040 + D-400 (42 lines); filed 1040/schedules/D-400 vs draft delta, data/private/returns/<year>-closed.yaml, amended = new version; planner run closes each ended year once when its filed return is dropped in the inbox (close.on_drop, )"
+year_snapshots:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_package.py::test_four_snapshots_kept_apart_and_compared", "tests/test_package.py::test_run_takes_the_years_snapshots"]
+  note: "unit 6b: forecast, provisional actual, reconciled actual and filed snapshots (AGI, taxable income, federal and state tax) kept apart in data/private/snapshots/<year>.yaml; planner run takes them; planner snapshots lists them and the change between kinds"
 dashboard_page:
   status: verified
   evidence: implemented
