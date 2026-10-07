@@ -970,6 +970,9 @@ def account(
     balance: str | None = typer.Option(
         None, help="typed balance for an account no export covers"
     ),
+    owner: str | None = typer.Option(
+        None, help="self or spouse: whose age sets the RMDs and the access age"
+    ),
 ) -> None:
     """Describe one account (type, name, date of death, yearly RMDs, typed balance) in
     data/profile/accounts.yaml; with no arguments, list them."""
@@ -990,6 +993,7 @@ def account(
         "annual_rmd": annual_rmd,
         "first_contribution": first_contribution,
         "separated": separated,
+        "owner": owner,
     }
     if rolled_in is not None:
         fields["rolled_in"] = parse_value(account_need(number, "rolled"), rolled_in)
@@ -1482,29 +1486,29 @@ def glide(
     conversion: float = CONV,
     hsa: float | None = HSA,
 ) -> None:
-    """The age/year table to 95 under the planning return (the comfort-floor line,
-    the same rule at the floor return, beside it), the accessible-bucket
-    floor through the IRA access age, three stress rows, and the month-by-month
+    """The age/year table to 95 per account under the planning return, with tax,
+    RMDs and debt payments (the comfort-floor total, the same rule at the floor
+    return, beside it), the accessible-bucket floor through the IRA access age,
+    three fixed stress cases, and the month-by-month
     cash line for this year and next. Estimated payments come from the
     ``esttax`` installments, and the planned sales (``--sales-st``,
     ``--sales-lt``) and conversion reach the line without ``--cash-in``."""
     from datetime import date
 
+    from planner.plan import longterm
     from planner.plan.glidepath import HORIZON_AGE as HORIZON
     from planner.plan.glidepath import glide as run_glide
+    from planner.plan.year import Table, text_table
 
     extra: dict[str, float] = {}
     for item in cash_in:
         ym, _, amt = item.partition(":")
         extra[ym] = extra.get(ym, 0.0) + float(amt.replace(",", ""))
-    g = run_glide(
-        layout(),
-        year,
-        date.fromisoformat(as_of) if as_of else None,
-        balance,
-        extra,
-        _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa),
-    )
+    lay = layout()
+    day = date.fromisoformat(as_of) if as_of else date.today()
+    ov = _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa)
+    g = run_glide(lay, year, day, balance, extra, ov)
+    path = longterm.path(lay, year, day, ov, {rw.age: rw.ss for rw in g.rows}, HORIZON)
     typer.echo(
         f"{year} age {g.age} balance {g.balance:,.2f} ({g.band}); "
         f"accessible {g.accessible:,.2f} "
@@ -1512,21 +1516,17 @@ def glide(
         f"{g.floor_needed:,.2f}: "
         + (f"SHORT by {g.floor_shortfall:,.2f}" if g.floor_shortfall else "covered")
     )
-    typer.echo(
-        f"{'year':>6} {'age':>4} {'real':>15} {'nominal':>15} {'SS':>10} "
-        f"{'spend':>10} {'withdraw':>10} {'comfort floor':>15}"
-    )
-    for rw, fl in zip(g.rows, g.floor_rows, strict=True):
+    if path.rows:
+        for line in text_table(
+            Table("", list(longterm.HEADERS), longterm.table_rows(path))
+        ):
+            typer.echo(line)
+    for line in path.lines():
+        typer.echo(line)
+    if balance is not None:
         typer.echo(
-            f"{rw.year:>6} {rw.age:>4} {rw.balance_real:>15,.2f} "
-            f"{rw.balance_nominal:>15,.2f} "
-            f"{rw.ss:>10,.2f} {rw.spend:>10,.2f} {rw.withdrawal:>10,.2f} "
-            f"{fl.balance_real:>15,.2f}"
-        )
-    for s in g.stresses:
-        end = f"runs out at {s.runs_out_age}" if s.runs_out_age else "lasts"
-        typer.echo(
-            f"stress {s.name:22} {end}; at {HORIZON} {s.balance_at_horizon:,.2f}"
+            "note: --balance sets the spending band; the path per account starts "
+            "from each account's own balance"
         )
     typer.echo(
         f"{'month':>8} {'SE':>10} {'other':>9} {'div':>9} {'in':>9} {'sales':>11} "
@@ -1544,7 +1544,7 @@ def glide(
             f"{m.net:>10,.2f} {m.cash:>12,.2f}"
         )
     typer.echo("* income columns from ledger rows; others at the run-rate")
-    for note in g.notes:
+    for note in g.notes + path.notes:
         typer.echo(f"note: {note}")
 
 
