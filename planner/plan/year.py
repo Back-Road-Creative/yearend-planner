@@ -44,6 +44,7 @@ SECTIONS = (
     "calendar",
     "goals",
     "placement",
+    "yearend",
 )
 MARRIED = ("married_joint", "married_separate")
 
@@ -498,6 +499,17 @@ def _placement(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
     return Section("placement", True, pl.lines(), pl.notes)
 
 
+def _yearend(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
+    """Unit 4d: the "Before Dec 31" list, each move beside doing nothing."""
+    from planner.plan import yearend
+
+    try:
+        ye = yearend.build(lay, year, today, ov)
+    except (goals_.GoalsError, yearend.YearEndError) as exc:
+        return Section("yearend", False, [f"refused: {exc}"])
+    return Section("yearend", True, ye.lines(), ye.notes)
+
+
 BUILDERS: dict[str, Callable[[Layout, int, date, Overrides], Section]] = {
     "needed": _needed,
     "magi": _magi,
@@ -512,6 +524,7 @@ BUILDERS: dict[str, Callable[[Layout, int, date, Overrides], Section]] = {
     "calendar": _calendar,
     "goals": _goals,
     "placement": _placement,
+    "yearend": _yearend,
 }
 
 
