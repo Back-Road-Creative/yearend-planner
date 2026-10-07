@@ -474,7 +474,7 @@ taxpack:
   status: verified
   evidence: implemented
   tests: ["tests/test_package.py"]
-  note: "planner taxpack writes out/tax-<year>/ (draft txt+html, 8949 csv, Sch C, Sch B csv when required, carryforward, basis, payments, forms, originals zip)"
+  note: "planner taxpack writes out/tax-<year>/ (cover sheet: scope, readiness, documents, estimates, not handled, questions, versions; draft txt+html, 8949 csv, Sch C, Sch B csv when required, carryforward, basis, payments, forms, originals zip)"
 close_year:
   status: verified
   evidence: implemented
