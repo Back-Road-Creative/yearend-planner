@@ -1348,6 +1348,7 @@ something another command already prints:
 
 | File | What it holds |
 |---|---|
+| `cover.txt` | the cover sheet (unit 6a), described below |
 | `draft.txt` | the draft return (`planner draft`), every line with its source |
 | `draft.html` | the same draft laid out to print; Print, then Save as PDF |
 | `form-8949.csv` | Form 8949 rows by box, columns (a)-(h) and the account (`planner gains`) |
@@ -1358,6 +1359,21 @@ something another command already prints:
 | `estimated-payments.csv` | federal and state estimated payments, the installment, and where each came from |
 | `forms.csv` | the expected forms, which arrived and their source files (`planner forms`) |
 | `originals.zip` | the archived originals in `data/archive/<year>/` |
+
+`cover.txt` is the first page a preparer reads. Its sections, in order:
+
+| Section | What it says |
+|---|---|
+| Scope | each drafted form with its verified or estimated tag, and that the folder is a working copy, not an import file for tax software |
+| Readiness | "Ready for a preparer: yes/no" and every reason, the same answer as the page's readiness panel |
+| Documents | each expected form still to come (with its due date) and each form you waived |
+| Estimates | figures that stand in for a missing annual form, and drafted forms tagged estimated |
+| Not handled | each household, state or document gap and what would close it |
+| Questions for the preparer | each `CHECK:` line from the draft, and each answer the draft left out as unknown |
+| Versions | the planner version, the tax engine version, the build date, and each closed version of the year |
+
+No file here claims to import into tax software; that waits until it is
+checked in that software (a test guards the wording).
 
 How a run behaves:
 

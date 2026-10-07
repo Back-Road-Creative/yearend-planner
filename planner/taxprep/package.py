@@ -1,10 +1,12 @@
 """``planner taxpack``: everything a preparer asks for, in one folder.
 
-``out/tax-<year>/`` holds the draft return (text, and HTML that prints to PDF),
-Form 8949 as CSV, the Schedule C summary, the carryforward and basis schedules,
-the estimated payments, the form inventory naming each source file, and a ZIP
-of the archived originals. Each file is a view of what the other commands
-already print; nothing in the folder is computed only here.
+``out/tax-<year>/`` opens with a cover sheet (unit 6a: scope, readiness for a
+preparer, missing or waived documents, estimates, forms not handled, questions
+for the preparer, versions) and holds the draft return (text, and HTML that
+prints to PDF), Form 8949 as CSV, the Schedule C summary, the carryforward and
+basis schedules, the estimated payments, the form inventory naming each source
+file, and a ZIP of the archived originals. Each file is a view of what the
+other commands already print; nothing in the folder is computed only here.
 """
 
 from __future__ import annotations
@@ -16,13 +18,17 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from planner import NOTICE, coverage
+from planner import NOTICE, __version__, coverage
+from planner.dashboard.page import readiness_of
+from planner.ingest.needs import needed
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import esttax
-from planner.taxprep import capgains, draft, expected, schedule_c
+from planner.taxprep import capgains, close, draft, expected, schedule_c
 
 FILES = {
+    "cover.txt": "the cover sheet: scope, readiness, documents, estimates, "
+    "forms not handled, questions for the preparer, versions",
     "draft.txt": "the draft return, every line with its source",
     "draft.html": "the same draft, laid out to print (Print, then Save as PDF)",
     "form-8949.csv": "Form 8949 rows, columns (a)-(h) by box",
@@ -55,6 +61,86 @@ class Pack:
     folder: Path
     written: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    ready: coverage.Answer | None = None  # ready for a preparer
+
+
+def _bullets(items: list[str]) -> list[str]:
+    return [f"  - {x}" for x in items] or ["  none"]
+
+
+def cover(
+    d: draft.Draft,
+    ready: coverage.Answer,
+    inv: expected.Inventory,
+    today: date,
+    closed: list[tuple[int, str]],
+) -> str:
+    """The cover sheet: each part is read from what the pack already holds."""
+    forms = [f for f in draft.ORDER if any(ln.form == f for ln in d.lines)]
+    drafted = ", ".join(f"{draft.HEADINGS.get(f, f)} ({d.tag(f)})" for f in forms)
+    docs = [
+        *(
+            f"still to come: {e.form} from {e.issuer} (due {e.due})"
+            for e in inv.outstanding
+        ),
+        *(f"waived: {e.form} from {e.issuer}" for e in inv.waived),
+    ]
+    estimated = [
+        *(f"{k}: the year to date stands in for the annual form" for k in d.estimates),
+        *(
+            f"{draft.HEADINGS.get(f, f)}: estimated, no verified reference case"
+            for f in forms
+            if d.tag(f) == coverage.ESTIMATED
+        ),
+    ]
+    gaps = [f"{g.reason} ({g.needed})" if g.needed else g.reason for g in d.coverage]
+    questions = [
+        *(n for n in d.notes if n.startswith("CHECK")),
+        *(
+            f"{k}: not known; left out of the draft, never counted as 0"
+            for k in d.unknown
+        ),
+    ]
+    answer = "yes" if ready.ready else "no"
+    return (
+        "\n".join(
+            [
+                f"Tax pack cover sheet for {d.year}",
+                NOTICE,
+                "",
+                "Scope",
+                f"  drafted here: {drafted}",
+                "  every figure names its source in draft.txt; this folder is a "
+                "preparer's working copy, not an import file for tax software",
+                "",
+                "Readiness",
+                f"  {ready.question}: {answer}",
+                *(f"  - {b}" for b in ready.blockers),
+                "",
+                "Documents",
+                *(_bullets(docs) if docs else ["  every expected form is in"]),
+                "",
+                "Estimates",
+                *_bullets(estimated),
+                "",
+                "Not handled",
+                *_bullets(gaps),
+                "",
+                "Questions for the preparer",
+                *_bullets(questions),
+                "",
+                "Versions",
+                f"  planner {__version__}",
+                f"  tax engine policyengine-us {d.engine_version}",
+                f"  built {today.isoformat()}",
+                *(
+                    [f"  closed version {v} at {at}" for v, at in closed]
+                    or [f"  not closed: no filed return recorded for {d.year}"]
+                ),
+            ]
+        )
+        + "\n"
+    )
 
 
 def _csv(path: Path, header: tuple[str, ...], rows: list[tuple[object, ...]]) -> None:
@@ -158,6 +244,22 @@ def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
     finally:
         conn.close()
     inv = expected.inventory(lay, year, as_of)
+    today = as_of or date.today()
+    rep = needed(lay, year)
+    pack.ready = readiness_of(
+        d.coverage,
+        needed=rep.by_state("missing"),
+        late=inv.late,
+        loose=len(sc.uncategorised) if sc.business or sc.receipts_forms else 0,
+        dont_have=rep.by_state("dont_have"),
+        waived=inv.waived,
+        estimates=rep.by_state("estimate"),
+        year=year,
+        as_of=today,
+    )[2]
+    (folder / "cover.txt").write_text(
+        cover(d, pack.ready, inv, today, close.history(lay, year)), encoding="utf-8"
+    )
 
     (folder / "draft.txt").write_text(draft.render(d), encoding="utf-8")
     (folder / "draft.html").write_text(html_page(d), encoding="utf-8")
@@ -284,6 +386,8 @@ def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
 
 def render(pack: Pack) -> str:
     out = [f"Tax pack for {pack.year}: {pack.folder}", f"  {NOTICE}"]
+    if pack.ready:
+        out.append(f"  {pack.ready.question}: {'yes' if pack.ready.ready else 'no'}")
     out.extend(f"  {name:24} {FILES[name]}" for name in pack.written)
     out.extend(f"note: {n}" for n in pack.notes)
     return "\n".join(out) + "\n"
