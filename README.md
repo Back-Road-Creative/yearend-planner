@@ -133,6 +133,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `schedule` | Register a monthly quiet run (`planner.cmd run --quiet`, the 1st at 09:00) with Windows Task Scheduler; `--remove` deletes it. |
 | `selfcheck` | Run one real federal calculation through the tax engine and print it; --regression runs the shipped reference cases instead and prints the engine's figure for each. |
 | `separate` | Price the year married filing jointly and as two separate returns, each spouse on their own lines, and show which costs less. |
+| `snapshots` | The year's four snapshots kept apart (forecast, provisional actual, reconciled actual, filed) and the change from each kind to the next; `planner run` takes them. |
 | `spend` | The spending band: rate x balance clamped to the floor and ceiling, the drawdown rule against the inflation-adjusted peak, and the return-band table under the floor and planning returns (real dollars). |
 | `status` | The portfolio today: every account, total, accessible and locked money, the Roth withdrawal order, the all-time peak, YTD income by type and its gap to the filed 1099s, unrealized gains and the carryforward. |
 | `sweep` | Sweep one input across a range in a single engine run; one JSON row per step. |
