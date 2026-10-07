@@ -235,6 +235,18 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def schema_of(path: Path) -> int | None:
+    """The schema a ledger was last written at, read without a write lock;
+    ``None`` when there is no ledger (or it has no version row yet)."""
+    if not path.is_file():
+        return None
+    conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        return _version(conn)
+    finally:
+        conn.close()
+
+
 def connect_readonly(path: Path) -> sqlite3.Connection | None:
     """Open the ledger for reading only, or ``None`` when there is none yet.
 
