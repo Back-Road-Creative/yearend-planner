@@ -21,6 +21,59 @@ class MissingInputError(ValueError):
     """A required household field is unknown."""
 
 
+# Each person's own figures, as the engine names them (planner.engine.tax reads
+# a person figure summed over the tax unit, so a joint return is the couple's).
+PERSON_INPUTS = {
+    "wages": "employment_income",
+    "se_income": "self_employment_income",
+    "ira_distributions": "taxable_ira_distributions",
+    "roth_conversion": "taxable_roth_conversions",
+    "social_security": "social_security",
+    "traditional_ira_contribution": "traditional_ira_contributions",
+    "qualified_tips": "tip_income",
+    "tipped_occupation_code": "treasury_tipped_occupation_code",
+    "qualified_overtime": "fsla_overtime_premium",
+}
+
+
+@dataclass(frozen=True)
+class Person:
+    """The spouse on a joint return: their age and their own income. Investment
+    income, deductions and the household's health plan stay on Household."""
+
+    age: int
+    wages: int = 0
+    se_income: int = 0
+    ira_distributions: int = 0
+    roth_conversion: int = 0
+    social_security: int = 0
+    traditional_ira_contribution: int = 0
+    qualified_tips: int = 0
+    tipped_occupation_code: int = 0
+    qualified_overtime: int = 0
+
+
+@dataclass(frozen=True)
+class Dependent:
+    """A dependent the return claims. The engine decides which credit each one
+    earns (a child under 17, a student under 24 or a disabled person of any age
+    is a qualifying child; others take the credit for other dependents)."""
+
+    age: int
+    full_time_student: bool = False
+    disabled: bool = False
+    wages: int = 0
+
+
+def _people(kind: str, cls: type, data: Any) -> Any:
+    if not isinstance(data, Mapping):
+        raise ValueError(f"{kind}: expected a mapping, not {data!r}")
+    unknown = sorted(set(data) - {f.name for f in fields(cls)})
+    if unknown:
+        raise ValueError(f"unknown {kind} fields: {unknown}")
+    return cls(**dict(data))
+
+
 @dataclass(frozen=True)
 class Household:
     age: int
@@ -69,6 +122,8 @@ class Household:
     # form rounds its phase-out; the engine does not) so the tax is priced on
     # the form's taxable income.
     tax_unit_inputs: dict[str, float] = field(default_factory=dict)
+    spouse: Person | None = None  # a joint return's second person (unit 3a-1)
+    dependents: tuple[Dependent, ...] = ()
 
     def __post_init__(self) -> None:
         missing = [
@@ -81,6 +136,11 @@ class Household:
             raise MissingInputError(f"household needs {missing}")
         if self.filing_status not in FILING_STATUSES:
             raise ValueError(f"filing_status must be one of {FILING_STATUSES}")
+        if self.spouse is not None and self.filing_status != "JOINT":
+            raise ValueError(
+                f"a spouse files JOINT here, not {self.filing_status}: a separate "
+                "return's spouse is not in its tax unit"
+            )
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> Household:
@@ -89,12 +149,20 @@ class Household:
         unknown = sorted(set(data) - known)
         if unknown:
             raise ValueError(f"unknown household fields: {unknown}")
-        return cls(**dict(data))
+        out = dict(data)
+        if out.get("spouse") is not None:
+            out["spouse"] = _people("spouse", Person, out["spouse"])
+        out["dependents"] = tuple(
+            _people("dependent", Dependent, d) for d in out.get("dependents") or ()
+        )
+        return cls(**out)
 
     def situation(self, year: int, *, omit: Iterable[str] = ()) -> dict[str, Any]:
-        """The policyengine-us situation dict for one person, one tax unit, one year.
+        """The policyengine-us situation dict for one tax unit and one year: the
+        first person ("p", the head), the spouse ("s") and dependents ("d1"...).
 
-        ``omit`` drops person inputs (a swept axis must not also be a fixed input).
+        ``omit`` drops the head's inputs (a swept axis must not also be a fixed
+        input; an engine axis moves the first person only).
         """
         y = year
         person: dict[str, Any] = {
@@ -124,8 +192,28 @@ class Household:
             person[k] = {y: v}
         for name in omit:
             person.pop(name, None)
+        people: dict[str, Any] = {"p": person}
+        head = {"is_tax_unit_head": {y: True}}
+        person.update(head)
+        if self.spouse is not None:
+            sp = self.spouse
+            people["s"] = {
+                "age": {y: sp.age},
+                "is_tax_unit_spouse": {y: True},
+                **{PERSON_INPUTS[k]: {y: getattr(sp, k)} for k in PERSON_INPUTS},
+            }
+        for i, d in enumerate(self.dependents, 1):
+            people[f"d{i}"] = {
+                "age": {y: d.age},
+                "is_tax_unit_dependent": {y: True},
+                "is_full_time_student": {y: d.full_time_student},
+                "is_disabled": {y: d.disabled},
+                "employment_income": {y: d.wages},
+            }
+        members = list(people)
+        couple = [m for m in ("p", "s") if m in people]
         tax_unit: dict[str, Any] = {
-            "members": ["p"],
+            "members": members,
             "filing_status": {y: self.filing_status},
             "health_savings_account_ald": {y: self.hsa_contribution},
         }
@@ -139,7 +227,7 @@ class Household:
         # prior year's poverty guideline, which differs for Alaska and Hawaii.
         years = (y - 1, y)
         household: dict[str, Any] = {
-            "members": ["p"],
+            "members": members,
             "state_name": {yr: self.state for yr in years},
             "qualified_passenger_vehicle_loan_interest": {y: self.car_loan_interest},
         }
@@ -156,9 +244,15 @@ class Household:
                     "(planner.ingest.derive.resolve_county turns a typed name into it)"
                 )
             household["county"] = {yr: self.county for yr in years}
+        marital = {"mu": {"members": couple}} | {
+            f"mu{m}": {"members": [m]} for m in members if m not in couple
+        }
         return {
-            "people": {"p": person},
+            "people": people,
             "tax_units": {"tu": tax_unit},
+            "marital_units": marital,
+            "families": {"fam": {"members": members}},
+            "spm_units": {"spm": {"members": members}},
             "households": {"hh": household},
         }
 
