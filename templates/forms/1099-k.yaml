@@ -2,7 +2,7 @@
 form: 1099-K
 years: [2024, 2025, 2026]
 match: ["1099-K"]
-issuer_pattern: "filer'?s name:?\\s*([^\\n]+)"
+issuer_pattern: "filer'?s nameADDRESS([^\\n]+)"
 boxes:
-  "1a": {label: "Gross amount of transactions", pattern: '\b1a Gross amount of payment card[^\n]*?transactions\s+AMOUNT', required: true}
+  "1a": {label: "Gross amount of transactions", pattern: '\b1a Gross amount of payment card/third party network transactions\s+AMOUNT', required: true}
   "4": {label: "Federal income tax withheld", pattern: '\b4 Federal income tax withheld\s+AMOUNT'}

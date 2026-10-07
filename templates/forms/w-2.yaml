@@ -7,8 +7,8 @@
 form: W-2
 years: [2024, 2025, 2026]
 match: ["W-2", "Wage and Tax Statement"]
-year_pattern: "(?:Wage and Tax Statement\\s*|tax year\\s*:?\\s*)(20\\d\\d)"
-issuer_pattern: "Employer'?s name(?:, address,? and ZIP code)?\\s*:?\\s*([^\\n]+)"
+year_pattern: "(?:Wage and Tax Statement\\s*|tax year\\s*:?\\s*|\\bW-2\\s+)(20\\d\\d)"
+issuer_pattern: "Employer'?s nameADDRESS([^\\n]+)"
 boxes:
   "1": {label: "Wages, tips, other compensation", pattern: "\\b1 Wages, tips, other comp(?:ensation|\\.)\\s+AMOUNT", required: true}
   "2": {label: "Federal income tax withheld", pattern: "\\b2 Federal income tax withheld\\s+AMOUNT", required: true}

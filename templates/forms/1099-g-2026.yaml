@@ -1,0 +1,15 @@
+# Form 1099-G (Rev. December 2026), IRS box labels: the layout from tax year
+# 2026. Boxes 1-9 keep their numbers; box 10 is family leave benefits, the
+# state boxes become 11a and 11b, and state income tax withheld moves from box
+# 11 to box 12 (planner.ingest.needs STATE_WITHHELD reads both).
+form: 1099-G
+years: [2026]
+match: ["1099-G", "Certain Government Payments"]
+boxes:
+  "1": {label: "Unemployment compensation", pattern: "\\b1 Unemployment compensation\\s+AMOUNT"}
+  "2": {label: "State or local income tax refunds, credits, or offsets", pattern: "\\b2 State or local income tax refunds, credits, or offsets\\s+AMOUNT"}
+  "4": {label: "Federal income tax withheld", pattern: "\\b4 Federal income tax withheld\\s+AMOUNT"}
+  "6": {label: "Taxable grants", pattern: "\\b6 Taxable grants\\s+AMOUNT"}
+  "7": {label: "Agriculture payments", pattern: "\\b7 Agriculture payments\\s+AMOUNT"}
+  "10": {label: "Family leave benefits", pattern: "\\b10 Family leave benefits\\s+AMOUNT"}
+  "12": {label: "State income tax withheld", pattern: "\\b12 State income tax withheld\\s+AMOUNT"}

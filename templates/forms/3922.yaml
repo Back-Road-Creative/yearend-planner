@@ -8,7 +8,7 @@ form: "3922"
 years: [2025, 2026]
 match: ["3922", "Employee Stock Purchase Plan"]
 year_pattern: "\\b2 Date option exercised\\s*:?\\s*\\d{1,2}/\\d{1,2}/(20\\d\\d)"
-issuer_pattern: "corporation'?s name[^:\\n]*:\\s*([^\\n]+)"
+issuer_pattern: "corporation'?s nameADDRESS([^\\n]+)"
 event:
   granted: "\\b1 Date option granted\\s*:?\\s*(\\d{1,2}/\\d{1,2}/20\\d\\d)"
   exercised: "\\b2 Date option exercised\\s*:?\\s*(\\d{1,2}/\\d{1,2}/20\\d\\d)"
