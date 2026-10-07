@@ -520,6 +520,11 @@ dashboard_page:
   evidence: implemented
   tests: ["tests/test_dashboard.py"]
   note: "planner dashboard writes out/index.html; panels tagged actual/estimate/unavailable, alerts, escaped, no external assets"
+browser_checks:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_browser.py"]
+  note: "unit 7g: headless Chromium (Playwright, dev only) on a synthetic folder: a file dragged onto the live page goes through its own handlers and shows its result (the fetch no longer follows the 303, which ate the Last action message); Tab reaches every control with a visible 3px focus ring and every field is named; at 200% zoom (640 CSS px) no sideways scroll; all text meets WCAG AA in light and dark. CI installs Chromium and sets PLANNER_BROWSER_TESTS=required"
 dashboard_glide_cash_band_tables:
   status: verified
   evidence: implemented
