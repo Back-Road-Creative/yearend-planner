@@ -1,0 +1,117 @@
+# Real-layout fixtures (unit 7h): official blank IRS forms with synthetic values
+# printed into their fields by scripts/real_forms.py. url and sha256 pin the
+# blank; page is the recipient's copy (Copy B, from 0); fields maps the end of
+# a field's full name to the value printed there ("X" marks a check box);
+# expect is what the parser must read from the page. Values are synthetic:
+# names carry "(synthetic)", TIN and account fields stay blank. A box the
+# fields leave blank must not appear in expect: it proves a blank box never
+# takes the next box's figure.
+forms:
+  - name: 1099-int
+    url: https://www.irs.gov/pub/irs-pdf/f1099int.pdf
+    sha256: ee7697c9b29374596fd9645b157b7312d121ae3c2f76bebf68908c3fc2b739e6
+    page: 3
+    fields: {".CalendarYear2_1[0]": "2025", ".f2_1[0]": "Example Bank (synthetic)\n100 Main St\nAnytown, NC 27000", ".f2_9[0]": "1,235.00", ".f2_11[0]": "310.00", ".f2_12[0]": "50.00", ".f2_16[0]": "75.00"}
+    expect: {"form": "1099-INT", "year": 2025, "issuer": "Example Bank (synthetic)", "boxes": {"1": 1235.0, "3": 310.0, "4": 50.0, "8": 75.0}}
+  - name: 1099-div
+    url: https://www.irs.gov/pub/irs-pdf/f1099div.pdf
+    sha256: 4ea1de804ff1db921753bd6319beeccfe4647299e03d79816e04d852a9cd1435
+    page: 3
+    fields: {".f2_1[0]": "2025", ".f2_2[0]": "Example Fund Co (synthetic)\n200 Market St\nAnytown, NC 27000", ".f2_9[0]": "2,400.00", ".f2_10[0]": "1,800.00", ".f2_11[0]": "600.00", ".f2_19[0]": "120.00", ".f2_21[0]": "36.00"}
+    expect: {"form": "1099-DIV", "year": 2025, "issuer": "Example Fund Co (synthetic)", "boxes": {"1a": 2400.0, "1b": 1800.0, "2a": 600.0, "5": 120.0, "7": 36.0}}
+  - name: "1098"
+    url: https://www.irs.gov/pub/irs-pdf/f1098.pdf
+    sha256: 304da9c0f67a46ff04ba831359185dc13dde335199cbf7c413dc879e5410dd87
+    page: 2
+    fields: {".CalendarYear[0].f2_1[0]": "2025", ".f2_2[0]": "Example Mortgage Co (synthetic)\n300 Loan Ave\nAnytown, NC 27000", ".f2_11[0]": "8,450.00", ".f2_12[0]": "212,000.00", ".f2_16[0]": "1,100.00"}
+    expect: {"form": "1098", "year": 2025, "issuer": "Example Mortgage Co (synthetic)", "boxes": {"1": 8450.0, "2": 212000.0, "6": 1100.0}}
+  - name: 1098-t
+    url: https://www.irs.gov/pub/irs-pdf/f1098t.pdf
+    sha256: f461d17ce14de4efb4d95936c8639434861dbf174da250ac777f50cd1883c692
+    page: 2
+    fields: {".f2_1[0]": "Example College (synthetic)", ".f2_19[0]": "9,800.00", ".f2_21[0]": "2,500.00"}
+    expect: {"form": "1098-T", "year": 2026, "issuer": "Example College (synthetic)", "boxes": {"1": 9800.0, "5": 2500.0}}
+  - name: 1099-b
+    url: https://www.irs.gov/pub/irs-prior/f1099b--2025.pdf
+    sha256: 7e334cea66c2b2be3d88615a56db288a2805cb8705076b3b282a4eabbbd788ad
+    page: 3
+    fields: {".f2_1[0]": "Example Brokerage (synthetic)\n400 Wall St\nAnytown, NC 27000", ".f2_16[0]": "10 sh Example Index Fund (synthetic)", ".f2_17[0]": "03/04/2024", ".f2_18[0]": "05/06/2025", ".f2_19[0]": "5,200.00", ".f2_20[0]": "4,100.00", ".c2_4[1]": "X"}
+    expect: {"form": "1099-B", "year": 2025, "issuer": "Example Brokerage (synthetic) [sold 05/06/2025]", "boxes": {"1c": "05/06/2025", "lt_proceeds": 5200.0, "lt_basis": 4100.0, "2": "long"}}
+  - name: 1099-c
+    url: https://www.irs.gov/pub/irs-pdf/f1099c.pdf
+    sha256: 826fe6811249e38b00df962b323c7ef838bc1e94a3c4522f9e10be4887f096a8
+    page: 2
+    fields: {".f2_1[0]": "2025", ".f2_2[0]": "Example Card Bank (synthetic)\n500 Credit Rd\nAnytown, NC 27000", ".f2_9[0]": "06/30/2025", ".f2_10[0]": "3,400.00", ".f2_11[0]": "150.00", ".f2_12[0]": "Credit card balance (synthetic)", ".f2_13[0]": "G"}
+    expect: {"form": "1099-C", "year": 2025, "issuer": "Example Card Bank (synthetic)", "boxes": {"2": 3400.0, "3": 150.0}}
+  - name: 1099-da
+    url: https://www.irs.gov/pub/irs-pdf/f1099da.pdf
+    sha256: e6f397924211a3a887cacd75f5ca6378ed728cf0bbce99909f15f4da09dad258
+    page: 3
+    fields: {".f2_1[0]": "Example Exchange (synthetic)", ".f2_20[0]": "J", ".f2_21[0]": "XYZ", ".f2_22[0]": "Examplecoin", ".f2_23[0]": "2.5", ".f2_24[0]": "03/02/2024", ".f2_25[0]": "02/10/2026", ".f2_26[0]": "5,000.00", ".f2_27[0]": "3,000.00", ".c2_2[0]": "X", ".c2_6[1]": "X"}
+    expect: {"form": "1099-DA", "year": 2026, "issuer": "Example Exchange (synthetic) [asset Examplecoin, units 2.5, acquired 03/02/2024, sold 02/10/2026]", "boxes": {"8949": "J", "1a": "XYZ", "1b": "Examplecoin", "1c": "2.5", "1d": "03/02/2024", "1e": "02/10/2026", "1f": 5000.0, "1g": 3000.0, "2": "yes", "6": "long"}}
+  - name: 1099-g
+    url: https://www.irs.gov/pub/irs-pdf/f1099g.pdf
+    sha256: 65a416c52508d8a3d77ee1734194767d1e1c8a607c778fd1914dd1a62da569a2
+    page: 3
+    fields: {".f2_1[0]": "2026", ".f2_2[0]": "State Labor Department (synthetic)", ".f2_20[0]": "4,800.00", ".f2_21[0]": "310.00", ".f2_23[0]": "480.00", ".f2_33[0]": "96.00"}
+    expect: {"form": "1099-G", "year": 2026, "issuer": "State Labor Department (synthetic)", "boxes": {"1": 4800.0, "2": 310.0, "4": 480.0, "12": 96.0}}
+  - name: 1099-k
+    url: https://www.irs.gov/pub/irs-pdf/f1099k.pdf
+    sha256: fa3a2b659f7ee13d59ea6c66ad992a5ab55afa0060db275ad1ee122478189b89
+    page: 3
+    fields: {".f2_1[0]": "2026", ".f2_2[0]": "Example Payments (synthetic)", ".f2_21[0]": "18,250.00"}
+    expect: {"form": "1099-K", "year": 2026, "issuer": "Example Payments (synthetic)", "boxes": {"1a": 18250.0}}
+  - name: 1099-misc
+    url: https://www.irs.gov/pub/irs-pdf/f1099msc.pdf
+    sha256: 38051fe1cdce8fac5183a7e7b182b1a0de590dcfec3e4f66a156eba3f98943fa
+    page: 3
+    fields: {".f2_1[0]": "2026", ".f2_2[0]": "Example Properties (synthetic)", ".f2_20[0]": "7,200.00", ".f2_22[0]": "500.00", ".f2_23[0]": "50.00", ".f2_36[0]": "25.00"}
+    expect: {"form": "1099-MISC", "year": 2026, "issuer": "Example Properties (synthetic)", "boxes": {"1": 7200.0, "3": 500.0, "4": 50.0, "16": 25.0}}
+  - name: 1099-nec
+    url: https://www.irs.gov/pub/irs-pdf/f1099nec.pdf
+    sha256: 68a8f00078be6dd6a4912cc4209df317b31840d5fe19560222d39df9f2f7ff49
+    page: 3
+    fields: {".f2_1[0]": "2026", ".f2_2[0]": "Example Studio (synthetic)", ".f2_20[0]": "12,000.00"}
+    expect: {"form": "1099-NEC", "year": 2026, "issuer": "Example Studio (synthetic)", "boxes": {"1": 12000.0}}
+  - name: 1099-r
+    url: https://www.irs.gov/pub/irs-pdf/f1099r.pdf
+    sha256: d3de9319bed344f02621f97760a50bd19093de22f7d1e3352bd8ff10f61a4c44
+    page: 3
+    fields: {".f2_1[0]": "Example Retirement Co (synthetic)", ".f2_19[0]": "20,000.00", ".f2_20[0]": "18,000.00", ".f2_22[0]": "2,000.00", ".f2_23[0]": "2,000.00", ".f2_25[0]": "7", ".c2_4[0]": "X", ".f2_34[0]": "400.00"}
+    expect: {"form": "1099-R", "year": 2026, "issuer": "Example Retirement Co (synthetic)", "boxes": {"1": 20000.0, "2a": 18000.0, "2b": "no", "4": 2000.0, "5": 2000.0, "7": "7", "7b": "yes", "14": 400.0}}
+  - name: 1099-sa
+    url: https://www.irs.gov/pub/irs-pdf/f1099sa.pdf
+    sha256: cc2324629a9bd416180c1e10b66ce44d914937a6c4a11cc4bb8e17c22da44bd1
+    page: 1
+    fields: {".f1_1[0]": "2025", ".f1_2[0]": "Example HSA Bank (synthetic)\n600 Health Way\nAnytown, NC 27000", ".f1_9[0]": "1,500.00", ".f1_11[0]": "1", ".c1_2[0]": "X"}
+    expect: {"form": "1099-SA", "year": 2025, "issuer": "Example HSA Bank (synthetic)", "boxes": {"1": 1500.0}}
+  - name: "3921"
+    url: https://www.irs.gov/pub/irs-pdf/f3921.pdf
+    sha256: 8173947e5351009688ce609062ffff6eac2101a6183af45dcc63206e53f0b0fe
+    page: 1
+    fields: {".f2_1[0]": "Example Corp (synthetic)\n700 Tech Blvd\nAnytown, NC 27000", ".f2_8[0]": "01/15/2022", ".f2_9[0]": "03/10/2025", ".f2_10[0]": "10.00", ".f2_11[0]": "42.50", ".f2_12[0]": "100"}
+    expect: {"form": "3921", "year": 2025, "issuer": "Example Corp (synthetic) [granted 01/15/2022, exercised 03/10/2025]", "boxes": {"3": 10.0, "4": 42.5, "5": 100.0}}
+  - name: "3922"
+    url: https://www.irs.gov/pub/irs-pdf/f3922.pdf
+    sha256: 98077229f4efb9d964caedd171847e6d6b8ae4b0a3cce60089410e9fb47f7164
+    page: 1
+    fields: {".f1_1[0]": "Example Corp (synthetic)\n700 Tech Blvd\nAnytown, NC 27000", ".f1_8[0]": "01/02/2025", ".f1_9[0]": "06/30/2025", ".f1_10[0]": "20.00", ".f1_11[0]": "25.00", ".f1_12[0]": "17.00", ".f1_13[0]": "50", ".f1_14[0]": "08/01/2025", ".f1_15[0]": "17.00"}
+    expect: {"form": "3922", "year": 2025, "issuer": "Example Corp (synthetic) [granted 01/02/2025, exercised 06/30/2025]", "boxes": {"3": 20.0, "4": 25.0, "5": 17.0, "6": 50.0, "8": 17.0}}
+  - name: "5498"
+    url: https://www.irs.gov/pub/irs-pdf/f5498.pdf
+    sha256: 745fe725b8b59b5ab5d797045b2715416b7ef4bca86c7337fce210e064866f17
+    page: 2
+    fields: {".f2_1[0]": "Example Brokerage (synthetic)", ".f2_18[0]": "7,000.00", ".f2_22[0]": "48,000.00"}
+    expect: {"form": "5498", "year": 2026, "issuer": "Example Brokerage (synthetic)", "boxes": {"1": 7000.0, "5": 48000.0}}
+  - name: 5498-sa
+    url: https://www.irs.gov/pub/irs-pdf/f5498sa.pdf
+    sha256: aaf55e3c61e8fc6913e00ff3eb5ffb0c9a780f3e39339aa8d2ac1810b2657994
+    page: 1
+    fields: {".f1_1[0]": "2026", ".f1_2[0]": "Example HSA Bank (synthetic)", ".f1_21[0]": "4,300.00", ".f1_24[0]": "9,100.00"}
+    expect: {"form": "5498-SA", "year": 2026, "issuer": "Example HSA Bank (synthetic)", "boxes": {"2": 4300.0, "5": 9100.0}}
+  - name: w-2
+    url: https://www.irs.gov/pub/irs-pdf/fw2.pdf
+    sha256: 61eca7c81f16d3965819fe1f31be4fe68c1b2887a81f51172f1d2ed2b2b9f087
+    page: 3
+    fields: {".f2_03[0]": "Example Works Inc (synthetic)\n800 Factory Ln\nAnytown, NC 27000", ".f2_09[0]": "52,400.00", ".f2_10[0]": "6,120.00", ".f2_11[0]": "55,000.00", ".f2_12[0]": "3,410.00", ".f2_13[0]": "55,000.00", ".f2_14[0]": "797.50", ".f2_20[0]": "D", ".f2_21[0]": "2,600.00", ".c2_3[0]": "X", ".f2_31[0]": "NC", ".f2_35[0]": "52,400.00", ".f2_37[0]": "2,100.00"}
+    expect: {"form": "W-2", "year": 2026, "issuer": "Example Works Inc (synthetic)", "boxes": {"1": 52400.0, "2": 6120.0, "3": 55000.0, "4": 3410.0, "6": 797.5, "12D": 2600.0, "16": 52400.0, "17": 2100.0}}

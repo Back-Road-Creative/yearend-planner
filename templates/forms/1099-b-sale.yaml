@@ -1,0 +1,19 @@
+# Form 1099-B, IRS box labels: one sale per form, as the official form prints
+# it. Box 2's term files the proceeds (1d), basis (1e) and wash sale loss (1g)
+# under the summary template's names (1099-b.yaml), so planner.taxprep.capgains
+# adds them to any summary's. The sale date joins the issuer, so a broker's
+# second sale is its own form, not a correction of the first. Basis is
+# required: a sale the broker gives no basis for (box 5, noncovered) comes in
+# through the realized-lots CSV. A box 2 "Ordinary" sale is not read.
+form: 1099-B
+years: [2024, 2025, 2026]
+match: ["1099-B", "Cost or other basis"]
+event:
+  sold: "\\b1c Date sold or disposed\\s*:?\\s*(\\d{1,2}/\\d{1,2}/20\\d\\d|various)"
+boxes:
+  "1c": {label: "Date sold or disposed", kind: text, pattern: "\\b1c Date sold or disposed\\s*:?\\s*(\\d{1,2}/\\d{1,2}/20\\d\\d|various)", required: true}
+  "2": {label: "Gain or loss", kind: check, mark: either, required: true, options: {short: "Short-term gain or loss", long: "Long-term gain or loss", ordinary: "Ordinary"}}
+  "1d": {label: "Proceeds", pattern: "\\b1d Proceeds\\s*:?\\s*AMOUNT", required: true, by: "2", names: {short: [st_proceeds, "Short-term proceeds"], long: [lt_proceeds, "Long-term proceeds"]}}
+  "1e": {label: "Cost or other basis", pattern: "\\b1e Cost or other basis\\s*:?\\s*AMOUNT", required: true, by: "2", names: {short: [st_basis, "Short-term cost basis"], long: [lt_basis, "Long-term cost basis"]}}
+  "1g": {label: "Wash sale loss disallowed", pattern: "\\b1g Wash sale loss disallowed\\s*:?\\s*AMOUNT", by: "2", names: {short: [wash_sale, "Wash sale loss disallowed"], long: [wash_sale, "Wash sale loss disallowed"]}}
+  "4": {label: "Federal income tax withheld", pattern: "\\b4 Federal income tax withheld\\s*:?\\s*AMOUNT"}

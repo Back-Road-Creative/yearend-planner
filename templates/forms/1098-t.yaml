@@ -5,8 +5,8 @@
 form: 1098-T
 years: [2024, 2025, 2026]
 match: ["1098-T", "Tuition Statement"]
-year_pattern: "(?:Tuition Statement\\s*|calendar year\\s*:?\\s*)(20\\d\\d)"
-issuer_pattern: "FILER'?S name(?:, street address[^:\\n]*)?:?\\s*([^\\n]+)"
+year_pattern: "(?:Tuition Statement\\s*|calendar year\\s*:?\\s*|OMB_YEAR)(20\\d\\d)"
+issuer_pattern: "FILER'?S nameADDRESS([^\\n]+)"
 boxes:
   "1": {label: "Payments received for qualified tuition and related expenses", pattern: '\b1 Payments received for qualified tuition and related expenses\s+AMOUNT'}
   "5": {label: "Scholarships or grants", pattern: '\b5 Scholarships or grants\s+AMOUNT'}

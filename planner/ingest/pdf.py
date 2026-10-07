@@ -11,6 +11,14 @@ either`` also takes a mark printed after the label, and ``blank`` is the value
 when the label is on the page with no mark beside it). A page is
 accepted only when every required box parses; otherwise the file is unmatched
 with the reason. Nothing is inferred.
+
+An official form prints each box as a ruled cell with the label and the
+figure on separate text lines, and plain extraction runs neighbouring columns
+together. A page drawn as a grid of ruled cells is therefore read one cell at
+a time: each cell's first line opens with ``CELL``, its further lines are
+indented, and the words outside every cell follow. A pattern's ``\\s+AMOUNT``
+can then cross from a label to its figure but never into the next box. When
+that reading finds no form, the page's plain text is tried instead.
 """
 
 from __future__ import annotations
@@ -24,18 +32,56 @@ from typing import Any
 from planner.config import safe_load
 
 AMOUNT = r"(\(?-?\$?\s*[\d,]*\d(?:\.\d{1,2})?\)?)"
-DEFAULT_YEAR = r"(?:tax year|for calendar year|calendar year)\s*:?\s*(20\d\d)"
-DEFAULT_ISSUER = r"payer'?s name:?\s*([^\n]+)"
+# The year a form prints after its OMB number, where it has no year box (the
+# 1099-R and 1098-T print it there, above the form number).
+OMB_YEAR = r"OMB No\.\s*[\d-]+\s+"
+DEFAULT_YEAR = (
+    rf"(?:(?:tax year|for calendar year|calendar year)\s*:?\s*|{OMB_YEAR})(20\d\d)"
+)
+# The rest of an issuer's name-and-address label after "name" (an official form
+# runs ", street address, ... and telephone no." over two lines of its box),
+# so the pattern's group takes the name on the line below; or a colon.
+ADDRESS = (
+    r"(?:,[^\n:]*(?:\n[ \t]*[^\n:]*?"
+    r"(?:telephone (?:no\.|number)|postal code|ZIP code)[^\n:]*)?)?[ \t]*:?\s*"
+)
+DEFAULT_ISSUER = r"payer'?s nameADDRESS([^\n]+)"
 KINDS = ("amount", "text", "check")
 # A check box that is marked, as text extraction renders it: a ballot-box glyph,
 # a check mark, a bracketed or parenthesised X, or a bare X not inside a word.
 MARK = r"(?:\[\s*[xX✓✔]\s*\]|\(\s*[xX]\s*\)|[☒☑✓✔✗]|(?<!\w)[xX](?=[ \t]))"
 # The same mark after its label, where it may end the line.
 MARK_AFTER = r"(?:\[\s*[xX✓✔]\s*\]|\(\s*[xX]\s*\)|[☒☑✓✔✗]|(?<!\w)[xX](?!\w))"
+CELL = "¦"  # opens the first line of each ruled box on a form page
+# Onto the next row of the same ruled box (its continuation rows are indented
+# two spaces; see _page_text).
+CONT = r"[ \t]*\n  [ \t]*"
+# The rest of a box label up to its figure, over the rows of its ruled box
+# when the label wraps there.
+WRAP = rf"[^$\d\n]*(?:{CONT}[^$\d\n]*)*"
+# A check box's mark alone on the row under its label, inside the label's box
+# (an official form prints the box below or beside a wrapped label).
+CELL_MARK = rf"{CONT}{MARK_AFTER}[ \t]*(?=\n|$)"
+MIN_CELLS = 6  # fewer ruled cells than this and the page is read as plain text
+# A ruled square this small on both sides is a check box, not a box of the
+# form: its mark belongs to the box around it.
+CHECK_SIDE = 12.0
 
 
 class Unmatched(ValueError):
     """The file could not be read into facts; carries the reason."""
+
+
+class Ruled(str):
+    """A page's text read one ruled cell at a time, with the page's plain text
+    kept as ``plain`` for when the cells give no form."""
+
+    plain: str
+
+    def __new__(cls, text: str, plain: str) -> Ruled:
+        made = super().__new__(cls, text)
+        made.plain = plain
+        return made
 
 
 Value = float | str  # dollars, or the words of a text or check box
@@ -54,6 +100,24 @@ class Box:
     allowed: tuple[str, ...] = ()  # text: the only words accepted
     blank: str | None = None  # check: the value when a label shows, unmarked
     labels: tuple[re.Pattern[str], ...] = ()  # check: each label, unmarked
+    # the check box whose value picks the name this box is filed under, and
+    # (value, name, label) for each value (the per-sale 1099-B files proceeds
+    # as st_proceeds or lt_proceeds by its box 2 term)
+    by: str | None = None
+    names: tuple[tuple[str, str, str], ...] = ()
+
+    def key(self, found: dict[str, tuple[str, Value]]) -> tuple[str, str] | None:
+        """The (name, label) this box is filed under, given the boxes found;
+        None when its ``by`` box was not found."""
+        if self.by is None:
+            return self.name, self.label
+        if self.by not in found:
+            return None
+        value = found[self.by][1]
+        for when, name, label in self.names:
+            if when == value:
+                return name, label
+        raise Unmatched(f"{self.label.lower()}: box {self.by} {value} is not read")
 
     def read(self, text: str) -> Value | None:
         """The box's value on this page, or None when it is not there."""
@@ -111,8 +175,10 @@ class Template:
     event: tuple[tuple[str, re.Pattern[str]], ...] = ()
 
     def matches(self, text: str) -> bool:
-        low = text.lower()
-        return all(m.lower() in low for m in self.match)
+        """Every match phrase is on the page; spacing and line breaks are
+        ignored, as a ruled cell or OCR may split or glue the words."""
+        page = "".join(text.split()).lower()
+        return all("".join(m.split()).lower() in page for m in self.match)
 
     def find_year(self, text: str) -> int | None:
         m = self.year_pattern.search(text)
@@ -136,13 +202,15 @@ class Template:
     def parse_boxes(self, text: str) -> tuple[dict[str, tuple[str, Value]], list[str]]:
         found: dict[str, tuple[str, Value]] = {}
         missing: list[str] = []
-        for box in self.boxes:
+        # A box filed by another box's value reads after the boxes it names.
+        for box in sorted(self.boxes, key=lambda b: b.by is not None):
             value = box.read(text)
-            if value is None:
+            key = box.key(found) if value is not None else None
+            if value is None or key is None:
                 if box.required:
                     missing.append(box.name)
                 continue
-            found[box.name] = (box.label, value)
+            found[key[0]] = (key[1], value)
         return found, missing
 
     def spots(self, text: str, page: int, found: dict[str, Any]) -> dict[str, Spot]:
@@ -150,9 +218,10 @@ class Template:
         (counted from 0) it starts on."""
         out: dict[str, Spot] = {}
         for box in self.boxes:
-            at = box.offset(text) if box.name in found else None
-            if at is not None:
-                out[box.name] = (page, text.count("\n", 0, at))
+            key = box.key(found)
+            at = box.offset(text) if key and key[0] in found else None
+            if key and at is not None:
+                out[key[0]] = (page, text.count("\n", 0, at))
         return out
 
 
@@ -187,7 +256,39 @@ def base_issuer(issuer: str) -> str:
 
 
 def _compile(pattern: str) -> re.Pattern[str]:
-    return re.compile(pattern.replace("AMOUNT", AMOUNT), re.IGNORECASE)
+    pattern = _spaces(pattern)
+    for token, regex in (
+        ("AMOUNT", AMOUNT),
+        ("ADDRESS", ADDRESS),
+        ("OMB_YEAR", OMB_YEAR),
+        ("WRAP", WRAP),
+        ("CONT", CONT),
+    ):
+        pattern = pattern.replace(token, regex)
+    return re.compile(pattern, re.IGNORECASE)
+
+
+def _spaces(pattern: str) -> str:
+    """``pattern`` with each literal space (outside a character class) matching
+    any run of whitespace, line breaks included: an official form wraps a long
+    box label over the lines of its box."""
+    out: list[str] = []
+    in_class = escaped = False
+    for ch in pattern:
+        if escaped:
+            escaped = False
+        elif ch == "\\":
+            escaped = True
+        elif in_class:
+            in_class = ch != "]"
+        elif ch == "[":
+            in_class = True
+        elif ch == " ":
+            if not out or out[-1] != r"\s+":
+                out.append(r"\s+")
+            continue
+        out.append(ch)
+    return "".join(out)
 
 
 def _box(path: Path, name: object, spec: dict[str, Any]) -> Box:
@@ -200,19 +301,25 @@ def _box(path: Path, name: object, spec: dict[str, Any]) -> Box:
         if not spec.get("options"):
             raise ValueError(f"{path.name} box {name}: a check box needs options")
         either = spec.get("mark", "before") == "either"
+        # An option's label, or a list of the ways forms print it.
         words = {
-            str(value): r"\s+".join(
-                re.escape(w).replace("/", r"/\s*") for w in str(label).split()
+            str(value): "(?:"
+            + "|".join(
+                r"\s+".join(
+                    re.escape(w).replace("/", r"/\s*") for w in str(one).split()
+                )
+                for one in ([label] if isinstance(label, str) else label)
             )
+            + ")"
             for value, label in spec["options"].items()
         }
         options = tuple(
             (
                 value,
                 re.compile(
-                    rf"(?:{MARK}[ \t]*{w}|{w}[ \t]*{MARK_AFTER})"
+                    rf"(?:{MARK}[ \t]*{w}|{w}[ \t]*{MARK_AFTER}|{w}{CELL_MARK})"
                     if either
-                    else MARK + r"[ \t]*" + w,
+                    else rf"(?:{MARK}[ \t]*{w}|{w}{CELL_MARK})",
                     re.IGNORECASE,
                 ),
             )
@@ -221,6 +328,8 @@ def _box(path: Path, name: object, spec: dict[str, Any]) -> Box:
         labels = tuple(re.compile(w, re.IGNORECASE) for w in words.values())
     elif "pattern" not in spec:
         raise ValueError(f"{path.name} box {name}: a pattern is required")
+    if ("by" in spec) != ("names" in spec):
+        raise ValueError(f"{path.name} box {name}: by and names go together")
     return Box(
         name=str(name),
         label=str(spec["label"]),
@@ -232,6 +341,11 @@ def _box(path: Path, name: object, spec: dict[str, Any]) -> Box:
         allowed=tuple(str(a) for a in spec.get("allowed", ())),
         blank=None if spec.get("blank") is None else str(spec["blank"]),
         labels=labels,
+        by=None if spec.get("by") is None else str(spec["by"]),
+        names=tuple(
+            (str(when), str(pair[0]), str(pair[1]))
+            for when, pair in spec.get("names", {}).items()
+        ),
     )
 
 
@@ -263,9 +377,90 @@ def page_texts(path: Path) -> list[str]:
 
     try:
         with pdfplumber.open(path) as pdf:
-            return [normalize(page.extract_text() or "") for page in pdf.pages]
+            return [_page_text(page) for page in pdf.pages]
     except Exception as exc:  # pdfminer raises many types on a bad file
         raise Unmatched(f"not a readable PDF ({type(exc).__name__})") from exc
+
+
+def _page_text(page: Any) -> str:
+    """The page's plain text, or ``Ruled`` text when it is a grid of cells."""
+    plain = normalize(page.extract_text() or "")
+    if not plain.strip():
+        return plain
+    found = page.find_tables(
+        {"vertical_strategy": "lines", "horizontal_strategy": "lines"}
+    )
+    cells = [
+        c
+        for table in found
+        for c in table.cells
+        if c and max(c[2] - c[0], c[3] - c[1]) >= CHECK_SIDE
+    ]
+    if len(cells) < MIN_CELLS:
+        return plain
+    inside: dict[int, list[dict[str, Any]]] = {}
+    outside: list[dict[str, Any]] = []
+    # Rotated or stacked words (the W-2's sideways "Code") would split a
+    # cell's lines.
+    words = [w for w in page.extract_words(extra_attrs=["upright"]) if w["upright"]]
+    stacked = _stacked(words)
+    for word in words:
+        if id(word) in stacked:
+            continue
+        x = (word["x0"] + word["x1"]) / 2
+        y = (word["top"] + word["bottom"]) / 2
+        hits = [
+            n for n, c in enumerate(cells) if c[0] <= x <= c[2] and c[1] <= y <= c[3]
+        ]
+        if hits:
+            smallest = min(hits, key=lambda n: _area(cells[n]))
+            inside.setdefault(smallest, []).append(word)
+        else:
+            outside.append(word)
+    if len(inside) < MIN_CELLS:
+        return plain
+    lines: list[str] = []
+    for n in sorted(inside, key=lambda n: (cells[n][1], cells[n][0])):
+        rows = _rows(inside[n])
+        lines.append(f"{CELL} {rows[0]}")
+        lines.extend(f"  {row}" for row in rows[1:])
+    lines.extend(_rows(outside))
+    return Ruled(normalize("\n".join(lines)), plain)
+
+
+def _stacked(words: list[dict[str, Any]]) -> set[int]:
+    """The ids of letters printed one above another, as a vertical label: short
+    words of letters (not a check mark) sharing a left edge on adjacent rows."""
+    short = [
+        w
+        for w in words
+        if len(w["text"]) <= 2 and w["text"].isalpha() and w["text"] not in ("X", "x")
+    ]
+    out: set[int] = set()
+    for a in short:
+        for b in short:
+            near = abs(a["x0"] - b["x0"]) <= 1.5
+            gap = abs(a["top"] - b["top"])
+            if a is not b and near and 0 < gap <= 1.5 * (a["bottom"] - a["top"]):
+                out.update((id(a), id(b)))
+    return out
+
+
+def _area(cell: Sequence[float]) -> float:
+    return (cell[2] - cell[0]) * (cell[3] - cell[1])
+
+
+def _rows(words: list[dict[str, Any]]) -> list[str]:
+    """Words joined into lines: a word whose top is within half its height of
+    the line's first word is on that line; each line reads left to right."""
+    rows: list[list[dict[str, Any]]] = []
+    for word in sorted(words, key=lambda w: (w["top"], w["x0"])):
+        half = (word["bottom"] - word["top"]) / 2
+        if rows and abs(word["top"] - rows[-1][0]["top"]) <= half:
+            rows[-1].append(word)
+        else:
+            rows.append([word])
+    return [" ".join(w["text"] for w in sorted(r, key=lambda w: w["x0"])) for r in rows]
 
 
 def parse_pdf(
@@ -389,31 +584,64 @@ def _parse_pages(
     forms: list[ParsedForm] = []
     notes: list[str] = []
     for page_no, text in pages:
-        for tpl in templates:
-            if not tpl.matches(text):
-                continue
-            year = tpl.find_year(text)
-            if year is None:
-                raise Unmatched(f"page {page_no}: {tpl.form} found but no tax year")
-            if year not in tpl.years:
-                notes.append(f"page {page_no}: {tpl.form} {year} has no template")
-                continue
-            try:
-                boxes, missing = tpl.parse_boxes(text)
-            except Unmatched as exc:
-                raise Unmatched(f"page {page_no}: {tpl.form} {year}: {exc}") from exc
-            if missing:
-                raise Unmatched(
-                    f"page {page_no}: {tpl.form} {year}: required boxes not found: "
-                    + ", ".join(missing)
-                )
-            spots = tpl.spots(text, page_no, boxes) if ocr else {}
-            _merge(
-                forms,
-                ParsedForm(
-                    tpl.form, year, tpl.find_issuer(text), page_no, boxes, ocr, spots
-                ),
+        found, said = _read_ruled(page_no, text, templates, ocr)
+        for form in found:
+            _merge(forms, form)
+        notes.extend(said)
+    return forms, notes
+
+
+def _read_ruled(
+    page_no: int, text: str, templates: list[Template], ocr: bool
+) -> tuple[list[ParsedForm], list[str]]:
+    """A ruled page's forms from its cells, else from its plain text; when
+    both fail, the cells' reason."""
+    if not isinstance(text, Ruled):
+        return _read_page(page_no, text, templates, ocr)
+    try:
+        found, said = _read_page(page_no, text, templates, ocr)
+    except Unmatched as exc:
+        try:
+            found, said = _read_page(page_no, text.plain, templates, ocr)
+        except Unmatched:
+            raise exc from None
+        if not found:
+            raise
+        return found, said
+    return (found, said) if found else _read_page(page_no, text.plain, templates, ocr)
+
+
+def _read_page(
+    page_no: int, text: str, templates: list[Template], ocr: bool
+) -> tuple[list[ParsedForm], list[str]]:
+    """The forms on one page, and a note for each form with no template."""
+    forms: list[ParsedForm] = []
+    notes: list[str] = []
+    for tpl in templates:
+        if not tpl.matches(text):
+            continue
+        year = tpl.find_year(text)
+        if year is None:
+            raise Unmatched(f"page {page_no}: {tpl.form} found but no tax year")
+        if year not in tpl.years:
+            notes.append(f"page {page_no}: {tpl.form} {year} has no template")
+            continue
+        try:
+            boxes, missing = tpl.parse_boxes(text)
+        except Unmatched as exc:
+            raise Unmatched(f"page {page_no}: {tpl.form} {year}: {exc}") from exc
+        if missing:
+            raise Unmatched(
+                f"page {page_no}: {tpl.form} {year}: required boxes not found: "
+                + ", ".join(missing)
             )
+        spots = tpl.spots(text, page_no, boxes) if ocr else {}
+        _merge(
+            forms,
+            ParsedForm(
+                tpl.form, year, tpl.find_issuer(text), page_no, boxes, ocr, spots
+            ),
+        )
     return forms, notes
 
 
