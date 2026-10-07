@@ -1844,11 +1844,59 @@ steps on a clean Windows runner:
 1. checks that the tag matches the version
 2. runs the suite
 3. builds the zip
-4. proves it with `scripts/windows_proof.ps1`
-5. attaches the zip and its `.sha256` to a **draft** release
+4. proves it with `scripts/windows_proof.ps1` on Windows Server 2025, then
+   proves the same zip again on Windows Server 2022
+5. once both pass, attaches the zip and its `.sha256` to a **draft** release
 
 Publishing the draft is a person's decision. The update check reads published
 releases only.
+
+### The Windows matrix (unit 7f)
+
+Every pull request and every release proves the zip on two Windows versions.
+Windows Server 2025 is built on the same Windows build as Windows 11 24H2
+(26100), and its check keeps the name `windows-proof`. Windows Server 2022
+(build 20348) runs as `windows-proof-2022`. GitHub has no desktop Windows 10 or
+11 machines. To prove a desktop copy, run the same script there as an
+administrator:
+
+```
+pwsh -File scripts\windows_proof.ps1 -Zip yearend-planner-X.Y.Z-win64.zip
+```
+
+Unit 7f added these checks to the proof script:
+
+- **Microsoft Defender.** Runner images turn off real-time protection and
+  exclude whole drives. The proof removes those exclusions and turns
+  protection on before it unpacks the zip. It scans the unpacked folder,
+  fails if Defender flags anything, and checks at the end that protection
+  stayed on through every step.
+- **A folder too deep for Windows.** With long paths off (the Windows default),
+  a file whose full path is longer than 259 characters cannot be opened. The
+  release build records its deepest file in `python\LONGEST_PATH`. Before any
+  command except `version`, the planner works out whether that file would be
+  too long in the current folder. If it would, the planner stops with exit code
+  2 and a message such as:
+
+  ```
+  refused: C:\Users\…\planner is too deep for Windows: the planner's deepest file would have a 264-character path, past the 259-character limit. Move the planner folder to a shorter path (at most 140 characters), e.g. C:\Planner, or turn on Windows long paths, and run again.
+  ```
+
+  The proof unpacks the zip into a folder 5 characters too deep and expects
+  this refusal with long paths off. It then turns long paths on and expects
+  `selfcheck` to pass in the same folder. Afterwards it restores the setting
+  it found.
+- **A run stopped dead.** On a fresh copy with synthetic answers and synthetic
+  documents, the proof starts `run --quiet`. It force-kills the run with
+  `taskkill /F /T` when the inbox step (`[3/6]`) starts, then kills a second run
+  when the page step (`[6/6]`) starts. The next run must finish, and the page
+  must show the synthetic bank and its figures. A forced kill stops the program
+  the way a power cut does, but it cannot lose a disk write that was already
+  under way. Unit 7b's crash tests cover that case by cutting off at each write.
+
+The other steps already covered a standard (non-admin) user, a non-ASCII folder
+name (`C:\pröof dir\planner ✓`, then `moved après`), a moved folder and a
+blocked network.
 
 Every push and pull request also runs the `scan` job in `ci.yml` (Phase 10,
 unit 2f): `pip-audit` checks every locked dependency in `uv.lock` against the
