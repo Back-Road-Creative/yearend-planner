@@ -2506,3 +2506,35 @@ Left out, and named here so you know: the net investment income tax, the
 brackets (this year's share of AGI is used instead). If `mortgage_monthly` is
 typed and the mortgage is also entered as a debt, it is paid twice, and a note
 says so.
+
+## The benefits screen (Phase 10, unit 5a)
+
+`planner benefits --year 2026` reads the year's projected income (the same
+projection as the MAGI panel) and screens each program in the registry. Each
+reads one of three results:
+
+- **possibly eligible**: every condition the planner models is met;
+- **not eligible under what's modeled**: a modeled condition fails;
+- **not enough information**: a condition that decides it was not asked.
+
+It is a screen, not a decision: the program's agency decides. Each result says
+why, member by member, and how to apply. `planner benefits --programs` lists
+the registry: for each program its place, who it covers, its dates, how it
+counts income and the household, its look-back and asset test, other
+conditions, how to apply, its official sources and the date they were read.
+The same screen is the Benefits panel on the dashboard and a section of
+`planner plan`.
+
+Unit 5a covers health coverage below Medicare:
+
+| Program | What decides it here |
+|---|---|
+| Premium tax credit | ACA MAGI from 100% to 400% of last year's guideline (no cap 2021-2025); a joint return if married; not for a member who screens for Medicaid or CHIP, or is 65 or older (Medicare); the credit at the typed plan from the engine (IRC 36B(c)) |
+| Cost-sharing reductions | credit eligibility and MAGI at most 250%: 100-150% a silver plan at 94% actuarial value, over 150-200% at 87%, over 200-250% at 73% (45 CFR 155.305(g), 156.420(a)) |
+| Medicaid | the engine's answer for each member and the state's groups; at 65 or older Medicaid tests assets, so an income pass reads "not enough information" (42 CFR 435.603(j)) |
+| CHIP | the engine's answer for each child under 19; a child who screens for Medicaid takes Medicaid instead (42 CFR 457.310(b)) |
+
+Not asked, and named in the result: assets, other health insurance or an
+employer offer, immigration status, pregnancy, blindness or disability. The
+screen uses full-year income; a program that counts monthly income tests the
+month you apply. Nothing is fetched at run time.
