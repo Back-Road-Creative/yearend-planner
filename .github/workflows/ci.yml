@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # GitHub sometimes drops the push event for a merge commit; main then has no run
+  # and the merge robot's barrier holds every PR. `gh workflow run ci --ref main` fills it.
+  workflow_dispatch:
 
 jobs:
   test:

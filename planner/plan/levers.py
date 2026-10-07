@@ -30,7 +30,7 @@ from planner.engine.tax import CONFIG_PARAMS, TaxResult, compute, engine_value, 
 from planner.ingest.needs import load_profile, need_values
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.plan import calendar, conversion, washsale, withdraw
+from planner.plan import calendar, conversion, feasible, washsale, withdraw
 from planner.plan.inputs import Inputs, OverrideError, Overrides, build
 from planner.plan.magi import Line, Watch, lines, watch_for
 
@@ -71,6 +71,7 @@ class Lever:
     priced: bool = True  # False: moves no income (a Roth contribution)
     overlaps: tuple[str, ...] = ()  # levers moving the same dollars: not stacked
     cap: float | None = None  # the most --set may size it to; None: its amount
+    need: feasible.Need = feasible.Need()  # cash, shares, gain, IRA room it takes
 
     @property
     def available(self) -> bool:
@@ -87,6 +88,7 @@ class Lever:
             amount=r(amount),
             delta=tuple((k, int(round(v * scale))) for k, v in self.delta),
             why=f"set to {amount:,.0f} (sized {self.amount:,.0f}: {self.why})",
+            need=self.need.scaled(scale),
         )
 
 
@@ -228,6 +230,7 @@ class WhatIf:
     after: TaxResult
     lines_before: list[Line]
     lines_after: list[Line]
+    short: str | None = None  # the set takes more cash than is spare
 
     @property
     def net(self) -> float:
@@ -344,6 +347,11 @@ class _Ctx:
 
     def earned(self) -> float:
         return r(self.hh.wages + max(self.hh.se_income - self.base.se_tax / 2, 0.0))
+
+    def funds(self) -> feasible.Funds:
+        used = self.hh.traditional_ira_contribution + self.roth_ytd
+        left = min(_ira_limit(self), max(self.earned(), 0.0)) - used
+        return feasible.with_ira(feasible.funds(self.st, self.profile), left)
 
 
 def _none(key: str, mode: str, label: str, deadline: str, why: str) -> Lever:
@@ -528,6 +536,7 @@ def _donate(c: _Ctx) -> Lever:
         "shares count up to 30% of AGI (cash up to 60%), the rest carries forward "
         "5 years; the charity or fund must take a share transfer",
         (("charitable_cash", -amount), ("charitable_shares", amount)),
+        need=feasible.Need(shares=float(amount)),
     )
 
 
@@ -553,6 +562,9 @@ def _daf(c: _Ctx) -> Lever:
         "the fund grants it to charities later, on your schedule; next year you "
         "take the standard deduction",
         ((field_, amount),),
+        need=feasible.Need(
+            **{"shares" if field_ == "charitable_shares" else "cash": float(amount)}
+        ),
     )
 
 
@@ -619,6 +631,7 @@ def _spend_basis(c: _Ctx) -> Lever:
         "first and tax-free, conversions only once seasoned (5 years)",
         tuple(delta),
         overlaps=("defer_sales",),
+        need=feasible.Need(cash=r(min(spent, cash))),
     )
 
 
@@ -674,6 +687,7 @@ def _hsa(c: _Ctx) -> Lever:
         f"{f' ({c.hsa_employer:,.0f} through payroll)' if c.hsa_employer else ''}",
         "pro-rated for months without HSA-eligible coverage",
         (("hsa_contribution", int(round(amount))),),
+        need=feasible.Need(cash=amount),
     )
 
 
@@ -745,6 +759,7 @@ def _traditional_ira(c: _Ctx) -> Lever:
         "traditional and Roth IRA contributions share one limit; converting this "
         "money later is taxed then",
         (("traditional_ira_contribution", int(round(left))),),
+        need=feasible.Need(cash=left, ira=left),
     )
 
 
@@ -858,6 +873,7 @@ def _gain_harvest(c: _Ctx) -> Lever:
         "still taxes the gain; ACA MAGI rises",
         (("long_term_gains", int(round(amount))),),
         cap=gains,
+        need=feasible.Need(gain=amount),
     )
 
 
@@ -912,6 +928,7 @@ def _roth_contribution(c: _Ctx) -> Lever:
         "this year",
         "spendable at any age (contributions, not earnings); shares the IRA limit",
         priced=False,
+        need=feasible.Need(cash=left, ira=left),
     )
 
 
@@ -1038,16 +1055,31 @@ def menu(
         after = lines(res, hh.filing_status, ctx.watch)
         return Row(lv, r(net), res, crossings(ctx.lines, after))
 
+    f = ctx.funds()
     lower: list[Lever] = []
     alone: list[Lever] = []
     for lv in (x for x in levers if x.mode == LOWER and x.available):
-        if any(lv.key in kept.overlaps for kept in lower):
+        first = next((k.key for k in lower if lv.key in k.overlaps), None)
+        hard = feasible.check(f, {k.key: k.need for k in [*lower, lv]}).hard
+        if first is not None:
             alone.append(lv)
+            m.notes.append(
+                f"{lv.key} and {first} move the same dollars: {lv.key} is priced "
+                "alone, not stacked in the combined set"
+            )
+        elif hard:
+            alone.append(lv)
+            m.notes.append(f"{lv.key} is priced alone, not stacked: {hard[0]}")
         else:
             lower.append(lv)
     if lower:
         together = compute(year, _apply(hh, lower))
         m.together = priced(together, None, cost(base) - cost(together))
+        short = feasible.check(
+            f, {k.key: k.need for k in lower}, cost(together) - cost(base)
+        ).cash
+        if short:
+            m.notes.append(f"together the moves take more cash than is spare: {short}")
         rows = []
         for lv in lower:
             others = [o for o in lower if o is not lv]
@@ -1056,11 +1088,6 @@ def menu(
         for lv in alone:
             res = compute(year, lv.apply(hh))
             rows.append(priced(res, lv, cost(base) - cost(res)))
-            first = next(k.key for k in lower if lv.key in k.overlaps)
-            m.notes.append(
-                f"{lv.key} and {first} move the same dollars: {lv.key} is priced "
-                "alone, not stacked in the combined set"
-            )
         rows.sort(key=lambda rw: -rw.net)
         m.lower = [nothing, *rows]
     rooms = []
@@ -1070,6 +1097,18 @@ def menu(
             continue
         res = compute(year, lv.apply(hh))
         rooms.append(priced(res, lv, cost(base) - cost(res)))
+    for rw in m.lower + rooms:
+        if rw.lever is None:
+            continue
+        move = rw.lever
+        # a stacked row's result is the whole set; its saving is a later refund
+        tax = 0.0 if move in lower else cost(rw.result) - cost(base)
+        why = feasible.cash_reason(f, move.need.cash, tax)
+        if why:
+            m.notes.append(f"{move.key}: {why}")
+    unchecked = feasible.unchecked(f)
+    if unchecked and any(lv.need.cash for lv in levers if lv.available):
+        m.notes.append(unchecked)
     rooms.sort(key=lambda rw: (rw.rate is None, rw.rate or 0.0))
     m.rooms = [nothing, *rooms] if rooms else []
     if m.together is not None and m.together.net < 0:
@@ -1136,10 +1175,21 @@ def whatif(
     for key in amounts or {}:
         if key not in keys:
             raise ValueError(f"--set {key}: add it to --apply")
+    f = ctx.funds()
+    needs = {lv.key: lv.need for lv in chosen}
+    hard = feasible.check(f, needs).hard
+    if hard:
+        raise ValueError(f"{'; '.join(hard)}: apply fewer (menu prices them alone)")
     after = compute(year, _apply(ctx.hh, chosen))
     status = ctx.hh.filing_status
     return WhatIf(
-        year, chosen, ctx.base, after, ctx.lines, lines(after, status, ctx.watch)
+        year,
+        chosen,
+        ctx.base,
+        after,
+        ctx.lines,
+        lines(after, status, ctx.watch),
+        feasible.check(f, needs, cost(after) - cost(ctx.base)).cash,
     )
 
 
@@ -1238,4 +1288,6 @@ def render_whatif(w: WhatIf) -> str:
         )
     for lv in w.applied:
         out.append(f"{lv.key}: [{lv.friction}] by {lv.deadline}; {lv.side_effects}")
+    if w.short:
+        out.append(f"cash: {w.short}")
     return "\n".join(out) + "\n"
