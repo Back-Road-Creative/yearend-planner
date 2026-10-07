@@ -1,7 +1,7 @@
 """One feasibility check for a move or a set of moves (master plan rule 5).
 
 Conversion sizing, the lever menu and whatif ask the same three questions:
-is there cash for it by the deadline above the reserve (``cash_target``), do
+is there cash for it by the deadline above the reserve (planner.plan.reserve), do
 the shares it gives or the gain it realizes still exist once the other moves
 have used theirs, and does it fit the IRA limit traditional and Roth
 contributions share (IRC 408A(c)(2)). Shares and the IRA limit are hard: the
@@ -12,10 +12,10 @@ first. Nothing here prices a move; the engine does that.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any
 
 from planner.engine.tax import r
 from planner.ledger import portfolio
+from planner.plan.reserve import Reserve
 
 
 @dataclass(frozen=True)
@@ -34,7 +34,7 @@ class Need:
 @dataclass(frozen=True)
 class Funds:
     cash: float | None  # cash accounts now; None: no account is typed cash
-    reserve: float  # cash_target
+    reserve: float  # planner.plan.reserve: the typed cash_target or the rule
     # long-term taxable lots with a gain, (value, gain), most gain per dollar
     # first: the order the gift levers pick them in
     lots: tuple[tuple[float, float], ...] = ()
@@ -70,17 +70,14 @@ def gain_lots(st: portfolio.Status) -> tuple[tuple[float, float], ...]:
     return tuple((lot.value, lot.gain) for lot in held)
 
 
-def funds(
-    st: portfolio.Status, profile: dict[str, Any], ira_left: float | None = None
-) -> Funds:
+def funds(st: portfolio.Status, rs: Reserve, ira_left: float | None = None) -> Funds:
     held = [p.value for p in st.positions if p.type == "cash"]
-    target = profile.get("cash_target")
     return Funds(
         r(sum(held)) if held else None,
-        float(target or 0),
+        rs.amount,
         gain_lots(st),
         ira_left,
-        target is not None,
+        rs.basis != "none",
     )
 
 
@@ -115,7 +112,12 @@ def cash_reason(f: Funds, paid: float, tax: float = 0.0) -> str | None:
         f"takes {total:,.0f} of cash by the deadline ({', '.join(parts)}); "
         f"{spare:,.0f} is on hand above the {f.reserve:,.0f} reserve"
     )
-    return text + ("" if f.reserve_set else " (cash_target not set: no reserve)")
+    return text + (
+        ""
+        if f.reserve_set
+        else " (no reserve: cash_target not typed and the reserve rule has "
+        "nothing entered)"
+    )
 
 
 def check(f: Funds, needs: dict[str, Need], tax: float = 0.0) -> Verdict:

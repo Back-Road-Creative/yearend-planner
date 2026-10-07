@@ -348,7 +348,7 @@ tax it adds, the ACA credit it costs, a warning when qualified dividends spill
 into 15%, and the cash needed from outside the IRA. The profile's
 `conversion_margin` is kept below each line, `conversion_cap` is the hard cap
 and `conversion_objective` picks the recommendation; the rest stay on the page.
-The tax a candidate adds must come out of cash on hand above `cash_target`: a
+The tax a candidate adds must come out of cash on hand above the reserve: a
 candidate that would dip into the reserve is cut to the largest amount whose tax
 fits, with a note naming both numbers, or dropped when nothing fits (Phase 10,
 2d). With no account typed `cash` the check is skipped and the page says so.
@@ -390,7 +390,7 @@ most gain per dollar, which is the least cash for that gain; a gain no lot can
 supply counts nothing and is named in the notes. A planned conversion moves no
 cash itself; its tax is in the estimated payments and the `tax due` month, and
 a note gives the tax it adds. None of this needs `--cash-in`. The cash bucket
-is carried month by month and the first month under `cash_target` is named.
+is carried month by month and the first month under the reserve is named.
 It starts from the cash accounts' balance on their `balance_date`: that
 month's flows after the date run forward from it, later months add their net,
 and earlier months are worked back from it, so a deposit the balance already
@@ -406,7 +406,7 @@ drawdown rule).
 ## Planners: raising cash and wash sales (Phase 4c)
 
 `planner withdraw --year 2026 [--target 30000] [--budget 5000] [--lot 11111111:VTSAX:2019-01-15]`
-raises the cash target (the profile's `cash_target` unless `--target` says
+raises the cash target (the reserve, below, unless `--target` says
 otherwise): the cash accounts first, then the taxable lots with the least gain
 per dollar raised — loss lots, then the highest-basis long-term lots — never a
 retirement account. A `--lot` list is specific-ID: those lots go first, in the
@@ -621,7 +621,7 @@ held over a year than the taxable account holds, a gain harvest past the gain
 left once the gifts are made, or traditional and Roth contributions past the one
 IRA limit they share are refused by `whatif` and priced alone on the menu. A
 set that takes more cash by its deadline (contributions paid in, tax added)
-than is on hand above `cash_target` is shown, not refused: `whatif` prints a
+than is on hand above the reserve is shown, not refused: `whatif` prints a
 `cash:` line and the menu a note. `planner thresholds --year 2026` prints the sourced
 limits and checks the ones the engine also carries; a mismatch (the engine's
 2026 IRA limit is still 7,000 against Notice 2025-67's 7,500) means the engine
@@ -2360,3 +2360,25 @@ inside 12 months, each debt's payoff, each protected line's room (under or over,
 from the same projection as the MAGI panel; "does not apply this year" when the
 line is not watched for you, such as IRMAA before 63), and the target mix. A goal
 with no amount or date is listed and named in the notes; it is never counted as 0.
+
+## The cash reserve (Phase 10, unit 4b)
+
+The reserve is the cash no move may spend. A typed `cash_target` wins. Without
+one the planner adds four parts:
+
+- **spending**: `reserve_months` of essential spending, the `spending_floor` / 12
+  (`planner enter reserve_months 6`; 0 to 60);
+- **deductibles**: `reserve_deductibles`, what a claim takes first (the health
+  plan's deductible, the home and car deductibles; the plan's summary of
+  benefits and the policy declarations pages give them);
+- **tax**: the next estimated payment each agency still lacks (the Estimated
+  tax panel's figure, Form 1040-ES and the state's voucher); 0 once paid;
+- **goals**: the goals dated inside 12 months (passed ones too: the money is
+  still owed).
+
+A part not entered is named and left out, never counted as 0, and the reserve is
+then a floor ("the reserve is at least ..."). With neither `cash_target` nor the
+rule's own inputs entered there is no reserve, and every cash check says so.
+Conversion sizing, the lever menu and `whatif` (the one feasibility check), the
+Cash buffer panel and `planner withdraw`, and the monthly cash line all hold it
+back. The Cash buffer panel lists the parts beside the total.

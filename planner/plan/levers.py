@@ -31,9 +31,10 @@ from planner.engine.tax import CONFIG_PARAMS, TaxResult, compute, engine_value, 
 from planner.ingest.needs import load_profile, need_values
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.plan import calendar, conversion, feasible, washsale, withdraw
+from planner.plan import calendar, conversion, feasible, reserve, washsale, withdraw
 from planner.plan.inputs import Inputs, OverrideError, Overrides, build
-from planner.plan.magi import Line, Watch, lines, watch_for
+from planner.plan.magi import Line, Projection, Watch, lines, watch_for
+from planner.plan.reserve import Reserve
 
 LOWER = "get under a line"
 ROOM = "use the room"
@@ -327,6 +328,7 @@ class _Ctx:
     room_line: Line | None
     hsa_employer: float  # W-2 box 12 code W: counts against the HSA limit
     watch: Watch  # what the watched lines read beyond the engine result
+    reserve: Reserve  # the cash no move may spend (unit 4b)
 
     @property
     def hh(self) -> Household:
@@ -351,7 +353,7 @@ class _Ctx:
     def funds(self) -> feasible.Funds:
         used = self.hh.traditional_ira_contribution + self.roth_ytd
         left = min(_ira_limit(self), max(self.earned(), 0.0)) - used
-        return feasible.with_ira(feasible.funds(self.st, self.profile), left)
+        return feasible.with_ira(feasible.funds(self.st, self.reserve), left)
 
 
 def _none(key: str, mode: str, label: str, deadline: str, why: str) -> Lever:
@@ -809,7 +811,13 @@ def _conversion(c: _Ctx) -> Lever:
         return _conversion_lever(c, amount, why, balance)
     # sized from the resolved household: an adopted (auto) conversion is part of
     # ``already``, so only what is left beyond it is proposed
-    sz = conversion.size(c.lay, c.year, replace(c.ov, conversion_target="manual"))
+    sz = conversion.size(
+        c.lay,
+        c.year,
+        replace(c.ov, conversion_target="manual"),
+        as_of=c.today,
+        rs=c.reserve,
+    )
     rec = sz.recommendation
     if rec is None:
         return _none(key, ROOM, label, due, "; ".join(sz.notes) or "nothing to size")
@@ -987,6 +995,8 @@ def _context(
         )
     finally:
         conn.close()
+    profile = load_profile(lay)
+    rs = reserve.load(lay, year, today, profile, ov, Projection(inputs, base, watched))
     ctx = _Ctx(
         lay,
         year,
@@ -997,7 +1007,7 @@ def _context(
         watched,
         th,
         portfolio.status(lay, year, today),
-        load_profile(lay),
+        profile,
         recent,
         None if carry is None else float(carry),
         None if got["planned_giving"] is None else float(got["planned_giving"]),
@@ -1006,6 +1016,7 @@ def _context(
         room_line,
         float(got["hsa_employer_contributions"] or 0),
         watch,
+        rs,
     )
     return ctx, notes
 

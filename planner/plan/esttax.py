@@ -30,7 +30,7 @@ from planner.ledger import db
 from planner.paths import Layout
 from planner.plan.calendar import shift
 from planner.plan.inputs import UNKNOWN, Overrides, build
-from planner.plan.magi import project
+from planner.plan.magi import Projection, project
 from planner.taxprep import schedule_ai
 
 PAYMENTS = "payments"  # top-level list in the year's manual file
@@ -751,9 +751,11 @@ def estimate(
     year: int,
     as_of: date | None = None,
     overrides: Overrides | None = None,
+    pj: Projection | None = None,
 ) -> EstTax:
+    """``pj``, when passed, is the projection with these overrides."""
     today = as_of or date.today()
-    pj = project(lay, year, overrides)
+    pj = pj or project(lay, year, overrides)
     res = pj.result
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
