@@ -1148,6 +1148,21 @@ def values(
     return out
 
 
+def people(
+    year: int, household: Household, names: Iterable[str]
+) -> dict[str, list[float]]:
+    """Person figures one by one, in the situation's order: the head, the
+    spouse, then each dependent (the benefits screen reads Medicaid and CHIP
+    for every member, not the tax unit's sum). From the settled run, as
+    ``values``."""
+    household = dependent_care(year, household)[0]
+    sim = _settle(year, household).sim
+    return {
+        name: [float(x) for x in np.asarray(sim.calculate(name, year), dtype=float)]
+        for name in names
+    }
+
+
 def engine_slcsp(year: int, household: Household) -> float:
     """The engine's benchmark (second-lowest-cost silver) premium for the
     household's county, in dollars for January of ``year`` (monthly; 0 for a
