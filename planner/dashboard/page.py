@@ -41,6 +41,7 @@ PROJECTIONS = (
     "esttax",
     "placement",
     "yearend",
+    "benefits",
 )
 TITLES = {
     "needed": "Needed",
@@ -55,6 +56,7 @@ TITLES = {
     "goals": "Goals",
     "placement": "Placement",
     "yearend": "Before Dec 31",
+    "benefits": "Benefits",
     "washsales": "Wash sales",
     "calendar": "Deadlines",
 }
@@ -73,6 +75,7 @@ PANEL_CAPABILITY = {
     "goals": "goals_model",
     "placement": "tax_aware_placement",
     "yearend": "yearend_list",
+    "benefits": "benefits_registry",
     "washsales": "wash_sales",
     "calendar": "deadline_calendar",
 }
@@ -89,6 +92,7 @@ ORDER = (
     "goals",
     "placement",
     "yearend",
+    "benefits",
     "washsales",
     "calendar",
 )
