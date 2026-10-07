@@ -11,7 +11,9 @@ of three results for the household:
 A result is a screen, not a determination: the program's agency decides. The
 figures come from the engine (policyengine-us) for this household and year,
 with no network at run time. Unit 5a covers health coverage below Medicare:
-the premium tax credit, cost-sharing reductions, Medicaid and CHIP.
+the premium tax credit, cost-sharing reductions, Medicaid and CHIP. Unit 5b
+adds Medicare's costs: the income surcharge (IRMAA) this year's income sets,
+the Medicare Savings Programs and Extra Help.
 
 Sources, read 2026-10-07:
 - IRC 36B(c)(1)(A): household income from 100 to 400 percent of the poverty
@@ -35,14 +37,41 @@ Sources, read 2026-10-07:
   long-term care.
 - 42 CFR 457.310(b): a CHIP child is under 19, over the state's Medicaid level
   and within its CHIP level, not Medicaid-eligible and not otherwise insured.
+- 20 CFR 418.1010(b)(6): IRMAA's MAGI is AGI plus tax-exempt interest (and
+  excluded foreign and territory income); 418.1115: the premium year reads the
+  return of two years before; 418.1205(a)-(g): a spouse's death, marriage,
+  divorce, work stopping or cut back, lost income property, a pension ended or
+  an employer settlement lets SSA use a newer year (Form SSA-44). The brackets
+  are the engine's CMS figures (``gov.hhs.medicare.part_b.irmaa``, ``part_d``).
+- 42 USC 1396d(p): the Medicare Savings Programs count income the SSI way;
+  QMB to 100 percent of the poverty line (1396d(p)(2)), SLMB to 120 and QI to
+  135 (1396a(a)(10)(E)(iii)-(iv)); resources to the engine's limit
+  (``gov.hhs.medicare.savings_programs.eligibility.asset``), which several
+  states waive.
+- 42 CFR 423.773(b)(1): Extra Help needs income under 150 percent of the
+  poverty line for the family (plan years from 2024) and resources within
+  423.773(d)(2); 423.773(c)(1): QMB, SLMB, QI, SSI or full Medicaid makes a
+  person eligible without applying; 423.772: the family, income (a spouse's
+  counts) and liquid resources; SSA POMS HI 03030.025: the resource limits by
+  year, before the 1,500/3,000 burial allowance SSA adds unless declined.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 
 from planner.engine.household import Household
-from planner.engine.tax import TaxResult, _ptc_capped, compute, people, r
+from planner.engine.tax import (
+    TaxResult,
+    _ptc_capped,
+    _system,
+    compute,
+    irmaa,
+    people,
+    r,
+)
+from planner.ledger import portfolio
 from planner.paths import Layout
 from planner.plan import magi
 from planner.plan.inputs import Overrides
@@ -54,6 +83,21 @@ REVIEWED = "2026-10-07"
 CHIP_AGE = 19  # 42 CFR 457.310(b) via 457.320: a child is under 19
 MEDICARE_AGE = 65  # 42 CFR 435.603(j)(2): MAGI rules stop where age decides
 CSR_BANDS = ((1.50, 94), (2.00, 87), (2.50, 73))  # 155.305(g)(2), 156.420(a)
+IRMAA_LAG = 2  # 20 CFR 418.1115: a premium year reads the return two years before
+MSP_TIERS = (  # 42 USC 1396d(p)(2), 1396a(a)(10)(E)(iii)-(iv)
+    ("QMB", "pays the Part B premium, Part A if owed, and the cost sharing"),
+    ("SLMB", "pays the Part B premium"),
+    ("QI", "pays the Part B premium"),
+)
+EXTRA_HELP_LINE = 1.50  # 42 CFR 423.773(b)(1), plan years from 2024
+# SSA POMS HI 03030.025, individual and couple, before the burial allowance
+EXTRA_HELP_RESOURCES = {
+    2024: (15_720, 31_360),
+    2025: (16_100, 32_130),
+    2026: (16_590, 33_100),
+}
+BURIAL = (1_500, 3_000)  # added unless the applicant declines it
+MARRIED = ("JOINT", "SEPARATE")
 
 
 @dataclass(frozen=True)
@@ -151,6 +195,72 @@ REGISTRY: tuple[Program, ...] = (
         ("42 CFR 457.310(b)",),
         "the engine's is_chip_eligible for each member under 19",
     ),
+    Program(
+        "medicare_irmaa",
+        "Medicare premium without the income surcharge (IRMAA)",
+        "every state and DC; Social Security sets it, Medicare charges it",
+        "everyone on Medicare Part B or D",
+        "each year's premium reads the tax return of two years before; SSA "
+        "sends the notice in the fall; an appeal or Form SSA-44 any time",
+        "MAGI: AGI plus tax-exempt interest (and excluded foreign or territory "
+        "income), against brackets by filing status",
+        "the tax return: a joint return's MAGI sets both spouses' premiums",
+        "two years (a life-changing event lets SSA use a newer year)",
+        "none",
+        "married filing separately and living together uses the steepest "
+        "brackets; the surcharge is per person on Medicare",
+        "automatic; a life-changing event: Form SSA-44 to Social Security",
+        ("20 CFR 418.1010(b)(6)", "20 CFR 418.1115", "20 CFR 418.1205(a)-(g)"),
+        "this year's AGI and tax-exempt interest against the engine's CMS "
+        "brackets, for a spouse or filer 65 or older two years on",
+    ),
+    Program(
+        "msp",
+        "Medicare Savings Programs (QMB, SLMB, QI)",
+        "every state and DC, through the state Medicaid agency; some states "
+        "raise the income limits or drop the asset test",
+        "people with Medicare Part A (or who can get it)",
+        "any time of year; QMB starts the month after approval, SLMB and QI "
+        "can reach back three months",
+        "SSI-countable income (a $20 general exclusion; $65 and half of the "
+        "rest of earnings), monthly, against this year's guideline",
+        "the person, or a married couple",
+        "none",
+        "resources to the year's limit (a home, one car and burial funds do "
+        "not count), unless the state waives the test",
+        "Medicare Part A; QI is first come, first served each year",
+        "the state Medicaid agency",
+        ("42 USC 1396d(p)", "42 USC 1396a(a)(10)(E)(iii)-(iv)"),
+        "the engine's QMB, SLMB and QI income tests for each member on "
+        "Medicare; resources from every account on file against the "
+        "engine's limit and the state's waiver",
+    ),
+    Program(
+        "extra_help",
+        "Extra Help with Medicare drug costs (Part D low-income subsidy)",
+        "every state and DC, through Social Security",
+        "people with Medicare Part D (or who can get it)",
+        "any time of year; QMB, SLMB, QI, SSI or full Medicaid qualifies a "
+        "person without applying, for the rest of the year (and the next "
+        "year if it starts July or later)",
+        "the SSI way, a spouse's income counted, under 150% of the guideline "
+        "for the family",
+        "you, a spouse living with you and relatives living with you who "
+        "depend on you for half their support",
+        "none",
+        "liquid resources (accounts, stocks, bonds, real estate other than "
+        "the home) to the year's limit plus a burial allowance",
+        "Medicare Part D",
+        "Social Security (ssa.gov/extrahelp) or the state Medicaid agency",
+        (
+            "42 CFR 423.772",
+            "42 CFR 423.773(b)(1), (c)(1), (d)(2)",
+            "SSA POMS HI 03030.025",
+        ),
+        "the engine's SSI-countable income against 150% of this year's "
+        "guideline; resources from every account on file; eligible without "
+        "applying when the Medicare Savings Programs screen possibly eligible",
+    ),
 )
 BY_KEY = {p.key: p for p in REGISTRY}
 
@@ -161,6 +271,8 @@ class Member:
     age: int
     medicaid: bool
     chip: bool
+    medicare: bool = False  # the engine's is_medicare_eligible (65 or older)
+    msp: str = ""  # the engine's QMB, SLMB or QI income tier, if any
 
 
 @dataclass(frozen=True)
@@ -174,6 +286,12 @@ class Facts:
     capped: bool  # the year ends the credit above 400%
     ptc: float  # the credit at the typed plan
     members: tuple[Member, ...]
+    irmaa_magi: float = 0.0  # AGI plus tax-exempt interest (20 CFR 418.1010)
+    msp_income: float = 0.0  # SSI-countable income, yearly (you and a spouse)
+    msp_fpg: float = 0.0  # the guideline for one or a couple (MSP)
+    fpg: float = 0.0  # the guideline for the family (Extra Help)
+    msp_limit: float | None = None  # the MSP resource limit; None: waived
+    resources: float | None = None  # every account on file; None: not on file
 
 
 @dataclass(frozen=True)
@@ -337,29 +455,214 @@ def csr(f: Facts, credit: Result) -> Result:
     )
 
 
+def _adults(f: Facts) -> list[Member]:
+    return [m for m in f.members if m.label in ("you", "spouse")]
+
+
+def premium(f: Facts) -> Result:
+    """The Medicare premium this year's income sets for two years on."""
+    year = f.year + IRMAA_LAG
+    older = [m for m in _adults(f) if m.age + IRMAA_LAG >= MEDICARE_AGE]
+    if not older:
+        return Result(
+            "medicare_irmaa",
+            NOT,
+            (
+                f"no one on the return is 65 by {year}: no Medicare premium rests "
+                "on this year's income",
+            ),
+        )
+    got = irmaa(year, f.filing_status, f.irmaa_magi)
+    names = ", ".join(m.label for m in older)
+    why = [f"this year's MAGI {f.irmaa_magi:,.2f} sets the {year} premium for {names}"]
+    if got.figures < year:
+        why.append(
+            f"at the {got.figures} brackets, the latest set; CMS sets {year}'s "
+            "each fall"
+        )
+    tail = (
+        "a life-changing event (a spouse's death, marriage, divorce, work "
+        "stopping or cut back, lost income property or pension) lets Social "
+        "Security use a newer year: Form SSA-44 (20 CFR 418.1205)"
+    )
+    if not (got.part_b or got.part_d):
+        why.append(f"no surcharge: Part B at the standard {got.base:,.2f} a month")
+        return Result("medicare_irmaa", POSSIBLE, (*why, tail))
+    why.append(
+        f"a surcharge of {got.part_b:,.2f} a month on Part B (standard "
+        f"{got.base:,.2f}) and {got.part_d:,.2f} on Part D, for each person"
+    )
+    amount = r((got.part_b + got.part_d) * 12 * len(older))
+    return Result("medicare_irmaa", NOT, (*why, tail), amount)
+
+
+def _resources(f: Facts, limit: float, rule: str) -> tuple[str, str]:
+    if f.resources is None:
+        return (
+            UNKNOWN,
+            f"no accounts on file to test against the {limit:,.0f} limit ({rule})",
+        )
+    if f.resources > limit:
+        return (
+            NOT,
+            f"accounts on file {f.resources:,.0f}, over the {limit:,.0f} limit "
+            f"({rule})",
+        )
+    return (
+        POSSIBLE,
+        f"accounts on file {f.resources:,.0f}, within the {limit:,.0f} limit ({rule})",
+    )
+
+
+def msp(f: Facts) -> Result:
+    on = [m for m in f.members if m.medicare]
+    if not on:
+        return Result(
+            "msp",
+            NOT,
+            (
+                "no one on the return is on Medicare (65 or older; Medicare "
+                "through disability is not asked)",
+            ),
+        )
+    pct = f.msp_income / f.msp_fpg if f.msp_fpg else 0.0
+    tiered = [m for m in on if m.msp]
+    if not tiered:
+        return Result(
+            "msp",
+            NOT,
+            (
+                f"countable income {f.msp_income:,.2f} is {_pct(pct)} of the "
+                "line, over QI's 135% (42 USC 1396a(a)(10)(E)(iv)); a state with "
+                "higher limits is not screened",
+            ),
+        )
+    why = []
+    for m in tiered:
+        what = dict(MSP_TIERS)[m.msp]
+        why.append(f"{m.label}: {m.msp} at {_pct(pct)} of the line ({what})")
+    if f.msp_limit is None:
+        st, w = POSSIBLE, "this state has no asset test for these programs"
+    else:
+        st, w = _resources(f, f.msp_limit, "42 USC 1396d(p)(1)(C)")
+    base = irmaa(f.year, f.filing_status, 0.0).base
+    amount = r(base * 12 * len(tiered)) if st == POSSIBLE else None
+    return Result("msp", st, (*why, w), amount)
+
+
+def extra_help(f: Facts, savings: Result) -> Result:
+    if not any(m.medicare for m in f.members):
+        return Result(
+            "extra_help",
+            NOT,
+            (
+                "no one on the return is on Medicare (65 or older; Medicare "
+                "through disability is not asked)",
+            ),
+        )
+    if savings.status == POSSIBLE:
+        return Result(
+            "extra_help",
+            POSSIBLE,
+            (
+                "a Medicare Savings Program qualifies you without applying "
+                "(42 CFR 423.773(c)(1)(iii))",
+            ),
+        )
+    ratio = f.msp_income / f.fpg if f.fpg else 0.0
+    if ratio >= EXTRA_HELP_LINE:
+        return Result(
+            "extra_help",
+            NOT,
+            (
+                f"countable income {f.msp_income:,.2f} is {_pct(ratio)} of the "
+                "family's line, at or over 150% (42 CFR 423.773(b)(1))",
+            ),
+        )
+    why = [
+        f"countable income {f.msp_income:,.2f} is {_pct(ratio)} of the family's line"
+    ]
+    limits = EXTRA_HELP_RESOURCES.get(f.year)
+    if limits is None:
+        why.append(
+            f"the {f.year} resource limit is not in the registry yet "
+            "(SSA POMS HI 03030.025 sets it each fall)"
+        )
+        return Result("extra_help", UNKNOWN, tuple(why))
+    i = 1 if f.filing_status in MARRIED else 0
+    st, w = _resources(
+        f, limits[i] + BURIAL[i], "with the burial allowance; SSA POMS HI 03030.025"
+    )
+    return Result("extra_help", st, (*why, w))
+
+
 def screen(f: Facts) -> list[Result]:
     credit = ptc(f)
-    return [credit, csr(f, credit), medicaid(f), chip(f)]
+    savings = msp(f)
+    return [
+        credit,
+        csr(f, credit),
+        medicaid(f),
+        chip(f),
+        premium(f),
+        savings,
+        extra_help(f, savings),
+    ]
 
 
-def facts(year: int, hh: Household, res: TaxResult | None = None) -> Facts:
+def msp_limit(year: int, state: str, filing_status: str) -> float | None:
+    """The MSP resource limit for the person or couple, or None where the state
+    has dropped the asset test (the engine's parameters)."""
+    asset = _system().parameters.gov.hhs.medicare.savings_programs.eligibility.asset
+    when = f"{year}-01-01"
+    if not bool(asset.applies(when)[state]):
+        return None
+    node = asset.couple if filing_status in MARRIED else asset.individual
+    return float(node(when))
+
+
+PEOPLE = (
+    "is_medicaid_eligible",
+    "is_chip_eligible",
+    "is_medicare_eligible",
+    "is_qmb_eligible",
+    "is_slmb_eligible",
+    "is_qi_eligible",
+    "msp_countable_income",
+    "msp_fpg",
+)
+
+
+def facts(
+    year: int,
+    hh: Household,
+    res: TaxResult | None = None,
+    resources: float | None = None,
+) -> Facts:
     """One engine run's figures for the screen."""
     res = res or compute(year, hh)
-    got = people(year, hh, ("is_medicaid_eligible", "is_chip_eligible"))
+    got = people(year, hh, PEOPLE)
     labels = ["you"] + (["spouse"] if hh.spouse is not None else [])
     labels += [f"dependent {i}" for i in range(1, len(hh.dependents) + 1)]
     ages = [hh.age] + ([hh.spouse.age] if hh.spouse is not None else [])
     ages += [d.age for d in hh.dependents]
+    tiers = [
+        next((k for k, _ in MSP_TIERS if got[f"is_{k.lower()}_eligible"][i]), "")
+        for i in range(len(labels))
+    ]
     members = tuple(
-        Member(label, age, bool(med), bool(ch))
-        for label, age, med, ch in zip(
+        Member(label, age, bool(med), bool(ch), bool(mc), tier)
+        for label, age, med, ch, mc, tier in zip(
             labels,
             ages,
             got["is_medicaid_eligible"],
             got["is_chip_eligible"],
+            got["is_medicare_eligible"],
+            tiers,
             strict=True,
         )
     )
+    adults = range(len(_adults_of(labels)))
     return Facts(
         year,
         hh.filing_status,
@@ -368,11 +671,26 @@ def facts(year: int, hh: Household, res: TaxResult | None = None) -> Facts:
         _ptc_capped(year),
         res.aca_ptc,
         members,
+        r(res.agi + hh.tax_exempt_interest),
+        r(max(got["msp_countable_income"][i] for i in adults)),
+        got["msp_fpg"][0],
+        res.fpg,
+        msp_limit(year, hh.state, hh.filing_status),
+        resources,
     )
 
 
-def assess(year: int, hh: Household, res: TaxResult | None = None) -> Benefits:
-    return Benefits(year, screen(facts(year, hh, res)))
+def _adults_of(labels: list[str]) -> list[str]:
+    return [x for x in labels if x in ("you", "spouse")]
+
+
+def assess(
+    year: int,
+    hh: Household,
+    res: TaxResult | None = None,
+    resources: float | None = None,
+) -> Benefits:
+    return Benefits(year, screen(facts(year, hh, res, resources)))
 
 
 def build(
@@ -380,14 +698,24 @@ def build(
     year: int,
     overrides: Overrides | None = None,
     pj: magi.Projection | None = None,
+    today: date | None = None,
 ) -> Benefits:
-    """The screen on the year's projection (MAGI from the ledger and profile)."""
+    """The screen on the year's projection (MAGI from the ledger and profile),
+    with every account on file as the resources the asset tests read."""
     pj = pj or magi.project(lay, year, overrides)
-    out = assess(year, pj.inputs.household, pj.result)
+    st = portfolio.status(lay, year, today)
+    resources = st.total if st.positions else None
+    out = assess(year, pj.inputs.household, pj.result, resources)
     out.notes += [
         "the screen reads the projected full-year income; a program that "
         "counts monthly income tests the month you apply"
     ]
+    if resources is not None:
+        out.notes.append(
+            f"resources: every account on file ({resources:,.2f}), retirement "
+            "accounts included; the agencies leave out a home, one car, burial "
+            "funds and plans you cannot draw"
+        )
     return out
 
 

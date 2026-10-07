@@ -2485,7 +2485,7 @@ brackets (this year's share of AGI is used instead). If `mortgage_monthly` is
 typed and the mortgage is also entered as a debt, it is paid twice, and a note
 says so.
 
-## The benefits screen (Phase 10, unit 5a)
+## The benefits screen (Phase 10, units 5a-5b)
 
 `planner benefits --year 2026` reads the year's projected income (the same
 projection as the MAGI panel) and screens each program in the registry. Each
@@ -2512,7 +2512,22 @@ Unit 5a covers health coverage below Medicare:
 | Medicaid | the engine's answer for each member and the state's groups; at 65 or older Medicaid tests assets, so an income pass reads "not enough information" (42 CFR 435.603(j)) |
 | CHIP | the engine's answer for each child under 19; a child who screens for Medicaid takes Medicaid instead (42 CFR 457.310(b)) |
 
-Not asked, and named in the result: assets, other health insurance or an
-employer offer, immigration status, pregnancy, blindness or disability. The
-screen uses full-year income; a program that counts monthly income tests the
-month you apply. Nothing is fetched at run time.
+Unit 5b covers Medicare's costs:
+
+| Program | What decides it here |
+|---|---|
+| Medicare premium (IRMAA) | for you or a spouse 65 or older two years on, this year's MAGI (AGI plus tax-exempt interest) against the income brackets for the filing status; Medicare reads the return of two years before, so this year's income sets that year's premium (20 CFR 418.1010(b)(6), 418.1115). A surcharge reads "not eligible" with the yearly Part B and D surcharge for everyone it covers; brackets past the latest CMS year repeat that year's. A life-changing event (Form SSA-44, 418.1205) lets Social Security use a newer year |
+| Medicare Savings Programs | for each member on Medicare, the engine's SSI-counted income against this year's guideline: QMB to 100%, SLMB to 120%, QI to 135% (42 USC 1396d(p)); then the state's resource limit (for one or a couple), or none where the state dropped it. The amount is the Part B premium the program pays |
+| Extra Help | a savings program qualifies you without applying (42 CFR 423.773(c)(1)); otherwise SSI-counted income under 150% of the family's guideline and resources within the year's limit plus the burial allowance (SSA POMS HI 03030.025). A year whose limit is not in the registry reads "not enough information" |
+
+The resource tests read every account on file at its latest balance,
+retirement accounts included. That is conservative: the agencies leave out a
+home, one car, burial funds and plans you cannot draw, so an "over the limit"
+result may still qualify. With no accounts on file the tests read "not enough
+information".
+
+Not asked, and named in the result: other health insurance or an employer
+offer, immigration status, pregnancy, blindness or disability, Medicare through
+disability, and the resource exclusions above. The screen uses full-year
+income; a program that counts monthly income tests the month you apply.
+Nothing is fetched at run time.
