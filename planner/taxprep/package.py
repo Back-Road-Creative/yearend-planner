@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import csv
 import html
+import shutil
 import zipfile
 from dataclasses import dataclass, field
 from datetime import date
@@ -229,12 +230,28 @@ def _coverage(d: draft.Draft) -> list[tuple[object, ...]]:
     return rows
 
 
+def _swap(new: Path, final: Path) -> None:
+    """The finished pack takes the last one's place in two renames."""
+    old = final.with_name(final.name + ".old")
+    if old.exists():
+        shutil.rmtree(old)
+    if final.exists():
+        final.rename(old)
+    new.rename(final)
+    shutil.rmtree(old, ignore_errors=True)
+
+
 def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
-    """Write ``out/tax-<year>/``; files from an earlier run are replaced."""
+    """Write ``out/tax-<year>/``, replacing the last pack whole: it is built in
+    ``tax-<year>.partial/`` and swapped in at the end, so a run cut off part way
+    (killed, disk full) never leaves a folder that mixes two runs."""
     d = draft.build(lay, year)  # raises MissingInputError before anything is written
-    folder = lay.out / f"tax-{year}"
-    folder.mkdir(parents=True, exist_ok=True)
-    pack = Pack(year, folder)
+    final = lay.out / f"tax-{year}"
+    folder = final.with_name(final.name + ".partial")
+    if folder.exists():
+        shutil.rmtree(folder)
+    folder.mkdir(parents=True)
+    pack = Pack(year, final)
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:
         cg = capgains.build(conn, lay, year)
@@ -377,6 +394,7 @@ def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
     _csv(folder / "coverage.csv", ("section", "tag", "why", "needed"), _coverage(d))
     n = _originals(lay, year, folder / "originals.zip")
     pack.written = [name for name in FILES if (folder / name).exists()]
+    _swap(folder, final)
     if not n:
         pack.notes.append(f"no archived originals for {year} (originals.zip is empty)")
     if inv.outstanding:

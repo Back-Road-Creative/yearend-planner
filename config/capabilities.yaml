@@ -495,6 +495,11 @@ health_summary:
   evidence: implemented
   tests: ["tests/test_health.py"]
   note: "unit 7a: planner health gives five separate answers (app, data completeness, calculation, decision readiness, tax-pack readiness), each ok or attention with reasons; reports only"
+crash_recovery:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_crash.py"]
+  note: "unit 7b: restore, ledger upgrade backup, ingest, update swap, tax pack and rollover each survive a kill or full disk part way; the next run finishes or undoes the step"
 dashboard_page:
   status: verified
   evidence: implemented
