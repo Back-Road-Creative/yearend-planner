@@ -30,6 +30,7 @@ import yaml
 from planner.engine.household import MissingInputError
 from planner.ledger import db
 from planner.paths import Layout
+from planner.taxprep import carries
 
 FILED = "CARRY"  # derived facts from the filed return (the Needed panel's actual)
 DRAFTED = "CARRY-EST"  # derived facts from the draft (the Needed panel's estimate)
@@ -80,6 +81,7 @@ class Carry:
     basis: str  # "filed", "draft" or "none"
     values: dict[str, float] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    forward: list[carries.Carry] = field(default_factory=list)  # the draft's
 
 
 @dataclass
@@ -201,10 +203,11 @@ def carry(lay: Layout, year: int) -> Carry:
                 "carried forward is the draft's"
             )
         out.values = {"st": (loss or (0.0, 0.0))[0], "lt": (loss or (0.0, 0.0))[1]}
+        out.forward = d.carries if d else []
         return out
     if d is None or drafted is None:
         return Carry(year, "none", notes=[f"no {year} draft to carry from: {why}"])
-    out = Carry(year, "draft", {"st": drafted[0], "lt": drafted[1]})
+    out = Carry(year, "draft", {"st": drafted[0], "lt": drafted[1]}, forward=d.carries)
     for key, (form, line) in (
         ("agi", ("1040", "11a")),
         ("total_tax", ("1040", "24")),
@@ -300,6 +303,12 @@ def _checklist(lay: Layout, ro: Rollover, limits_line: str, missing: list[str]) 
     nxt = ro.year + 1
     lines = [f"Rollover {ro.year} -> {nxt} (version {ro.version})", ""]
     items = [t.format(year=ro.year, next=nxt, limits=limits_line) for t in CHECKLIST]
+    items += [
+        f"Carry {'by hand ' if c.hand else ''}{c.item} {c.amount:,.2f} ({c.line}) "
+        f"into {nxt}: {c.next}"
+        for c in ro.carry.forward
+        if not c.line.startswith("Carryover")
+    ]
     items += ro.accessible
     items += [f"Answer in the Needed panel: {m}" for m in missing]
     lines += [f"[ ] {t}" for t in items]
@@ -340,6 +349,7 @@ def roll(lay: Layout, year: int, today: date | None = None) -> Rollover:
     finally:
         conn.close()
     ro.snapshot = _snapshot(lay, year, ro.version, today)
+    carries.record(lay, year, c.forward, today)
     ro.accessible = _accessible(lay, year + 1)
     lim = limits.refresh(lay, year + 1, write=True)
     rep = needed(lay, year + 1)

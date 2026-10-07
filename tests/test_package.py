@@ -2,7 +2,9 @@
 typed carryover, a Roth conversion, an estimated payment and the archived
 original, and every file agrees with the command that already prints it.
 Unit 6a: the cover sheet (scope, readiness, documents, estimates, forms not
-handled, questions for the preparer, versions)."""
+handled, questions for the preparer, versions). Unit 6c: every carry the draft
+computes, in carryforward.csv and the rollover checklist, and the basis
+history next year's draft checks against."""
 
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from planner import NOTICE, __version__
@@ -23,10 +26,12 @@ from planner.ingest import ingest
 from planner.ingest.needs import enter
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.plan import esttax
-from planner.taxprep import draft, expected, package
+from planner.plan import esttax, rollover
+from planner.taxprep import carries, draft, expected, package
 from tests.test_capgains import IRA, LOTS, TAXABLE
-from tests.test_csv import drop
+from tests.test_csv import COST_BASIS, drop
+from tests.test_schedule_e import _run as _rentals
+from tests.test_schedule_f import _run as _farms
 
 runner = CliRunner()
 
@@ -361,3 +366,101 @@ def test_run_takes_the_years_snapshots(lay: Layout) -> None:
     assert got[1].snapshot and got[1].snapshot.kind == snapshots.FORECAST
     assert got[0].snapshot and got[0].snapshot.kind == snapshots.PROVISIONAL
     assert not any(g.new for g in snapshots.refresh(lay, 2026, date(2026, 3, 2)))
+
+
+def _carry_draft(year: int, *lines: tuple[str, str, str, float]) -> draft.Draft:
+    d = draft.Draft(year, "test")
+    d.lines = [draft.Line(f, ln, label, v, "synthetic") for f, ln, label, v in lines]
+    return d
+
+
+def test_every_carry_names_its_line_and_next_years_answer() -> None:
+    e = _rentals(
+        "rental rents 6000 mortgage 6000 taxes 1500 direct 200 expenses 3000 "
+        "depreciation 3000 days 60 personal 30"
+    )
+    assert [(c.amount, c.line, c.next) for c in e.carries] == [
+        (1200.0, "Pub. 527 Worksheet 5-1 line 7a", "rental A word carryover"),
+        (2000.0, "Pub. 527 Worksheet 5-1 line 7b", "rental A word carrydep"),
+    ]
+    (f,) = _farms("farm raised 40000 conservation 9000 conservationcarry 3000").carries
+    assert (f.amount, f.next) == (2000.0, "the farm's word conservationcarry")
+    assert f.line.endswith("line 12")
+    d = _carry_draft(
+        2025,
+        ("Carryover", "13", "Long-term loss carried to 2026", 7000.0),
+        ("Form 8606", "14", "Total basis in traditional IRAs", 5000.0),
+        ("Form 8582", "VII-1(c)", "Unallowed loss (rental A)", 900.0),
+        ("Form 8582", "VII-2(c)", "Unallowed loss (rental B)", 0.0),
+        ("Simplified Method", "10", "Recovered tax-free", 9000.0),
+        ("Simplified Method", "11", "Balance of cost", 21000.0),
+        ("1116", "14", "Foreign taxes", 640.0),
+        ("1116", "24", "Limit", 100.0),
+    )
+    got = {c.line: (c.amount, c.next) for c in carries.from_lines(d)}
+    assert got == {
+        "Carryover line 13": (7000.0, "carried by planner rollover"),
+        "Form 8606 line 14": (5000.0, "ira_basis word basis"),
+        "Form 8582 VII-1(c)": (900.0, "the rental's or farm's word prior"),
+        "Simplified Method line 11": (21000.0, "annuities word recovered (line 10)"),
+        "Form 1116 line 14 less line 24": (
+            540.0,
+            "foreign_tax_carryover, after Schedule B (Form 1116) drops any year "
+            "over ten years old (or carry back 1 year)",
+        ),
+    }
+    assert [c.line for c in carries.from_lines(d) if c.hand] == [
+        "Form 1116 line 14 less line 24"
+    ]
+    prior = carries.from_lines(d)
+    typed = _carry_draft(2026, ("Form 8606", "2", "Basis", 4000.0))
+    notes = carries.check(typed, prior, 540.0)
+    assert notes == [
+        "CHECK: Form 8606 line 2 is 4,000.00 but 2025 line 14 carried 5,000.00"
+    ]
+    blank = carries.check(_carry_draft(2026), prior, None)
+    assert blank[0].endswith("type ira_basis word basis 5000")
+    assert "foreign_tax_carryover is 0.00 but 2025 carried 540.00" in blank[1]
+
+
+def test_carries_reach_the_pack_the_history_and_the_rollover(lay: Layout) -> None:
+    drop(lay, "open-lots.csv", COST_BASIS)
+    ingest(lay)
+    enter(lay, 2025, "traditional_ira_contribution", "7000")
+    enter(lay, 2025, "ira_basis", "basis 5000 nondeductible 7000 value 100000")
+    package.build(lay, 2025, date(2026, 2, 1))
+    rows = _rows(lay.out / "tax-2025" / "carryforward.csv")
+    assert rows[0].keys() == {
+        "item",
+        "amount",
+        "line",
+        "next year",
+        "by hand",
+        "source",
+    }
+    line14 = draft.build(lay, 2025).get("Form 8606", "14")
+    assert line14 is not None and 0 < line14 < 12000  # the conversion took a share
+    basis = next(r for r in rows if r["line"] == "Form 8606 line 14")
+    assert basis["amount"] == f"{line14:.2f}"
+    assert basis["next year"] == "ira_basis word basis"
+    assert any(r["line"].startswith("Carryover line") for r in rows)
+
+    hist = carries.history_path(lay, 2025)
+    assert hist == lay.data / "private" / "basis" / "2025.yaml"
+    kept = yaml.safe_load(hist.read_text(encoding="utf-8"))
+    assert kept["recorded"] == "2026-02-01"
+    assert [(lt["acquired"], lt["basis"]) for lt in kept["lots"]] == [
+        ("2019-01-15", 40000.0),
+        ("2024-11-20", 58000.0),
+    ]
+    assert kept["roth_conversions"][0]["basis"] == 1000.0
+    assert [c.line for c in carries.load(lay, 2025)] == [r["line"] for r in rows]
+
+    ro = rollover.roll(lay, 2025, date(2026, 2, 1))
+    assert ro.checklist is not None
+    text = ro.checklist.read_text(encoding="utf-8")
+    assert (
+        f"[ ] Carry Basis in traditional IRAs {line14:,.2f} (Form 8606 line 14) "
+        "into 2026: ira_basis word basis" in text
+    )
+    assert "Carryover line" not in text  # the rollover carries the loss itself
