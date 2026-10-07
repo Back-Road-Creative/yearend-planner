@@ -40,6 +40,7 @@ PROJECTIONS = (
     "cash",
     "esttax",
     "placement",
+    "yearend",
 )
 TITLES = {
     "needed": "Needed",
@@ -53,6 +54,7 @@ TITLES = {
     "cash": "Cash buffer",
     "goals": "Goals",
     "placement": "Placement",
+    "yearend": "Before Dec 31",
     "washsales": "Wash sales",
     "calendar": "Deadlines",
 }
@@ -70,6 +72,7 @@ PANEL_CAPABILITY = {
     "cash": "glide_path_and_monthly_cash",
     "goals": "goals_model",
     "placement": "tax_aware_placement",
+    "yearend": "yearend_list",
     "washsales": "wash_sales",
     "calendar": "deadline_calendar",
 }
@@ -85,6 +88,7 @@ ORDER = (
     "cash",
     "goals",
     "placement",
+    "yearend",
     "washsales",
     "calendar",
 )
