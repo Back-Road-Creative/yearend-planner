@@ -20,6 +20,15 @@ from tests.conftest import (
 )
 
 STUB_BAD = "#!/bin/sh\necho broken >&2\nexit 1\n"
+
+
+@pytest.fixture(autouse=True)
+def _no_live_engine(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The installed engine's years are not read here (that imports it); the
+    stale-rules tests in test_update_safety set them."""
+    monkeypatch.setattr(upd, "live_years", lambda: ())
+
+
 EXEC_MODE = 0o755
 
 
@@ -30,10 +39,12 @@ def make_release(
     years: str | None = None,
     engine: str | None = None,
     regression: float | None = STUB_BASELINE_VALUE,
+    schema: int | None = None,
 ) -> Path:
     """``years`` is the tax-years line the stub selfcheck prints after its first
     line; ``engine`` the policyengine-us version in the candidate's dist-info;
-    ``regression`` the reference value its regression run prints (None: none)."""
+    ``regression`` the reference value its regression run prints (None: none);
+    ``schema`` the ledger schema its planner/ledger/db.py names."""
     z = tmp_path / f"rel-{version}.zip"
     stub = stub_interpreter(regression)
     if years is not None:
@@ -42,6 +53,8 @@ def make_release(
         zf.writestr("VERSION", version + "\n")
         zf.writestr("planner.cmd", "rem\n")
         zf.writestr("planner/__init__.py", "")
+        if schema is not None:
+            zf.writestr("planner/ledger/db.py", f"SCHEMA_VERSION = {schema}\n")
         info = zipfile.ZipInfo("python/python")
         info.external_attr = EXEC_MODE << 16
         zf.writestr(info, stub if ok else STUB_BAD)

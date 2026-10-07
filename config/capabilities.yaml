@@ -500,6 +500,11 @@ crash_recovery:
   evidence: implemented
   tests: ["tests/test_crash.py"]
   note: "unit 7b: restore, ledger upgrade backup, ingest, update swap, tax pack and rollover each survive a kill or full disk part way; the next run finishes or undoes the step"
+update_safety:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_update_safety.py", "tests/test_update.py"]
+  note: "unit 7d: staged files checked against their sha256 list before any swap; older planner, engine or tax years wait for --allow-downgrade; a release or rollback that reads an older ledger is refused; a failed candidate leaves nothing behind"
 backup_rehearsal:
   status: verified
   evidence: implemented

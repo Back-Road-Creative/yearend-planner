@@ -287,13 +287,20 @@ def update(
         help="install a release that jumps a major version of the planner or "
         "policyengine-us (alone: fetch the feed's release)",
     ),
+    allow_downgrade: bool = typer.Option(
+        False,
+        "--allow-downgrade",
+        help="install an older planner or policyengine-us, or one that drops a "
+        "tax year the installed one publishes",
+    ),
     finish: bool = typer.Option(False, "--finish", hidden=True),
 ) -> None:
     """Swap in a newer release after its own selfcheck passes; --rollback undoes
     it; --check looks for one on the update feed now (the automatic check runs
     at most weekly). A release that jumps a major version waits for
-    --allow-major. From planner.cmd the folders move after this process exits
-    (it cannot move the interpreter it runs on)."""
+    --allow-major; an older one waits for --allow-downgrade. From planner.cmd
+    the folders move after this process exits (it cannot move the interpreter
+    it runs on)."""
     from planner.engine import feed
     from planner.engine import update as upd
 
@@ -329,7 +336,12 @@ def update(
             raise typer.Exit(code=2)
         exe = "python.exe" if sys.platform == "win32" else "python"
         result = upd.stage(
-            release_zip, sha256, root, python_exe=exe, allow_major=allow_major
+            release_zip,
+            sha256,
+            root,
+            python_exe=exe,
+            allow_major=allow_major,
+            allow_downgrade=allow_downgrade,
         )
         if upd.launcher_swaps(root):
             typer.echo(f"staged {result.version}; swapping it in; {result.years_note}")
@@ -380,6 +392,23 @@ def backup(
     )
     if rehearse:
         _rehearse(lay, path, password)
+
+
+def _swap_staged(lay: Layout) -> None:
+    """At start, swap in an update staged earlier. One whose files changed
+    since its selfcheck is removed and this release runs on."""
+    from planner.engine import update as upd
+
+    if not upd.staged(lay.root):
+        return
+    try:
+        if upd.launcher_swaps(lay.root):
+            upd.write_swap(lay.root, "in", rerun=True)
+            typer.echo("a staged update is waiting; swapping it in first")
+            raise typer.Exit(code=upd.LAUNCHER_SWAP)
+        typer.echo(f"{upd.apply_staged(lay.root)}; restart to use it")
+    except upd.UpdateError as exc:
+        typer.echo(f"update not applied: {exc}", err=True)
 
 
 def _rehearse(lay: Layout, src: Path, password: str) -> None:
@@ -2168,7 +2197,6 @@ def run(
     from planner import backup as backup_
     from planner.dashboard import page, render, serve
     from planner.engine import feed, limits, verify
-    from planner.engine import update as upd
     from planner.ingest import ingest as _ingest
     from planner.plan import rollover
     from planner.taxprep import close as close_
@@ -2176,12 +2204,7 @@ def run(
 
     lay = layout()
     lay.ensure()
-    if upd.staged(lay.root):
-        if upd.launcher_swaps(lay.root):
-            typer.echo("a staged update is waiting; swapping it in first")
-            upd.write_swap(lay.root, "in", rerun=True)
-            raise typer.Exit(code=upd.LAUNCHER_SWAP)
-        typer.echo(f"{upd.apply_staged(lay.root)}; restart to use it")
+    _swap_staged(lay)
     # the first run records the pinned engine's output as the baseline every
     # later engine is held to; a new engine version is recorded the same way
     try:
