@@ -7,9 +7,11 @@ import pytest
 
 from planner.config import (
     ASSUMPTION_FIELDS,
+    VALIDATED,
     ConfigError,
     load_assumptions,
     load_capabilities,
+    load_records,
     load_thresholds,
     missing_assumptions,
 )
@@ -69,37 +71,100 @@ def test_capabilities_statuses(repo_root: Path, tmp_path: Path) -> None:
     c = load_capabilities(repo_root / "config" / "capabilities.yaml")
     assert set(c.values()) <= {"verified", "partial", "unsupported"}
     bad = tmp_path / "c.yaml"
-    bad.write_text("federal_income_tax: yes\n", encoding="utf-8")
-    with pytest.raises(ConfigError):
+    bad.write_text("federal_income_tax: verified\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="federal_income_tax: a record"):
         load_capabilities(bad)
 
 
+RECORD = (
+    "x:\n  status: verified\n  evidence: implemented\n  tests: [tests/test_tax.py]\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("extra", "why"),
+    [
+        ("  evidence2: no\n", "unknown field evidence2"),
+        ("  proven: nothex\n", "proven must be a commit"),
+    ],
+)
+def test_a_record_with_an_unknown_field_is_refused(
+    tmp_path: Path, extra: str, why: str
+) -> None:
+    p = tmp_path / "c.yaml"
+    p.write_text(RECORD + extra, encoding="utf-8")
+    with pytest.raises(ConfigError, match=why):
+        load_records(p)
+
+
+def test_evidence_above_implemented_needs_an_independent_source(tmp_path: Path) -> None:
+    p = tmp_path / "c.yaml"
+    p.write_text(RECORD.replace("implemented", "independently_validated"), "utf-8")
+    with pytest.raises(ConfigError, match="x: independently_validated needs expected"):
+        load_records(p)
+    p.write_text(
+        RECORD.replace("implemented", "independently_validated")
+        + "  expected: IRS Pub. 17 worked example\n",
+        "utf-8",
+    )
+    assert load_records(p)["x"].expected == "IRS Pub. 17 worked example"
+    p.write_text(RECORD.replace("implemented", "certified"), "utf-8")
+    with pytest.raises(ConfigError, match="x: evidence must be one of"):
+        load_records(p)
+
+
 def test_every_capability_row_cites_an_existing_test(repo_root: Path) -> None:
-    """The matrix is only auditable if each row says which test proves it. A
-    verified or partial row's comment names tests/<file>.py or
-    tests/<file>.py::<name>, and every one named must exist; an unsupported row
-    names the rule it replaces instead."""
-    path = repo_root / "config" / "capabilities.yaml"
-    status = load_capabilities(path)
-    comments = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        key, sep, rest = line.partition(":")
-        if sep and not line.startswith((" ", "#")) and key in status:
-            comments[key] = rest.partition("#")[2]
-    assert set(comments) == set(status), set(status) - set(comments)
-    cited = re.compile(r"(tests/[\w/]+\.py)(?:::(\w+))?")
-    for name, state in status.items():
-        refs = cited.findall(comments[name])
-        if state == "unsupported":
+    """The matrix is only auditable if each record says which test proves it: a
+    verified or partial record lists tests/<file>.py or tests/<file>.py::<name>,
+    and every one listed must exist; an unsupported record names the rule it
+    replaces in its note instead."""
+    records = load_records(repo_root / "config" / "capabilities.yaml")
+    for name, rec in records.items():
+        if rec.status == "unsupported":
+            assert rec.note, f"{name} (unsupported) names no rule in its note"
             continue
-        assert refs, f"{name} ({state}) cites no tests/ file in its comment"
-        for file, test in refs:
+        assert rec.tests, f"{name} ({rec.status}) lists no tests"
+        for ref in rec.tests:
+            file, _, test = ref.partition("::")
             src = repo_root / file
             assert src.is_file(), f"{name}: {file} does not exist"
             if test:
                 assert re.search(rf"^def {test}\b", src.read_text("utf-8"), re.M), (
                     f"{name}: {file} has no test {test}"
                 )
+
+
+def test_no_status_promotes_evidence_and_proven_is_never_typed(repo_root: Path) -> None:
+    """The historical status is kept, never read as acceptance (finding F13):
+    nothing is independently validated until it names its source, and the
+    commit a release proved it at is stamped into the shipped copy only."""
+    records = load_records(repo_root / "config" / "capabilities.yaml")
+    assert all(not r.proven for r in records.values())
+    assert all(r.expected for r in records.values() if r.evidence in VALIDATED)
+
+
+def test_the_release_build_stamps_the_proven_commit_only_from_a_release_run(
+    repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.test_privacy import _load_build_release
+
+    br = _load_build_release()
+    caps = tmp_path / "config" / "capabilities.yaml"
+    caps.parent.mkdir()
+    src = (repo_root / "config" / "capabilities.yaml").read_text("utf-8")
+    caps.write_text(src, "utf-8")
+    monkeypatch.delenv("PROVEN_COMMIT", raising=False)
+    br.stamp_proven(tmp_path)
+    assert caps.read_text("utf-8") == src  # a local build proves nothing
+    sha = "0123456789abcdef0123456789abcdef01234567"
+    monkeypatch.setenv("PROVEN_COMMIT", sha)
+    br.stamp_proven(tmp_path)
+    stamped = load_records(caps)
+    assert (
+        stamped.keys()
+        == load_records(repo_root / "config" / "capabilities.yaml").keys()
+    )
+    assert {r.proven for r in stamped.values()} == {sha}
 
 
 def test_yaml_is_never_executed(tmp_path: Path) -> None:

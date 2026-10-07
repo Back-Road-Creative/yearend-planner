@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -91,11 +93,71 @@ def load_thresholds(path: Path, merged: bool = True) -> dict[int, dict[str, Any]
     return out
 
 
+# A capability record (unit 2b, finding F13): the historical status kept, the
+# evidence behind it named apart, never promoted by the status alone.
+STATUSES = ("verified", "partial", "unsupported")
+EVIDENCE = (
+    "unreviewed",
+    "implemented",
+    "independently_validated",
+    "end_to_end_accepted",
+    "partial",
+    "out_of_scope",
+)
+VALIDATED = ("independently_validated", "end_to_end_accepted")  # need `expected`
+RECORD_FIELDS = ("status", "evidence", "tests", "note", "scope", "expected", "proven")
+COMMIT = re.compile(r"[0-9a-f]{7,40}")
+
+
+@dataclass(frozen=True)
+class Capability:
+    status: str  # verified | partial | unsupported (the historical claim)
+    evidence: str  # one of EVIDENCE
+    tests: tuple[str, ...]  # tests/<file>.py[::<name>] that prove it
+    note: str = ""  # what the tests cover and leave out
+    scope: str = ""  # who it holds for, when narrower than the planner's scope
+    expected: str = ""  # the independent expected-value source
+    proven: str = ""  # the commit a release run proved it at (shipped copy only)
+
+
+def _record(name: str, raw: Any) -> tuple[Capability | None, list[str]]:
+    if not isinstance(raw, dict):
+        return None, [f"{name}: a record (status, evidence, tests), not {raw!r}"]
+    errors = [f"{name}: unknown field {k}" for k in raw if k not in RECORD_FIELDS]
+    errors += [f"{name}: needs {k}" for k in RECORD_FIELDS[:3] if k not in raw]
+    status, evidence = raw.get("status"), raw.get("evidence")
+    tests = raw.get("tests") or []
+    text = {k: raw.get(k) or "" for k in RECORD_FIELDS[3:]}
+    if status not in STATUSES:
+        errors.append(f"{name}: status must be one of {list(STATUSES)}")
+    if evidence not in EVIDENCE:
+        errors.append(f"{name}: evidence must be one of {list(EVIDENCE)}")
+    if not isinstance(tests, list) or not all(isinstance(t, str) for t in tests):
+        errors.append(f"{name}: tests must be a list of tests/ paths")
+    if not all(isinstance(v, str) for v in text.values()):
+        errors.append(f"{name}: note, scope, expected and proven are text")
+    elif text["proven"] and not COMMIT.fullmatch(text["proven"]):
+        errors.append(f"{name}: proven must be a commit, not {text['proven']!r}")
+    if evidence in VALIDATED and not text["expected"]:
+        errors.append(f"{name}: {evidence} needs expected (its independent source)")
+    if errors:
+        return None, errors
+    return Capability(str(status), str(evidence), tuple(tests), **text), []
+
+
+def load_records(path: Path) -> dict[str, Capability]:
+    """``{capability: Capability}`` from ``config/capabilities.yaml``."""
+    out, errors = {}, []
+    for name, raw in load_yaml(path).items():
+        rec, bad = _record(str(name), raw)
+        errors += bad
+        if rec:
+            out[str(name)] = rec
+    if errors:
+        raise ConfigError(f"{path}: " + "; ".join(errors))
+    return out
+
+
 def load_capabilities(path: Path) -> dict[str, str]:
-    """``{feature: verified|partial|unsupported}``."""
-    data = load_yaml(path)
-    allowed = {"verified", "partial", "unsupported"}
-    bad = {k: v for k, v in data.items() if v not in allowed}
-    if bad:
-        raise ConfigError(f"{path}: statuses must be one of {sorted(allowed)}: {bad}")
-    return {str(k): str(v) for k, v in data.items()}
+    """``{capability: verified|partial|unsupported}``: each record's status."""
+    return {name: rec.status for name, rec in load_records(path).items()}

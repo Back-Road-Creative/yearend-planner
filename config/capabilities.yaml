@@ -1,95 +1,456 @@
-# What the tax engine (policyengine-us) is verified to compute for this planner.
-# verified: reference test passes. partial: computes but a reference case fails or
-# is untested. unsupported: the planner implements the rule itself from the cited
-# worksheet until the engine covers it (never left as a gap, never reported as 0).
-federal_income_tax: verified  # tests/test_tax.py, tests/test_verify.py
-federal_ltcg_rates: verified  # tests/test_tax.py (0% band, 15% above)
-self_employment_tax: verified  # tests/test_tax.py::test_self_employment_30k
-qbi_deduction: verified  # tests/test_tax.py::test_self_employment_30k
-household_people: verified  # tests/test_household_people.py; engine level only (unit 3a-1): a joint return's spouse (own wages, SE income, IRA, conversion, Social Security) and dependents (age, full-time student, disabled) are people of the tax unit; hand-worked 2026 joint cases from Rev. Proc. 2025-32 (32,200 std, Table 1, 2,200 child credit, 500 other-dependent credit IRC 24(h)(4)); every person figure read is the unit's sum, the swept input and Medicaid eligibility the head's; the profile does not ask for them yet (3a-2), separate returns are 3b
-nc_income_tax: verified  # tests/test_tax.py (3.99%, 12,750 std), tests/test_verify.py (2025)
-federal_total_tax_line_24: verified  # tests/test_tax.py::test_fed_total_tax_matches_draft_line_24; engine total = draft 1040 line 24 (SE tax, additional Medicare tax, NIIT; refundable credits kept out); with Household.aptc the excess advance credit (Sch 2 line 1a, 8962 line 29 after the line 28 cap) is in line 22 and line 24
-aca_magi_tax_exempt_interest: verified  # tests/test_plan.py::test_aca_magi_adds_exempt_interest; 1099-INT box 8 and 1099-DIV box 12 reach the plan household, the MAGI lines, conversion sizes and levers
-aca_premium_tax_credit: verified  # tests/test_tax.py::test_fpl_boundaries, tests/test_tax.py::test_aca_400_cliff; credit hand-worked from Rev. Proc. 2025-25 at 138%, 150%, just under 400%, exactly 400.00% and over it; the credit's FPL is the prior year's (Form 8962 line 4); the 400% line is cut in dollars per IRC 36B(c)(1)(A) and i8962 Worksheet 2 (the engine's own 4.00 edge is corrected: planner.engine.tax.ACA_PTC_LINE), in sweeps (tests/test_tax.py::test_aca_400_line_is_cut_in_dollars_in_a_sweep) and the draft Form 8962 line 5 = 401 (tests/test_draft.py::test_form_8962_line_5_is_401_past_four_times_the_guideline)
-aca_slcsp_county: verified  # tests/test_tax.py::test_slcsp_for_named_county; Wake, Mecklenburg and Guilford within $1 of CMS's PY2025 county table (average SLCSP, 40-year-old; CMS publishes only these three NC counties)
-medicaid_expansion_magi: verified  # tests/test_tax.py::test_medicaid_138_boundary; 138% of this year's guideline, at, just under and just over, 2025 and 2026; the engine rounds the monthly limit up to a whole dollar
-se_health_insurance_deduction: verified  # tests/test_tax.py::test_se_health_ptc_iteration_pub974 (Pub. 974 iterative method, hand-worked within $1, with an advance credit), ::test_se_health_step_cycle_inside_the_phase_in_band_is_not_the_cliff (whole-percent step, not the cliff), ::test_se_health_deduction_is_limited_by_profit_less_half_the_se_tax (Worksheet W), ::test_se_health_at_the_400pct_cliff_has_no_fixed_point (two-pass answer, flagged); tests/test_draft.py::test_draft_settles_the_se_health_deduction_with_the_credit; one plan, full year, specified premiums, one business
+# What the planner is proven to compute, one record per capability (unit 2b).
+#   status    the historical claim. verified: a reference test passes. partial:
+#             computes, but a reference case fails or is untested. unsupported:
+#             the planner implements the rule itself from the cited worksheet
+#             until the engine covers it (never a gap, never reported as 0).
+#   evidence  unreviewed, implemented, independently_validated,
+#             end_to_end_accepted, partial or out_of_scope. Above implemented
+#             needs `expected`; a status never promotes it (finding F13).
+#   tests     tests/<file>.py[::<name>] that prove it; each must exist.
+#   note      what the tests cover and what they leave out.
+#   scope     who it holds for, when narrower than the planner's scope below.
+#   expected  the independent expected-value source (an official worked example,
+#             Tax-Calculator), never the planner's own formula.
+#   proven    the commit a release run proved it at: scripts/build_release.py
+#             stamps it into the shipped copy; never typed here.
+# The planner's scope: one person, no dependents (planner.coverage.HOUSEHOLD);
+# the NC return drafted, other states' income tax estimated; the tax years the
+# engine publishes.
+federal_income_tax:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_tax.py", "tests/test_verify.py"]
+federal_ltcg_rates:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_tax.py"]
+  note: "0% band, 15% above"
+self_employment_tax:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_tax.py::test_self_employment_30k"]
+qbi_deduction:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_tax.py::test_self_employment_30k"]
+household_people:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_household_people.py"]
+  note: "engine level only (unit 3a-1): a joint return's spouse (own wages, SE income, IRA, conversion, Social Security) and dependents (age, full-time student, disabled) are people of the tax unit; hand-worked 2026 joint cases from Rev. Proc. 2025-32 (32,200 std, Table 1, 2,200 child credit, 500 other-dependent credit IRC 24(h)(4)); every person figure read is the unit's sum, the swept input and Medicaid eligibility the head's; the profile does not ask for them yet (3a-2), separate returns are 3b"
+nc_income_tax:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_tax.py", "tests/test_verify.py"]
+  note: "(3.99%, 12,750 std), (2025)"
+federal_total_tax_line_24:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_tax.py::test_fed_total_tax_matches_draft_line_24"]
+  note: "engine total = draft 1040 line 24 (SE tax, additional Medicare tax, NIIT; refundable credits kept out); with Household.aptc the excess advance credit (Sch 2 line 1a, 8962 line 29 after the line 28 cap) is in line 22 and line 24"
+aca_magi_tax_exempt_interest:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_plan.py::test_aca_magi_adds_exempt_interest"]
+  note: "1099-INT box 8 and 1099-DIV box 12 reach the plan household, the MAGI lines, conversion sizes and levers"
+aca_premium_tax_credit:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_tax.py::test_fpl_boundaries", "tests/test_tax.py::test_aca_400_cliff", "tests/test_tax.py::test_aca_400_line_is_cut_in_dollars_in_a_sweep", "tests/test_draft.py::test_form_8962_line_5_is_401_past_four_times_the_guideline"]
+  note: "credit hand-worked from Rev. Proc. 2025-25 at 138%, 150%, just under 400%, exactly 400.00% and over it; the credit's FPL is the prior year's (Form 8962 line 4); the 400% line is cut in dollars per IRC 36B(c)(1)(A) and i8962 Worksheet 2 (the engine's own 4.00 edge is corrected: planner.engine.tax.ACA_PTC_LINE), in sweeps and the draft Form 8962 line 5 = 401"
+aca_slcsp_county:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_tax.py::test_slcsp_for_named_county"]
+  note: "Wake, Mecklenburg and Guilford within $1 of CMS's PY2025 county table (average SLCSP, 40-year-old; CMS publishes only these three NC counties)"
+medicaid_expansion_magi:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_tax.py::test_medicaid_138_boundary"]
+  note: "138% of this year's guideline, at, just under and just over, 2025 and 2026; the engine rounds the monthly limit up to a whole dollar"
+se_health_insurance_deduction:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_tax.py::test_se_health_ptc_iteration_pub974", "tests/test_tax.py::test_se_health_step_cycle_inside_the_phase_in_band_is_not_the_cliff", "tests/test_tax.py::test_se_health_deduction_is_limited_by_profit_less_half_the_se_tax", "tests/test_tax.py::test_se_health_at_the_400pct_cliff_has_no_fixed_point", "tests/test_draft.py::test_draft_settles_the_se_health_deduction_with_the_credit"]
+  note: "(Pub. 974 iterative method, hand-worked within $1, with an advance credit), (whole-percent step, not the cliff), (Worksheet W), (two-pass answer, flagged); ; one plan, full year, specified premiums, one business"
 # Intake (not engine rules): what the templates read today.
-pdf_text_1099_int_div_b_r_1095a: verified  # tests/test_ingest.py
-pdf_filed_1040_and_schedules_1_2_3_c_d_se: verified  # tests/test_forms.py, synthetic dot-leader text
-pdf_nc_d400: partial  # tests/test_forms.py::test_nc_d400_and_ssa_statement; lines 6, 12b, 15, 20a verified; payment lines checked against the 2025 D-401 (28 overpayment, 34 refund), not a real filed PDF
-pdf_ssa_statement: verified  # tests/test_forms.py
-pdf_1099_nec_k_1098_5498_5498sa_1099sa: verified  # tests/test_forms.py
-pdf_1099_r_distribution_code: verified  # tests/test_forms.py::test_1099r_letter_code
-pdf_1040_filing_status_state_zip: partial  # tests/test_needs.py; synthetic check marks only, a tax-software PDF's rendering is unconfirmed
-zip_to_county_crosswalk: verified  # tests/test_derive.py; config/zip_county.csv.gz is the Census 2020 ZCTA-to-county file (SOURCE.md); a ZIP spanning counties lists them and asks, never guesses
-mortgage_pi_from_two_1098s: verified  # tests/test_needs.py::test_two_consecutive_1098s_give_principal_and_interest
-ytd_facts_from_rows: verified  # tests/test_derive.py; planner derive / ingest; once the 1099 is in it is the authority and the YTD gap is reported, never added (test_ytd_vs_1099_gap_reported; planner status, dashboard gap alert)
-pdf_scanned_ocr_confirm: verified  # tests/test_ocr.py; values land pending until planner confirm
-ocr_crop_beside_value_edit_before_accept: verified  # tests/test_ocr.py::test_crop_written_per_value + test_real_engine_crop_shows_the_line_it_was_cut_for, tests/test_serve.py::test_confirm_with_edit_from_page; the live page shows the scan line beside each pending value, retype before Accept; /crop is token-checked and pending-only
-pdf_mixed_text_and_scanned_pages: verified  # tests/test_ocr.py::test_mixed_pdf_ocrs_scanned_pages; text pages accepted from the text layer, bare pages OCR'd and pending; without an engine the file imports with a note naming the unread pages
-zip_subfolders_nested_corrupt: verified  # tests/test_ingest.py::test_zip_with_subfolder_imports; folders and nested ZIPs (5 deep) unpack, a corrupt/locked/escaping ZIP goes to UNMATCHED once, no overwrite
-needed_panel_registry_diff: verified  # tests/test_needs.py; planner needed / enter / dont-have
-needed_grouped_by_document: partial  # tests/test_needs.py::test_vanguard_items_group_into_one_download, tests/test_dashboard.py::test_needed_grouped_by_document; one entry per document with its download path and the outputs it unlocks (planner needed and the page); Vanguard and other issuers' click paths are the planner's best description of their sites and are not checked against the live pages
-csv_vanguard_download: verified  # tests/test_csv.py (holdings + transactions blocks)
-csv_vanguard_cost_basis_realized_income: partial  # tests/test_csv.py::test_cost_basis_realized_and_income; synthetic headers; real export confirms
-csv_bank: verified  # tests/test_csv.py (signed Amount; Debit/Credit)
-ledger_accounts_balances_lots: verified  # tests/test_portfolio.py; planner account / status
-roth_conversion_clock: verified  # tests/test_portfolio.py; planner convert; earlier of Jan 1 +5y and the access age; Roth withdrawal layers contributions, conversions oldest first, earnings (test_roth_layers_contrib_then_oldest_conversion_then_earnings); inherited-IRA yearly-RMD flag (test_inherited_ira_annual_rmd_flag_is_stored_and_shown)
-magi_projection_lines: verified  # tests/test_plan.py; planner magi; engine-priced, unknown never zero
-magi_watch_lines: verified  # tests/test_plan.py::test_watch_lines_present; 110% safe harbor, NC 3.49% step, IRMAA tier 1 (engine CMS table), SS 50%/85% provisional income, Medicaid 80-hour work requirement from the se_hours log; tests/test_levers.py NC wait note
-roth_conversion_candidates: verified  # tests/test_plan.py; planner conversions; one engine sweep, each candidate costed
-spending_band: verified  # tests/test_spending.py::test_spending_band_clamps_and_the_drawdown_rule
-glide_path_and_monthly_cash: verified  # tests/test_spending.py::test_glide_path_table_stresses_and_monthly_cash
-glide_cash_line_estimated_tax: verified  # tests/test_esttax.py; payments made on their dates, later installments at the safe-harbor shortfall, next year's at 90%, the rest due with the return
-glide_cash_line_planned_flows: verified  # tests/test_year.py + test_withdraw.py; planned-sale proceeds priced from taxable lots at year-end, conversion tax through the installments and the balance due
-withdraw_lots: verified  # tests/test_withdraw.py::test_withdraw_cash_first_then_cheapest_gain_lots
-wash_sales: verified  # tests/test_withdraw.py::test_wash_sales_across_accounts_and_open_windows
-estimated_tax: verified  # tests/test_esttax.py::test_safe_harbor_and_installments
-underpayment_penalty: unsupported  # the planner computes the safe harbor and installments (estimated_tax); the Form 2210 penalty is not computed (planner esttax names it unavailable)
-deadline_calendar: verified  # tests/test_year.py; federal holidays and DC Emancipation Day computed, never typed; Q2/Q3 marked "if required" from the esttax result
-year_end_plan_page: verified  # tests/test_year.py; planner plan; a missing input blocks one section, never the page
-plan_typed_fields: verified  # tests/test_year.py + test_plan.py; planner plan asks total income, Q4 dividends, planned sales, conversion target; auto adopts the recommended conversion everywhere
-conversion_spill_warning: verified  # tests/test_plan.py + test_year.py; a spill is gains tax the conversion adds over the year without it; shown by planner conversions and the plan page
-lever_optimizer: verified  # tests/test_levers.py; planner levers; combined-set pricing, unknown inputs named; losses paired to net the year's gain to 0 (test_pair_losses_nets_gain_to_zero); cash/Roth basis first (test_spend_basis_zero_magi); Medicaid beside the 400% cliff, never auto-picked (test_income_targeting_sets_medicaid_beside_the_400_cliff); shares given instead of cash and a donor-advised fund priced against the standard deduction (test_donate_appreciated_priced_when_itemizing); tax-efficient swaps (test_swap_flags_a_high_yield_fund_when_the_gain_is_about_zero)
-whatif: verified  # tests/test_levers.py; planner whatif; full-year recompute before and after
-threshold_drift: verified  # tests/test_levers.py; planner thresholds; config rows checked against engine parameters
-expected_forms: verified  # tests/test_expected.py; planner forms; late forms join planner needed
-schedule_c: verified  # tests/test_schedule_c.py + tests/test_draft.py; planner categorize; rules and row choices, never guessed; its sheet is in the draft, Sch 1 line 3 and Sch SE line 2 read line 31
-draft_return: verified  # tests/test_draft.py; planner draft; 1040 + Sch 1/1-A/2/3/C/SE + 8962, each line sourced to file and page, line 16 by the Tax Table, engine totals cross-checked; Sch SE Part I every line
-schedule_1a: verified  # tests/test_draft.py; planner draft; Part V senior deduction (January 1 births count as 65) and tips, overtime, car loan interest from Needed-panel items (planner needed asks for them), line 38 = 1040 line 13b; a joint return holds one person, so line 36b (the spouse) is noted, not drafted
-schedule_b: verified  # tests/test_draft.py::test_schedule_b_required_over_1500; planner draft; a row per payer from 1099-INT boxes 1 and 3 and 1099-DIV box 1a, lines 4 and 6 tied to 1040 2b and 3b (CHECK), Part III from the Needed item foreign_accounts, asked only when interest or ordinary dividends are over $1,500; Form 8815 not drafted (line 3 is 0)
-schedule_d: verified  # tests/test_capgains.py; planner gains; 8949 lots, cross-account wash sales (W), 1099-DIV 2a, carryover in and out
-form_8889: verified  # tests/test_hsa.py; planner hsa; limit by coverage and months, 55+ catch-up, W-2 code W, excess named, taxable distributions + 20%
-nc_d400_draft: verified  # tests/test_d400.py; planner draft; Schedule S 16/18/19/20-40/41, D-400 6-34 for a full-year resident; Schedule PN, D-400TC, D-422 named, not drafted
-taxpack: verified  # tests/test_package.py; planner taxpack writes out/tax-<year>/ (draft txt+html, 8949 csv, Sch C, Sch B csv when required, carryforward, basis, payments, forms, originals zip)
-close_year: verified  # tests/test_close.py; planner close; test_reference_return_zero_delta_full matches a hand-worked 1040 + D-400 (42 lines); filed 1040/schedules/D-400 vs draft delta, data/private/returns/<year>-closed.yaml, amended = new version; planner run closes each ended year once when its filed return is dropped in the inbox (close.on_drop, tests/test_serve.py::test_dropping_filed_return_closes_year)
-dashboard_page: verified  # tests/test_dashboard.py; planner dashboard writes out/index.html; panels tagged actual/estimate/unavailable, alerts, escaped, no external assets
-dashboard_glide_cash_band_tables: verified  # tests/test_dashboard.py + test_year.py + test_spending.py; the glide panel shows the band and the age/year table (on-track beside the comfort-floor line), the cash panel the 24-month cash line against the target, the spending panel the return-band table; planner plan prints the same tables
-limits_refresh: verified  # tests/test_limits.py; hand rows win, engine fills Y and Y+1 (published/projected), others carried + confirm, drift alerts, offline launch
-update_check: verified  # tests/test_feed.py + windows_proof.ps1 steps 7-8; feed -> sha256 -> candidate selfcheck -> staged; at most weekly (data/update/last-check.json), result in the page header; launcher swap on exit 75 with undo; held -> dashboard alert; rollback
-engine_baseline: verified  # tests/test_verify.py; first planner run records the engine's output on planner/engine/reference.yaml in data/engine-baseline.json by engine version and prints the delta from the filed lines (reported, never asserted)
-candidate_regression: verified  # tests/test_update.py; planner selfcheck --regression runs in python-candidate/ and a figure more than $5 off the baseline (or no figures) holds the release; reference.yaml ships in the zip (tests/test_privacy.py)
-rollover: verified  # tests/test_rollover.py; draft->filed carry, Sch D carryover, snapshots, checklist, idempotent, corrected 1099 re-opens as a new version, dashboard button; asks spending_actual and reports the recomputed band and glide path (test_roll_asks_spending_actual_and_reports_band)
-income_forecast: verified  # tests/test_forecast.py; every income stream carried to Dec 31: YTD through its last row + pay schedule / remaining / full year (replaces, never adds), pay-stub start, low/high range, final when the annual form is in; total_income residual on a named line
-planner_run: verified  # tests/test_serve.py; 127.0.0.1 + per-run token + Host check; drop files -> ingest, enter, dont-have (and undo), waive (and undo), categorize, confirm, taxpack; --quiet static only
-needed_items_closable_on_page: verified  # tests/test_serve.py::test_needed_reaches_zero_from_page_only, tests/test_expected.py (waive), tests/test_needs.py (undo, account don't-have); late forms are waived by form and issuer for one year, loose bank rows categorised by rule or row, every don't-have and waiver undone; planner waive / dont-have --undo / categorize mirror them
-backup_restore: verified  # tests/test_backup.py; AES-256 or plain zip + sha256 manifest; restore refuses hostile/damaged/wrong-password archives before data/ moves; data-previous until next clean run; --undo
-input_validation: verified  # tests/test_validation.py; typed answers bounded and refused with what is expected; CLI years/amounts/ports ranged
-feasibility_check: verified  # tests/test_feasible.py; one check behind conversion sizing, the lever menu and whatif: cash on hand above cash_target (shown, conversion candidates cut to fit), shares given past the lots held, gain harvest past the gain left, IRA + Roth past the shared limit (refused)
-stale_banner: verified  # tests/test_validation.py; >90 days since last import -> banner atop the page, plan still runs
-coverage_gate: verified  # tests/test_coverage.py; household, state and unread-document gaps found after intake, each with a Needed line; panels and drafted forms tagged verified/estimated/not handled from the gaps and these rows; coverage.csv in the tax pack
-readiness_answers: verified  # tests/test_coverage.py, tests/test_serve.py; ready to plan / to act / for a preparer, each with its reasons; a set-aside fact or waived form never readies acting or the preparer (F14)
-limits_notice: verified  # tests/test_notice.py, tests/test_dashboard.py, tests/test_package.py; planner.NOTICE (not tax, legal or investment advice; a preparer reviews) heads the page, draft.txt, draft.html, the taxpack summary, README and GUIDE
-ci_scans: verified  # tests/test_privacy.py::test_ci_audits_dependencies_scans_secrets_and_holds_a_coverage_floor; pip-audit on uv.lock, gitleaks full history (checksum-pinned), --cov-fail-under floor, Dependabot uv + actions
-release: verified  # tests/test_privacy.py + .github/workflows/release.yml; tag -> suite, build, windows_proof, draft release with .sha256
-privacy_audit: verified  # tests/test_privacy.py; release stages git-tracked files only, figure_scan() refuses an ID-shaped string (SSN, EIN, account number, sentinel) in any tracked file before staging, audit() refuses private folders/databases, sentinel absent
-release_end_to_end: verified  # tests/test_privacy.py; windows_proof.ps1 step 4 runs scripts/synthetic_inbox.py PDFs through the unzipped release with the network blocked and checks out/index.html
-scheduled_run: verified  # tests/test_cli.py::test_schedule_builds_schtasks_argv; planner schedule --monthly / --remove
-end_to_end: verified  # tests/test_end_to_end.py; inbox -> dashboard, fresh config + data/ renders the identical page
-double_click_run: verified  # tests/test_launch.py; no arguments = planner run, a failed double-click pauses before the window closes
-single_writer_lock: verified  # tests/test_paths.py; OS lock on data/planner.lock (flock / msvcrt), a second writer exits 2 "another planner is running", a stale file never blocks, restore lets go before data/ moves
-planner_init: verified  # tests/test_cli.py; planner init makes data/ and out/, refuses a cloud-synced folder (exit 2) and creates nothing there
-launcher_cloud_sync_warning: verified  # tests/test_launch.py; planner.cmd findstr for OneDrive, Dropbox, iCloud Drive, Google Drive, My Drive before anything runs; windows_proof.ps1 step 6
-update_major_hold: verified  # tests/test_feed.py + tests/test_update.py; a new major of policyengine-us (candidate dist-info) or planner is held until planner update --allow-major
-update_tax_years_report: verified  # tests/test_update.py + tests/test_dashboard.py; selfcheck prints the years the engine publishes; staging flags a missing next year; header shows years
+pdf_text_1099_int_div_b_r_1095a:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_ingest.py"]
+pdf_filed_1040_and_schedules_1_2_3_c_d_se:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_forms.py"]
+  note: "synthetic dot-leader text"
+pdf_nc_d400:
+  status: partial
+  evidence: partial
+  tests: ["tests/test_forms.py::test_nc_d400_and_ssa_statement"]
+  note: "lines 6, 12b, 15, 20a verified; payment lines checked against the 2025 D-401 (28 overpayment, 34 refund), not a real filed PDF"
+pdf_ssa_statement:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_forms.py"]
+pdf_1099_nec_k_1098_5498_5498sa_1099sa:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_forms.py"]
+pdf_1099_r_distribution_code:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_forms.py::test_1099r_letter_code"]
+pdf_1040_filing_status_state_zip:
+  status: partial
+  evidence: partial
+  tests: ["tests/test_needs.py"]
+  note: "synthetic check marks only, a tax-software PDF's rendering is unconfirmed"
+zip_to_county_crosswalk:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_derive.py"]
+  note: "config/zip_county.csv.gz is the Census 2020 ZCTA-to-county file (SOURCE.md); a ZIP spanning counties lists them and asks, never guesses"
+mortgage_pi_from_two_1098s:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_needs.py::test_two_consecutive_1098s_give_principal_and_interest"]
+ytd_facts_from_rows:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_derive.py"]
+  note: "planner derive / ingest; once the 1099 is in it is the authority and the YTD gap is reported, never added (test_ytd_vs_1099_gap_reported; planner status, dashboard gap alert)"
+pdf_scanned_ocr_confirm:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_ocr.py"]
+  note: "values land pending until planner confirm"
+ocr_crop_beside_value_edit_before_accept:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_ocr.py::test_crop_written_per_value", "tests/test_ocr.py::test_real_engine_crop_shows_the_line_it_was_cut_for", "tests/test_serve.py::test_confirm_with_edit_from_page"]
+  note: "the live page shows the scan line beside each pending value, retype before Accept; /crop is token-checked and pending-only"
+pdf_mixed_text_and_scanned_pages:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_ocr.py::test_mixed_pdf_ocrs_scanned_pages"]
+  note: "text pages accepted from the text layer, bare pages OCR'd and pending; without an engine the file imports with a note naming the unread pages"
+zip_subfolders_nested_corrupt:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_ingest.py::test_zip_with_subfolder_imports"]
+  note: "folders and nested ZIPs (5 deep) unpack, a corrupt/locked/escaping ZIP goes to UNMATCHED once, no overwrite"
+needed_panel_registry_diff:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_needs.py"]
+  note: "planner needed / enter / dont-have"
+needed_grouped_by_document:
+  status: partial
+  evidence: partial
+  tests: ["tests/test_needs.py::test_vanguard_items_group_into_one_download", "tests/test_dashboard.py::test_needed_grouped_by_document"]
+  note: "one entry per document with its download path and the outputs it unlocks (planner needed and the page); Vanguard and other issuers' click paths are the planner's best description of their sites and are not checked against the live pages"
+csv_vanguard_download:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_csv.py"]
+  note: "holdings + transactions blocks"
+csv_vanguard_cost_basis_realized_income:
+  status: partial
+  evidence: partial
+  tests: ["tests/test_csv.py::test_cost_basis_realized_and_income"]
+  note: "synthetic headers; real export confirms"
+csv_bank:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_csv.py"]
+  note: "signed Amount; Debit/Credit"
+ledger_accounts_balances_lots:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_portfolio.py"]
+  note: "planner account / status"
+roth_conversion_clock:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_portfolio.py"]
+  note: "planner convert; earlier of Jan 1 +5y and the access age; Roth withdrawal layers contributions, conversions oldest first, earnings (test_roth_layers_contrib_then_oldest_conversion_then_earnings); inherited-IRA yearly-RMD flag (test_inherited_ira_annual_rmd_flag_is_stored_and_shown)"
+magi_projection_lines:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_plan.py"]
+  note: "planner magi; engine-priced, unknown never zero"
+magi_watch_lines:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_plan.py::test_watch_lines_present", "tests/test_levers.py"]
+  note: "110% safe harbor, NC 3.49% step, IRMAA tier 1 (engine CMS table), SS 50%/85% provisional income, Medicaid 80-hour work requirement from the se_hours log; NC wait note"
+roth_conversion_candidates:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_plan.py"]
+  note: "planner conversions; one engine sweep, each candidate costed"
+spending_band:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_spending.py::test_spending_band_clamps_and_the_drawdown_rule"]
+glide_path_and_monthly_cash:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_spending.py::test_glide_path_table_stresses_and_monthly_cash"]
+glide_cash_line_estimated_tax:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_esttax.py"]
+  note: "payments made on their dates, later installments at the safe-harbor shortfall, next year's at 90%, the rest due with the return"
+glide_cash_line_planned_flows:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_year.py", "tests/test_withdraw.py"]
+  note: "planned-sale proceeds priced from taxable lots at year-end, conversion tax through the installments and the balance due"
+withdraw_lots:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_withdraw.py::test_withdraw_cash_first_then_cheapest_gain_lots"]
+wash_sales:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_withdraw.py::test_wash_sales_across_accounts_and_open_windows"]
+estimated_tax:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_esttax.py::test_safe_harbor_and_installments"]
+underpayment_penalty:
+  status: unsupported
+  evidence: implemented
+  tests: []
+  note: "the planner computes the safe harbor and installments (estimated_tax); the Form 2210 penalty is not computed (planner esttax names it unavailable)"
+deadline_calendar:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_year.py"]
+  note: "federal holidays and DC Emancipation Day computed, never typed; Q2/Q3 marked \"if required\" from the esttax result"
+year_end_plan_page:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_year.py"]
+  note: "planner plan; a missing input blocks one section, never the page"
+plan_typed_fields:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_year.py", "tests/test_plan.py"]
+  note: "planner plan asks total income, Q4 dividends, planned sales, conversion target; auto adopts the recommended conversion everywhere"
+conversion_spill_warning:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_plan.py", "tests/test_year.py"]
+  note: "a spill is gains tax the conversion adds over the year without it; shown by planner conversions and the plan page"
+lever_optimizer:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_levers.py"]
+  note: "planner levers; combined-set pricing, unknown inputs named; losses paired to net the year's gain to 0 (test_pair_losses_nets_gain_to_zero); cash/Roth basis first (test_spend_basis_zero_magi); Medicaid beside the 400% cliff, never auto-picked (test_income_targeting_sets_medicaid_beside_the_400_cliff); shares given instead of cash and a donor-advised fund priced against the standard deduction (test_donate_appreciated_priced_when_itemizing); tax-efficient swaps (test_swap_flags_a_high_yield_fund_when_the_gain_is_about_zero)"
+whatif:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_levers.py"]
+  note: "planner whatif; full-year recompute before and after"
+threshold_drift:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_levers.py"]
+  note: "planner thresholds; config rows checked against engine parameters"
+expected_forms:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_expected.py"]
+  note: "planner forms; late forms join planner needed"
+schedule_c:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_schedule_c.py", "tests/test_draft.py"]
+  note: "planner categorize; rules and row choices, never guessed; its sheet is in the draft, Sch 1 line 3 and Sch SE line 2 read line 31"
+draft_return:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_draft.py"]
+  note: "planner draft; 1040 + Sch 1/1-A/2/3/C/SE + 8962, each line sourced to file and page, line 16 by the Tax Table, engine totals cross-checked; Sch SE Part I every line"
+schedule_1a:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_draft.py"]
+  note: "planner draft; Part V senior deduction (January 1 births count as 65) and tips, overtime, car loan interest from Needed-panel items (planner needed asks for them), line 38 = 1040 line 13b; a joint return holds one person, so line 36b (the spouse) is noted, not drafted"
+schedule_b:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_draft.py::test_schedule_b_required_over_1500"]
+  note: "planner draft; a row per payer from 1099-INT boxes 1 and 3 and 1099-DIV box 1a, lines 4 and 6 tied to 1040 2b and 3b (CHECK), Part III from the Needed item foreign_accounts, asked only when interest or ordinary dividends are over $1,500; Form 8815 not drafted (line 3 is 0)"
+schedule_d:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_capgains.py"]
+  note: "planner gains; 8949 lots, cross-account wash sales (W), 1099-DIV 2a, carryover in and out"
+form_8889:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_hsa.py"]
+  note: "planner hsa; limit by coverage and months, 55+ catch-up, W-2 code W, excess named, taxable distributions + 20%"
+nc_d400_draft:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_d400.py"]
+  note: "planner draft; Schedule S 16/18/19/20-40/41, D-400 6-34 for a full-year resident; Schedule PN, D-400TC, D-422 named, not drafted"
+taxpack:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_package.py"]
+  note: "planner taxpack writes out/tax-<year>/ (draft txt+html, 8949 csv, Sch C, Sch B csv when required, carryforward, basis, payments, forms, originals zip)"
+close_year:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_close.py", "tests/test_serve.py::test_dropping_filed_return_closes_year"]
+  note: "planner close; test_reference_return_zero_delta_full matches a hand-worked 1040 + D-400 (42 lines); filed 1040/schedules/D-400 vs draft delta, data/private/returns/<year>-closed.yaml, amended = new version; planner run closes each ended year once when its filed return is dropped in the inbox (close.on_drop, )"
+dashboard_page:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_dashboard.py"]
+  note: "planner dashboard writes out/index.html; panels tagged actual/estimate/unavailable, alerts, escaped, no external assets"
+dashboard_glide_cash_band_tables:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_dashboard.py", "tests/test_year.py", "tests/test_spending.py"]
+  note: "the glide panel shows the band and the age/year table (on-track beside the comfort-floor line), the cash panel the 24-month cash line against the target, the spending panel the return-band table; planner plan prints the same tables"
+limits_refresh:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_limits.py"]
+  note: "hand rows win, engine fills Y and Y+1 (published/projected), others carried + confirm, drift alerts, offline launch"
+update_check:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_feed.py"]
+  note: "windows_proof.ps1 steps 7-8; feed -> sha256 -> candidate selfcheck -> staged; at most weekly (data/update/last-check.json), result in the page header; launcher swap on exit 75 with undo; held -> dashboard alert; rollback"
+engine_baseline:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_verify.py"]
+  note: "first planner run records the engine's output on planner/engine/reference.yaml in data/engine-baseline.json by engine version and prints the delta from the filed lines (reported, never asserted)"
+candidate_regression:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_update.py", "tests/test_privacy.py"]
+  note: "planner selfcheck --regression runs in python-candidate/ and a figure more than $5 off the baseline (or no figures) holds the release; reference.yaml ships in the zip"
+rollover:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_rollover.py"]
+  note: "draft->filed carry, Sch D carryover, snapshots, checklist, idempotent, corrected 1099 re-opens as a new version, dashboard button; asks spending_actual and reports the recomputed band and glide path (test_roll_asks_spending_actual_and_reports_band)"
+income_forecast:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_forecast.py"]
+  note: "every income stream carried to Dec 31: YTD through its last row + pay schedule / remaining / full year (replaces, never adds), pay-stub start, low/high range, final when the annual form is in; total_income residual on a named line"
+planner_run:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_serve.py"]
+  note: "127.0.0.1 + per-run token + Host check; drop files -> ingest, enter, dont-have (and undo), waive (and undo), categorize, confirm, taxpack; --quiet static only"
+needed_items_closable_on_page:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_serve.py::test_needed_reaches_zero_from_page_only", "tests/test_expected.py", "tests/test_needs.py"]
+  note: "(waive), (undo, account don't-have); late forms are waived by form and issuer for one year, loose bank rows categorised by rule or row, every don't-have and waiver undone; planner waive / dont-have --undo / categorize mirror them"
+backup_restore:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_backup.py"]
+  note: "AES-256 or plain zip + sha256 manifest; restore refuses hostile/damaged/wrong-password archives before data/ moves; data-previous until next clean run; --undo"
+input_validation:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_validation.py"]
+  note: "typed answers bounded and refused with what is expected; CLI years/amounts/ports ranged"
+feasibility_check:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_feasible.py"]
+  note: "one check behind conversion sizing, the lever menu and whatif: cash on hand above cash_target (shown, conversion candidates cut to fit), shares given past the lots held, gain harvest past the gain left, IRA + Roth past the shared limit (refused)"
+stale_banner:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_validation.py"]
+  note: ">90 days since last import -> banner atop the page, plan still runs"
+coverage_gate:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_coverage.py"]
+  note: "household, state and unread-document gaps found after intake, each with a Needed line; panels and drafted forms tagged verified/estimated/not handled from the gaps and these rows; coverage.csv in the tax pack"
+readiness_answers:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_coverage.py", "tests/test_serve.py"]
+  note: "ready to plan / to act / for a preparer, each with its reasons; a set-aside fact or waived form never readies acting or the preparer (F14)"
+limits_notice:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_notice.py", "tests/test_dashboard.py", "tests/test_package.py"]
+  note: "planner.NOTICE (not tax, legal or investment advice; a preparer reviews) heads the page, draft.txt, draft.html, the taxpack summary, README and GUIDE"
+ci_scans:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_privacy.py::test_ci_audits_dependencies_scans_secrets_and_holds_a_coverage_floor"]
+  note: "pip-audit on uv.lock, gitleaks full history (checksum-pinned), --cov-fail-under floor, Dependabot uv + actions"
+release:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_privacy.py"]
+  note: ".github/workflows/release.yml; tag -> suite, build, windows_proof, draft release with .sha256"
+privacy_audit:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_privacy.py"]
+  note: "release stages git-tracked files only, figure_scan refuses an ID-shaped string (SSN, EIN, account number, sentinel) in any tracked file before staging, audit refuses private folders/databases, sentinel absent"
+release_end_to_end:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_privacy.py"]
+  note: "windows_proof.ps1 step 4 runs scripts/synthetic_inbox.py PDFs through the unzipped release with the network blocked and checks out/index.html"
+scheduled_run:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_cli.py::test_schedule_builds_schtasks_argv"]
+  note: "planner schedule --monthly / --remove"
+end_to_end:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_end_to_end.py"]
+  note: "inbox -> dashboard, fresh config + data/ renders the identical page"
+double_click_run:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_launch.py"]
+  note: "no arguments = planner run, a failed double-click pauses before the window closes"
+single_writer_lock:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_paths.py"]
+  note: "OS lock on data/planner.lock (flock / msvcrt), a second writer exits 2 \"another planner is running\", a stale file never blocks, restore lets go before data/ moves"
+planner_init:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_cli.py"]
+  note: "planner init makes data/ and out/, refuses a cloud-synced folder (exit 2) and creates nothing there"
+launcher_cloud_sync_warning:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_launch.py"]
+  note: "planner.cmd findstr for OneDrive, Dropbox, iCloud Drive, Google Drive, My Drive before anything runs; windows_proof.ps1 step 6"
+update_major_hold:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_feed.py", "tests/test_update.py"]
+  note: "a new major of policyengine-us (candidate dist-info) or planner is held until planner update --allow-major"
+update_tax_years_report:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_update.py", "tests/test_dashboard.py"]
+  note: "selfcheck prints the years the engine publishes; staging flags a missing next year; header shows years"
