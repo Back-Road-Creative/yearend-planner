@@ -2485,7 +2485,7 @@ brackets (this year's share of AGI is used instead). If `mortgage_monthly` is
 typed and the mortgage is also entered as a debt, it is paid twice, and a note
 says so.
 
-## The benefits screen (Phase 10, units 5a-5c)
+## The benefits screen (Phase 10, units 5a-5d)
 
 `planner benefits --year 2026` reads the year's projected income (the same
 projection as the MAGI panel) and screens each program in the registry. Each
@@ -2530,6 +2530,15 @@ Unit 5c covers food and cash help:
 | TANF | a child under 18 (42 USC 608(a)(1)) and the engine's payment in a state it models; a state it does not model reads "not enough information". The state's asset limit, the 60-month limit and work rules are named, not screened |
 | SSI | you or a spouse 65 or older, the engine's payment by countable income, then every account on file against 2,000 (3,000 a couple) (20 CFR 416.1205) |
 
+Unit 5d covers utilities and the state's credits:
+
+| Program | What decides it here |
+|---|---|
+| Lifeline | the engine's test: income to 135% of the guideline (Texas 150%) or SNAP, Medicaid or SSI (47 CFR 54.409(a)); the amount is the standard discount for a year (54.403(a)); one per household |
+| LIHEAP | SNAP, SSI or TANF screening possibly eligible qualifies (42 USC 8624(b)(2)(A)); otherwise the engine's gross income: at most 110% of the guideline possibly eligible (no state may turn it away on income alone), over the greater of 150% of the guideline and 60% of the state median income not eligible, and between the two the state's own line decides. Seasons and funds are named |
+| State earned income credit, state child tax credit | the engine's credits on the state return for the household; a state with no such credit in the engine says so, apart from one that pays nothing at this income |
+| State property-tax and renter credits | the engine's credits on the property taxes on file. Rent is not asked, so a state with a renter credit reads "not enough information" until property taxes are on file; county homestead exemptions are named, not screened |
+
 The resource tests read every account on file at its latest balance,
 retirement accounts included (SNAP leaves retirement accounts out). That is conservative: the agencies leave out a
 home, one car, burial funds and plans you cannot draw, so an "over the limit"
@@ -2539,6 +2548,7 @@ information".
 Not asked, and named in the result: other health insurance or an employer
 offer, immigration status, pregnancy and breastfeeding, blindness or
 disability, Medicare through disability, rent and utilities, work rules and
-time limits, and the resource exclusions above. The screen uses full-year
+time limits, public housing aid and the Veterans Pension, county homestead
+exemptions, and the resource exclusions above. The screen uses full-year
 income; a program that counts monthly income tests the month you apply.
 Nothing is fetched at run time.
