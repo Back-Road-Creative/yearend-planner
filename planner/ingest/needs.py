@@ -644,10 +644,33 @@ NEEDS: tuple[Need, ...] = (
     Need(
         "cash_target",
         "Cash buffer target ($)",
-        "the cash line on the dashboard",
+        "the cash line on the dashboard; typed, it wins over the reserve rule",
         _NONE,
         "money",
         PROFILE,
+        unlocks=("Cash buffer", "Glide path", "Withdrawal plan"),
+    ),
+    Need(
+        "reserve_months",
+        "Months of essential spending to keep in cash",
+        "the reserve rule, when cash_target is not typed: this many months of "
+        "the spending floor, plus the deductibles, the next estimated payment "
+        "and goals dated inside 12 months",
+        _NONE,
+        "int",
+        PROFILE,
+        asked=lambda s: s.get("cash_target") is None,
+        unlocks=("Cash buffer", "Glide path", "Withdrawal plan"),
+    ),
+    Need(
+        "reserve_deductibles",
+        "Deductibles to keep in cash ($)",
+        "what a claim takes first: the health plan's deductible, the home and "
+        "car deductibles; the reserve rule holds it back",
+        "the plan's summary of benefits and the policy declarations pages",
+        "money",
+        PROFILE,
+        asked=lambda s: s.get("cash_target") is None,
         unlocks=("Cash buffer", "Glide path", "Withdrawal plan"),
     ),
     Need(
@@ -2667,6 +2690,7 @@ SYMBOL = re.compile(r"[A-Z0-9][A-Z0-9.\-]{0,11}")
 # occupations with three-digit codes; 0 is "none".
 DEPENDENTS_MAX = 20
 INT_RANGE = {
+    "reserve_months": (0, 60),
     "spouse_premarriage_dependents": (0, DEPENDENTS_MAX),
     "ss_claim_age": (62, 70),
     "hsa_months": (0, 12),

@@ -129,14 +129,17 @@ SPILL = "WARNING: qualified dividends / long-term gains pushed into 15%"
 def _conversion(
     lay: Layout,
     year: int,
-    _today: date,
+    today: date,
     ov: Overrides,
     sizing: conversion.Sizing | None = None,
 ) -> Section:
     # sized from the ledger year plus the other overrides; the conversion the
     # plan adopts (``ov.planned_conversion`` once resolved) is what is sized
     sz = sizing or conversion.size(
-        lay, year, replace(ov, planned_conversion=0.0, conversion_target="manual")
+        lay,
+        year,
+        replace(ov, planned_conversion=0.0, conversion_target="manual"),
+        as_of=today,
     )
     rec = sz.recommendation
     lines = []
@@ -338,6 +341,9 @@ def _cash(
             f"-> {s.proceeds:,.2f} (gain {s.gain:,.2f})"
         )
     notes = list(w.notes)
+    if w.reserve is not None:
+        lines += w.reserve.lines()
+        notes += w.reserve.notes
     tables: list[Table] = []
     if g is not None:
         tables.append(_month_table(g, w.target))
@@ -537,7 +543,7 @@ def assemble(
     today = as_of or date.today()
     ov = overrides or Overrides()
     # conversion_target=auto: one sizing, adopted by every section that follows
-    ov, sizing = conversion.resolve(lay, year, ov)
+    ov, sizing = conversion.resolve(lay, year, ov, today)
     # the glide section and the cash section's monthly line read one glide run
     memo: dict[str, glidepath.Glide | MissingInputError | OverrideError] = {}
 

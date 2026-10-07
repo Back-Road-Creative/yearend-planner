@@ -23,6 +23,8 @@ ASSUMPTION_FIELDS = (
     "spending_ceiling",
     "withdrawal_rate",
     "cash_target",
+    "reserve_months",  # the reserve rule (unit 4b), read when cash_target is not typed
+    "reserve_deductibles",
     "mortgage_monthly",
     "premium_monthly",
     "irregular",
