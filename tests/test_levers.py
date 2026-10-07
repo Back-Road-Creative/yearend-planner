@@ -8,7 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from planner.cli import app
-from planner.engine.tax import compute
+from planner.engine.tax import TaxResult, compute
 from planner.ingest.needs import enter
 from planner.ledger import portfolio
 from planner.paths import Layout
@@ -409,3 +409,33 @@ def test_lots_carry_the_fund_name(lots: Layout) -> None:  # noqa: F811
     }
     m = levers.menu(answered(lots), 2026, AS_OF)
     assert m.swaps == [] and not any("tax-efficient funds" in n for n in m.notes)
+
+
+@pytest.mark.engine
+def test_cost_counts_the_credit_allowed_once_when_the_advance_is_above_it() -> None:
+    """Form 8962: an advance above the credit allowed is repaid on line 29, which
+    line 24 holds (2026: no repayment cap); only a credit above the advance is
+    paid out (line 26, Schedule 3 line 9). So the household's cost is line 24
+    less the refundable credits and that net credit, plus the state tax: a
+    raise that shrinks the credit allowed costs each credit dollar once, not
+    twice. Synthetic single filer."""
+    from dataclasses import replace
+
+    from planner.engine.household import Household
+
+    base = Household(
+        age=45,
+        filing_status="SINGLE",
+        state="NC",
+        wages=40_000,
+        aptc=9_000,
+        slcsp_monthly=600,
+    )
+    a, b = compute(2026, base), compute(2026, replace(base, wages=42_000))
+    assert a.aptc_repayment > 0 and b.aptc_repayment > 0  # both repay an excess
+    assert b.aca_ptc < a.aca_ptc  # the raise shrinks the credit allowed
+
+    def owed(res: TaxResult) -> float:
+        return res.fed_total_tax + res.state_tax - res.refundable_credits - res.net_ptc
+
+    assert levers.cost(b) - levers.cost(a) == pytest.approx(owed(b) - owed(a), abs=0.02)

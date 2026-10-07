@@ -432,7 +432,7 @@ def _settle(
         return _Settled(sim, np.zeros(n), None, 0, np.ones(n, dtype=bool))
     first = _sim(year, household, axes, omit, premiums=np.zeros(n))
     limit = np.maximum(
-        _f(first, "self_employment_income", year)
+        np.asarray(_head(first, "self_employment_income", year), dtype=float)
         - _f(first, "self_employment_tax_ald", year)
         - _f(first, "self_employed_pension_contribution_ald", year),
         0.0,
@@ -475,11 +475,29 @@ def _settle(
 
 
 def _f(sim: Any, var: str, year: int) -> Any:
-    return np.asarray(sim.calculate(var, year), dtype=float)
+    return np.asarray(_calc(sim, var, year), dtype=float)
+
+
+# Person figures read for the head alone, not summed over the tax unit:
+# Medicaid eligibility is the head's own (the plan prices their coverage).
+HEAD_ONLY = ("is_medicaid_eligible",)
 
 
 def _calc(sim: Any, var: str, year: int) -> Any:
-    return sim.calculate(var, year)
+    """One figure per tax unit (per axis point). A person figure is summed over
+    the unit's members, so a joint return's lines are the couple's (unit 3a-1),
+    except a HEAD_ONLY one."""
+    if sim.tax_benefit_system.variables[var].entity.key != "person":
+        return sim.calculate(var, year)
+    if var in HEAD_ONLY:
+        return _head(sim, var, year)
+    return sim.calculate(var, year, map_to="tax_unit")
+
+
+def _head(sim: Any, var: str, year: int) -> Any:
+    """A person figure for the head of each tax unit (the first person)."""
+    heads = np.asarray(sim.calculate("is_tax_unit_head", year), dtype=bool)
+    return np.asarray(sim.calculate(var, year))[heads]
 
 
 def r(x: float) -> float:
@@ -639,7 +657,8 @@ def values(
     prior: Iterable[str] = (),
 ) -> dict[str, float]:
     """Named engine variables for one household-year, in one run (the draft
-    return reads its lines from these). Unrounded; one person, so entry 0.
+    return reads its lines from these). Unrounded; a person figure is the tax
+    unit's sum (``_calc``).
     ``prior`` names are read for the year before, keyed ``<name>@prior``
     (Form 8962 uses the prior year's poverty line). The figures come from the
     simulation at the settled health insurance deduction (``_settle``), and two
@@ -676,7 +695,7 @@ def engine_slcsp(year: int, household: Household) -> float:
 def compute_sweep(
     year: int, household: Household, variable: str, lo: int, hi: int, step: int
 ) -> list[dict[str, float]]:
-    """Sweep one person-level input in a single engine run (policyengine axes)."""
+    """Sweep one of the first person's inputs in one engine run (engine axes)."""
     if step <= 0 or hi < lo:
         raise ValueError("sweep needs step > 0 and hi >= lo")
     count = (hi - lo) // step + 1
@@ -703,7 +722,7 @@ def compute_sweep(
     if settled.ptc is not None:  # the credit allowed, as compute() reports it
         series["aca_ptc"] = settled.ptc
     series["se_health_deduction"] = settled.deduction
-    xs = _calc(sim, variable, year)
+    xs = _head(sim, variable, year)  # the axis moves the first person only
     return [
         {
             variable: float(xs[i]),

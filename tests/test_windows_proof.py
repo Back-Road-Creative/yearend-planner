@@ -67,3 +67,14 @@ def test_every_zip_proof_runs_the_synthetic_inbox() -> None:
     for name, run in proofs:
         assert "scripts/synthetic_inbox.py" in run, name
         assert "-Inbox $inbox" in run, name
+
+
+def test_ci_on_main_can_be_started_by_hand() -> None:
+    """GitHub sometimes drops the push event for a merge commit, leaving main
+    with no CI run, and the merge robot waits on that run. CI accepts a manual
+    start so the gap is filled without a dummy commit."""
+    root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    flow = yaml.safe_load((root / "ci.yml").read_text(encoding="utf-8"))
+    on = flow.get("on", flow.get(True))  # YAML 1.1 reads a bare `on` key as True
+    assert "workflow_dispatch" in on
+    assert on["push"] == {"branches": ["main"]}

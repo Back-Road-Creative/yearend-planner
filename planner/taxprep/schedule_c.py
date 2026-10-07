@@ -57,7 +57,13 @@ CATEGORIES = {
     "wages": ("26", "Wages"),
     "other": ("27a", "Other expenses"),
 }
-EXCLUDED = {"personal": "not business", "transfer": "between your own accounts"}
+EXCLUDED = {
+    "personal": "not business",
+    "transfer": "between your own accounts",
+    "pay": "wages paid to you, on a W-2",
+    "refund": "money back, not income",
+    "loan": "borrowed, not income",
+}
 TOTALS = {
     "7": "Gross income",
     "28": "Total expenses",
