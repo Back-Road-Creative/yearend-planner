@@ -240,7 +240,11 @@ def test_glide_year_and_month_tables_on_page(lots: Layout) -> None:  # noqa: F81
     assert cash_tbl.rows[-1][0] == "2027-12"
     assert cash_tbl.headers[-2:] == ["cash", "vs target"]
     assert cash_tbl.rows[0][-2] == f"{g.months[0].cash:,.2f}"
-    assert {row[-1] for row in cash_tbl.rows} == {"ok"}
+    # the fixture's 12,000 of uncategorised deposits come once, not every month,
+    # so the line crosses the 20,000 target in 2027-11 and the flag says so
+    flags = {row[0]: row[-1] for row in cash_tbl.rows}
+    assert [m for m, f in flags.items() if f != "ok"] == ["2027-11", "2027-12"]
+    assert set(flags.values()) == {"ok", "UNDER"}
 
     # spending panel: the return-band table under the floor and planning returns
     band_tbl = pg.panel("spending").tables[0]

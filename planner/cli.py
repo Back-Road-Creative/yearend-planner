@@ -72,6 +72,23 @@ def _single_writer(ctx: typer.Context) -> None:
     except WriterBusyError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=BUSY_EXIT) from exc
+    _refuse_newer_ledger()
+
+
+def _refuse_newer_ledger() -> None:
+    """A writing command stops before any step when the ledger was written by a
+    newer planner, rather than failing partway through."""
+    from planner.ledger import db
+
+    try:
+        conn = db.connect_readonly(layout().data / "ledger" / "planner.db")
+    except db.LedgerTooNew as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except db.LedgerOutOfDate:
+        return  # older: the command's own open brings it up to date
+    if conn is not None:
+        conn.close()
 
 
 def _open_ledger_readonly() -> sqlite3.Connection | None:
@@ -945,6 +962,79 @@ def account(
 
 
 @app.command()
+def forecast(
+    stream: str | None = typer.Argument(
+        None,
+        help="wages, se_income, interest, tax_exempt_interest, "
+        "ordinary_dividends, ira_distributions or social_security",
+    ),
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
+    cadence: str | None = typer.Option(
+        None, help="weekly, biweekly, semimonthly, monthly, quarterly, annual or once"
+    ),
+    amount: str | None = typer.Option(None, help="each payment, with --cadence"),
+    next: str | None = typer.Option(None, help="next payment date, YYYY-MM-DD"),
+    remaining: str | None = typer.Option(None, help="the rest of the year, typed"),
+    full_year: str | None = typer.Option(
+        None, help="the whole year; replaces the forecast"
+    ),
+    ytd: str | None = typer.Option(None, help="a pay stub's year-to-date amount"),
+    through: str | None = typer.Option(None, help="the date --ytd runs to"),
+    low: str | None = typer.Option(None, help="low case (of --remaining or the year)"),
+    high: str | None = typer.Option(None, help="high case, with --low"),
+    owner: str = typer.Option("self", help="self or spouse (joint return)"),
+    clear: bool = typer.Option(False, "--clear", help="drop this stream's forecast"),
+) -> None:
+    """Forecast one income stream to December 31: a pay schedule, the remaining
+    amount or the full year (with a low and high when uncertain); with no
+    stream, list every stream's actual so far, through date and full year."""
+    from planner.engine.household import MissingInputError
+    from planner.ingest.needs import need_for, parse_value
+    from planner.plan import forecast as fc
+    from planner.plan.inputs import OverrideError, build
+
+    lay = layout()
+    if stream is None:
+        try:
+            inp = build(lay, year)
+        except (MissingInputError, OverrideError) as exc:
+            typer.echo(f"refused: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(fc.render(inp.forecast, fc.load(lay, year), year), nl=False)
+        for note in inp.notes:
+            if note.split(" ", 1)[0].rstrip(":") in fc.STREAMS:
+                typer.echo(f"note: {note}")
+        return
+    if clear:
+        fc.save(lay, year, stream, None)
+        typer.echo(f"{stream}: forecast cleared")
+        return
+    try:
+        need = need_for(stream)
+
+        def money(text: str | None) -> float | None:
+            return None if text is None else float(parse_value(need, text))
+
+        typed = fc.Typed(
+            owner=owner,
+            ytd=money(ytd),
+            through=through,
+            cadence=cadence,
+            amount=money(amount),
+            next=next,
+            remaining=money(remaining),
+            full_year=money(full_year),
+            low=money(low),
+            high=money(high),
+        )
+        fc.save(lay, year, stream, typed)
+    except (KeyError, ValueError) as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(f"{stream}: forecast saved (planner forecast --year {year} lists it)")
+
+
+@app.command()
 def convert(
     date_: str = typer.Argument(..., metavar="DATE", help="YYYY-MM-DD"),
     amount: str = typer.Argument(..., help="dollars converted"),
@@ -1299,14 +1389,16 @@ def glide(
             f"stress {s.name:22} {end}; at {HORIZON} {s.balance_at_horizon:,.2f}"
         )
     typer.echo(
-        f"{'month':>8} {'SE':>10} {'div':>9} {'in':>9} {'sales':>11} {'living':>9} "
+        f"{'month':>8} {'SE':>10} {'other':>9} {'div':>9} {'in':>9} {'sales':>11} "
+        f"{'living':>9} "
         f"{'mortg':>9} {'prem':>8} {'est tax':>9} {'tax due':>10} {'irreg':>9} "
         f"{'net':>10} {'cash':>12}"
     )
     for m in g.months:
         typer.echo(
             f"{m.year}-{m.month:02d}{'*' if m.actual else ' '} {m.se:>10,.2f} "
-            f"{m.dividends:>9,.2f} {m.cash_in:>9,.2f} {m.planned_in:>11,.2f} "
+            f"{m.other_in:>9,.2f} {m.dividends:>9,.2f} {m.cash_in:>9,.2f} "
+            f"{m.planned_in:>11,.2f} "
             f"{m.living:>9,.2f} {m.mortgage:>9,.2f} {m.premiums:>8,.2f} "
             f"{m.est_tax:>9,.2f} {m.balance_due:>10,.2f} {m.irregular:>9,.2f} "
             f"{m.net:>10,.2f} {m.cash:>12,.2f}"
@@ -1503,10 +1595,15 @@ def plan(
     as_of: str | None = AS_OF,
     total_income: float | None = typer.Option(
         None,
-        help="the year's total income before the planned items ($); wages become "
-        "the total less the other income the ledger counts",
+        help="the year's total income before the planned items ($); the line "
+        "--total-income-line names becomes the total less the other income counted",
         min=0,
         max=100_000_000,
+    ),
+    total_income_line: str = typer.Option(
+        "wages",
+        help="where --total-income's residual goes: wages, se_income, interest, "
+        "non_qualified_dividends or ira_distributions",
     ),
     q4_dividends: float | None = typer.Option(
         None, help="Q4 dividend estimate to add ($)"
@@ -1588,6 +1685,7 @@ def plan(
                 hsa,
                 total_income,
                 conversion_target or "manual",
+                total_income_line,
             ),
         )
     except OverrideError as exc:
