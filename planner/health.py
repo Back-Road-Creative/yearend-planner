@@ -65,6 +65,21 @@ def _backup(lay: Layout, today: date) -> tuple[str, str]:
     age = (today - made).days
     fact = f"last backup {made.isoformat()} ({zips[-1].name})"
     late = f"last backup {age} days ago (planner backup)" if age > BACKUP_DAYS else ""
+    from planner import rehearsal
+
+    proved = rehearsal.last(zips[-1])
+    if proved is None:
+        fact += "; never rehearsed (planner backup --rehearse)"
+    elif proved.get("ok"):
+        fact += (
+            f"; rehearsed {proved.get('date')}: {proved.get('compared')} figures match"
+        )
+    else:
+        failed = (
+            f"the last backup's rehearsal on {proved.get('date')} found "
+            f"{proved.get('differences')} figures that differ after a restore"
+        )
+        late = f"{failed}; {late}" if late else failed
     return fact, late
 
 
