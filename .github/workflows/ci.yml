@@ -63,7 +63,7 @@ jobs:
           python-version: "3.12"
       - name: Build release zip
         run: uv run --no-project python scripts/build_release.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: yearend-planner-win64
           path: dist/yearend-planner-*-win64.zip
