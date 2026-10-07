@@ -271,10 +271,14 @@ def _compile(pattern: str) -> re.Pattern[str]:
 def _spaces(pattern: str) -> str:
     """``pattern`` with each literal space (outside a character class) matching
     any run of whitespace, line breaks included: an official form wraps a long
-    box label over the lines of its box."""
+    box label over the lines of its box. A quantified space keeps its
+    quantifier: " ?" and " *" match no whitespace too."""
     out: list[str] = []
     in_class = escaped = False
     for ch in pattern:
+        if out and out[-1] == r"\s+" and ch in "?*+":
+            out[-1] = r"\s+" if ch == "+" else r"\s*"
+            continue
         if escaped:
             escaped = False
         elif ch == "\\":
