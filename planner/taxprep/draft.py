@@ -30,6 +30,7 @@ from planner.plan import esttax, inputs
 from planner.taxprep import (
     annuity,
     capgains,
+    carries,
     d400,
     f1116,
     f4797,
@@ -222,6 +223,7 @@ class Draft:
     missing: list[str] = field(default_factory=list)  # forms still to come
     coverage: list[coverage.Gap] = field(default_factory=list)  # the gate's gaps
     statuses: dict[str, str] = field(default_factory=dict)  # capability rows
+    carries: list[carries.Carry] = field(default_factory=list)  # unit 6c
 
     @property
     def not_ready(self) -> str | None:
@@ -717,6 +719,7 @@ def build(lay: Layout, year: int) -> Draft:
         for ln, label, value, src in inp.schedule_e.lines:
             add("Sch E", ln, label, value, src)
         _misc_check(d, facts, inp.schedule_e)
+        d.carries.extend(inp.schedule_e.carries)
     e_total = inp.schedule_e.total if inp.schedule_e is not None else 0.0
     e_src = "Sch E line 26"
     if inp.schedule_k1 is not None:
@@ -745,6 +748,7 @@ def build(lay: Layout, year: int) -> Draft:
     if inp.schedule_f is not None:
         for form, ln, label, value, src in inp.schedule_f.lines:
             add(form, ln, label, value, src)
+        d.carries.extend(inp.schedule_f.carries)
         owned = hh.farm_income + (hh.spouse.farm_income if hh.spouse else 0)
         if owned:
             forms = sorted({f for f, ln, *_ in inp.schedule_f.lines if ln == "34"})
@@ -1374,6 +1378,10 @@ def build(lay: Layout, year: int) -> Draft:
             "tax-exempt interest (1040 line 2a) counts toward Social Security "
             "taxation and ACA MAGI"
         )
+    d.carries[:0] = carries.from_lines(d)
+    d.notes.extend(
+        carries.check(d, carries.load(lay, year - 1), typed["foreign_tax_carryover"])
+    )
     return d
 
 

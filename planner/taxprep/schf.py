@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from planner.taxprep import f8582
+from planner.taxprep import carries, f8582
 
 FORM = "Sch F"
 EXAMPLE = (
@@ -323,6 +323,7 @@ class Result:
     lines: list[tuple[str, str, str, float, str]]  # (form, line, label, value, source)
     by_owner: dict[str, float]  # line 34 summed: Schedule 1 line 6, Sch SE line 1a
     notes: list[str]
+    carries: list[carries.Carry] = field(default_factory=list)  # unit 6c
 
 
 def _labels() -> dict[str, str]:
@@ -355,6 +356,7 @@ def schedule(fs: list[Farm], allowed: dict[str, float]) -> Result:
     farm's allowed loss by its name, planner.taxprep.f8582.Result.allowed)."""
     lines: list[tuple[str, str, str, float, str]] = []
     by_owner = {"you": 0.0, "spouse": 0.0}
+    out: list[carries.Carry] = []
     notes: list[str] = []
     for f in fs:
         if f.passive and (f.net < 0 or f.prior):
@@ -372,6 +374,15 @@ def schedule(fs: list[Farm], allowed: dict[str, float]) -> Result:
             f"participation) is {'No' if f.passive else 'Yes'}"
         )
         if f.carry:
+            out.append(
+                carries.Carry(
+                    f"{f.form} conservation expenses over the 25% limit",
+                    round(f.carry, 2),
+                    f"{f.form} line 12",
+                    "the farm's word conservationcarry",
+                    "Schedule F instructions, line 12",
+                )
+            )
             notes.append(
                 f"{f.form} line 12: {f.carry:,.2f} of conservation expenses is over "
                 "25% of gross income from farming and carries to next year "
@@ -388,4 +399,4 @@ def schedule(fs: list[Farm], allowed: dict[str, float]) -> Result:
         "optional method, the excess business loss (Form 461) and crop-share "
         "rent (Form 4835) are not drafted"
     )
-    return Result(lines, by_owner, notes)
+    return Result(lines, by_owner, notes, out)
