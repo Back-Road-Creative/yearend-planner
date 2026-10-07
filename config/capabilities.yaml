@@ -500,6 +500,11 @@ crash_recovery:
   evidence: implemented
   tests: ["tests/test_crash.py"]
   note: "unit 7b: restore, ledger upgrade backup, ingest, update swap, tax pack and rollover each survive a kill or full disk part way; the next run finishes or undoes the step"
+backup_rehearsal:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_rehearsal.py"]
+  note: "unit 7c: planner backup --rehearse restores the zip on a throwaway clean folder and compares ledger totals, Needed items and draft lines with a copy of the live folder; result kept beside the zip and shown by planner health"
 dashboard_page:
   status: verified
   evidence: implemented
