@@ -220,18 +220,24 @@ def test_glide_year_and_month_tables_on_page(lots: Layout) -> None:  # noqa: F81
     g = glidepath.glide(lots, 2026, AS_OF)
     sp = spending.plan(lots, 2026, AS_OF, years=10)
 
-    # glide panel: the age/year table, the on-track line beside the comfort-floor line
+    # glide panel: the age/year table per account, the on-track total beside the
+    # comfort-floor total
     glide_tbl = pg.panel("glide").tables[0]
-    assert glide_tbl.headers[:4] == ["year", "age", "on-track real", "on-track nominal"]
-    assert "comfort-floor real" in glide_tbl.headers
+    assert glide_tbl.headers[:4] == ["year", "age", "cash", "taxable"]
+    assert "on-track real" in glide_tbl.headers and "RMD" in glide_tbl.headers
     assert len(glide_tbl.rows) == len(g.rows) and glide_tbl.rows[0][:2] == [
         "2026",
         "55",
     ]
     assert glide_tbl.rows[-1][1] == "95"
     i = glide_tbl.headers.index("comfort-floor real")
-    assert glide_tbl.rows[0][i] == f"{g.floor_rows[0].balance_real:,.2f}"
-    assert glide_tbl.rows[-1][i] == f"{g.floor_rows[-1].balance_real:,.2f}"
+    j = glide_tbl.headers.index("on-track real")
+    assert glide_tbl.rows[0][i] == glide_tbl.rows[0][j]  # same start, then apart
+
+    def money(cell: str) -> float:
+        return float(cell.replace(",", ""))
+
+    assert money(glide_tbl.rows[-1][i]) < money(glide_tbl.rows[-1][j])
     assert any(ln.startswith("band: inside the band") for ln in pg.panel("glide").lines)
 
     # cash panel: the monthly cash line, 24 months, flagged against the target

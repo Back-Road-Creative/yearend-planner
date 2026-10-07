@@ -2462,3 +2462,47 @@ Each move moves through four steps:
 `--undo <id>` takes a move back one step. The steps are saved in
 `data/plan/yearend-<year>.yaml`. A move still proposed or chosen after its
 trade-by date is flagged, because it now counts in the next year.
+
+## The long-term path per account (Phase 10, unit 4e)
+
+`planner glide` and the glide panel run every account to age 95 in today's
+dollars: cash, taxable, tax-deferred (traditional and SIMPLE IRAs, a
+governmental 457(b)), inherited IRAs, Roth and HSA, each with its own rules.
+Each year:
+
+1. Spending follows the band rule (above) on the total, plus the year's
+   debt payments (`planner debt`), less Social Security.
+2. Required minimum distributions come out first: last year-end balance
+   divided by the Uniform Lifetime Table (IRS Pub. 590-B, Appendix B, Table
+   III), from age 73 for someone born 1951 to 1959 and 75 for someone born
+   1960 or later (IRC 401(a)(9)(C)(v)). An inherited IRA is drawn in equal
+   parts so it is empty by the end of the tenth year after the death.
+3. The rest is drawn in this order: cash above the reserve, taxable, inherited
+   IRAs, tax-deferred accounts once their owner reaches `ira_access_age` (a
+   457(b) once you have left that employer), Roth (only contributions and
+   seasoned conversions before 59 1/2), the HSA from 65, and the reserve last.
+4. Each draw is grossed up for its own tax: federal tax from this year's
+   brackets, standard deduction (with the extra amount at 65) and 0/15/20%
+   gains rates held in today's dollars; taxable Social Security by the IRC 86
+   worksheet, whose thresholds are not indexed and so shrink each year; state
+   tax at this year's share of AGI. A taxable draw is taxed on its gain share
+   (value less cost basis). An RMD larger than the year needs is taxed and the
+   rest put back in a taxable account.
+
+The table shows each kind of account, the on-track total (real and nominal),
+Social Security, spending, debt payments, the RMD, everything drawn, the tax,
+any shortfall, and the comfort-floor total. Below it: when RMDs start for each
+of you, when each debt is paid off, the lifetime tax, and three fixed stress
+cases (a 30% drop in year one, 5% inflation, floor returns), each with the age
+the money runs out and what is left at 95. These are fixed cases, not odds; no
+success percentage is figured.
+
+With a spouse, say whose each IRA and Roth is, because their age sets the RMDs
+and the access age: `planner account 33333333 --owner spouse`. An account with
+no owner is read as yours, and a note says so.
+
+Left out, and named here so you know: the net investment income tax, the
+2025-2028 senior deduction, Medicare IRMAA in later years, and the state's own
+brackets (this year's share of AGI is used instead). If `mortgage_monthly` is
+typed and the mortgage is also entered as a debt, it is paid twice, and a note
+says so.
