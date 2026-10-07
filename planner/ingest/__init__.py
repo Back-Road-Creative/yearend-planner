@@ -64,6 +64,8 @@ class IngestReport:
     notes: list[tuple[str, str]] = field(default_factory=list)  # read, with a caveat
     pending: list[Imported] = field(default_factory=list)  # OCR, awaiting confirm
     derived: dict[int, int] = field(default_factory=dict)  # year -> YTD facts
+    # in the ledger but never archived: an import cut off after its commit
+    recovered: list[str] = field(default_factory=list)
 
 
 def fingerprint(path: Path) -> str:
@@ -297,6 +299,16 @@ def ingest(
                 "ON d.id = r.document_id WHERE d.fingerprint = ?)",
                 (fp, fp),
             ).fetchone()
+            doc = conn.execute(
+                "SELECT id, archived_as FROM documents WHERE fingerprint = ?", (fp,)
+            ).fetchone()
+            if doc["archived_as"] is None:  # committed, then cut off before the move
+                year = int(row["y"] or datetime.now(UTC).year)
+                archived = archive(path, archive_root, year, fp)
+                rel = archived.relative_to(lay.data).as_posix()
+                db.set_archived(conn, doc["id"], rel)
+                report.recovered.append(path.name)
+                continue
             archive(path, archive_root, int(row["y"] or 0), fp)
             report.duplicates.append(path.name)
             continue
@@ -353,7 +365,7 @@ def ingest(
         )
         (report.pending if any(f.ocr for f in forms) else report.imported).append(item)
     prune_empty_folders(inbox)
-    if report.imported:
+    if report.imported or report.recovered:
         for year in row_years(conn):
             n = derive(conn, year, report.batch)
             if n:

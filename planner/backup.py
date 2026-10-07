@@ -37,6 +37,9 @@ from planner.paths import Layout, WriterBusyError
 MANIFEST = "backup.json"
 STAGING = "restore-staging"
 PREVIOUS = "data-previous"
+# Written once the backup is unpacked and checked, removed once data/ is
+# swapped: while it is there, a restore was cut off and recover() finishes it.
+JOURNAL = "restore-pending.json"
 TOPS = ("data", "config")
 MAX_BYTES = 4 << 30  # 4 GiB unpacked
 MAX_FILES = 200_000
@@ -229,6 +232,7 @@ def restore(lay: Layout, src: Path, password: str = "") -> Restored:
         listed = _unpack(src, password, staging)
         if not (staging / "data").is_dir():
             raise BackupError(f"{src.name}: holds no data/ folder")
+        _write_journal(lay, src)
         with _lock_released(lay):
             if lay.data.exists():
                 try:
@@ -248,11 +252,70 @@ def restore(lay: Layout, src: Path, password: str = "") -> Restored:
     finally:
         if staging.exists():
             shutil.rmtree(staging, ignore_errors=True)
+        (lay.root / JOURNAL).unlink(missing_ok=True)
     return Restored(
         files=len(listed),
         carried=carried,
         previous=previous if previous.exists() else None,
     )
+
+
+def _write_journal(lay: Layout, src: Path) -> None:
+    tmp = lay.root / (JOURNAL + ".tmp")
+    tmp.write_text(json.dumps({"source": src.name}), encoding="utf-8")
+    tmp.replace(lay.root / JOURNAL)
+
+
+def _bare(lay: Layout) -> bool:
+    """No file in ``data/`` but the lock: the folders a launch makes on the
+    way in, not data worth keeping."""
+    return not lay.data.exists() or all(
+        p == lay.lock_file for p in lay.data.rglob("*") if p.is_file()
+    )
+
+
+def recover(lay: Layout) -> str:
+    """Finish a restore that was cut off (killed, power lost, disk full) between
+    its checks and its last step, so no launch builds on an empty data/ or
+    deletes data-previous/. Runs before every command that writes; "" when no
+    restore was cut off.
+
+    - the checked backup is still unpacked and data/ is bare: swap it in;
+    - the backup is unpacked but data/ was never moved: nothing changed;
+    - data/ is gone and nothing is unpacked: put data-previous/ back;
+    - otherwise both moves happened: only the tidying is left."""
+    from planner.engine.update import carry_thresholds
+
+    journal = lay.root / JOURNAL
+    if not journal.exists():
+        return ""
+    staging, previous = lay.root / STAGING, lay.root / PREVIOUS
+    unpacked = staging / "data"
+    forward = True
+    with _lock_released(lay):
+        if unpacked.is_dir() and _bare(lay):
+            if lay.data.exists():
+                shutil.rmtree(lay.data)
+            unpacked.rename(lay.data)
+            msg = "an interrupted restore was finished"
+        elif unpacked.is_dir():
+            forward = False
+            msg = "an interrupted restore changed nothing; restore again"
+        elif _bare(lay) and previous.is_dir():
+            if lay.data.exists():
+                shutil.rmtree(lay.data)
+            previous.rename(lay.data)
+            forward = False
+            msg = "an interrupted restore was undone: your data is as it was"
+        else:
+            msg = "an interrupted restore was finished"
+    if forward and staging.is_dir():
+        carry_thresholds(staging, lay.root)
+    if forward and previous.is_dir():
+        msg += f"; the data before it is in {PREVIOUS}/ until the next launch"
+    shutil.rmtree(staging, ignore_errors=True)
+    journal.unlink()
+    return msg
 
 
 def undo(lay: Layout) -> bool:
@@ -274,7 +337,7 @@ def undo(lay: Layout) -> bool:
 def settle(lay: Layout) -> bool:
     """After a clean launch: delete ``data-previous/``. True if it existed."""
     previous = lay.root / PREVIOUS
-    if not previous.is_dir():
+    if not previous.is_dir() or (lay.root / JOURNAL).exists():
         return False
     shutil.rmtree(previous, ignore_errors=True)
     return True
