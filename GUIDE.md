@@ -2506,7 +2506,7 @@ brackets (this year's share of AGI is used instead). If `mortgage_monthly` is
 typed and the mortgage is also entered as a debt, it is paid twice, and a note
 says so.
 
-## The benefits screen (Phase 10, units 5a-5b)
+## The benefits screen (Phase 10, units 5a-5c)
 
 `planner benefits --year 2026` reads the year's projected income (the same
 projection as the MAGI panel) and screens each program in the registry. Each
@@ -2541,14 +2541,25 @@ Unit 5b covers Medicare's costs:
 | Medicare Savings Programs | for each member on Medicare, the engine's SSI-counted income against this year's guideline: QMB to 100%, SLMB to 120%, QI to 135% (42 USC 1396d(p)); then the state's resource limit (for one or a couple), or none where the state dropped it. The amount is the Part B premium the program pays |
 | Extra Help | a savings program qualifies you without applying (42 CFR 423.773(c)(1)); otherwise SSI-counted income under 150% of the family's guideline and resources within the year's limit plus the burial allowance (SSA POMS HI 03030.025). A year whose limit is not in the registry reads "not enough information" |
 
+Unit 5c covers food and cash help:
+
+| Program | What decides it here |
+|---|---|
+| SNAP | the engine's gross and net income tests and allotment for the household, with no rent or utilities asked, so the shelter deduction is left out (7 CFR 273.9). Categorical eligibility through a TANF-funded benefit skips the asset test (273.2(j)(2)); otherwise accounts other than retirement (7 USC 2014(g)(7)) against the limit, higher with a member 60 or older (273.8(b)). Passing the gross test with no allotment reads "not enough information": shelter costs could bring net income under the line |
+| WIC | each child under 5, and the engine's income test (185%, or Medicaid, SNAP or TANF); the amount is the food package's value; the clinic judges nutritional risk (7 CFR 246.7) |
+| School meals | each child 5 to 18: free to 130% of the guideline, reduced price to 185% (42 USC 1758(b)(1)), or every student free where the state serves universal meals; the amount is the engine's meal value. Otherwise a community eligibility school may still serve every student free |
+| TANF | a child under 18 (42 USC 608(a)(1)) and the engine's payment in a state it models; a state it does not model reads "not enough information". The state's asset limit, the 60-month limit and work rules are named, not screened |
+| SSI | you or a spouse 65 or older, the engine's payment by countable income, then every account on file against 2,000 (3,000 a couple) (20 CFR 416.1205) |
+
 The resource tests read every account on file at its latest balance,
-retirement accounts included. That is conservative: the agencies leave out a
+retirement accounts included (SNAP leaves retirement accounts out). That is conservative: the agencies leave out a
 home, one car, burial funds and plans you cannot draw, so an "over the limit"
 result may still qualify. With no accounts on file the tests read "not enough
 information".
 
 Not asked, and named in the result: other health insurance or an employer
-offer, immigration status, pregnancy, blindness or disability, Medicare through
-disability, and the resource exclusions above. The screen uses full-year
+offer, immigration status, pregnancy and breastfeeding, blindness or
+disability, Medicare through disability, rent and utilities, work rules and
+time limits, and the resource exclusions above. The screen uses full-year
 income; a program that counts monthly income tests the month you apply.
 Nothing is fetched at run time.

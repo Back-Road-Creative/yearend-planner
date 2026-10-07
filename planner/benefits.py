@@ -13,7 +13,8 @@ figures come from the engine (policyengine-us) for this household and year,
 with no network at run time. Unit 5a covers health coverage below Medicare:
 the premium tax credit, cost-sharing reductions, Medicaid and CHIP. Unit 5b
 adds Medicare's costs: the income surcharge (IRMAA) this year's income sets,
-the Medicare Savings Programs and Extra Help.
+the Medicare Savings Programs and Extra Help. Unit 5c adds food and cash
+help: SNAP, WIC, school meals, TANF and SSI.
 
 Sources, read 2026-10-07:
 - IRC 36B(c)(1)(A): household income from 100 to 400 percent of the poverty
@@ -54,6 +55,27 @@ Sources, read 2026-10-07:
   person eligible without applying; 423.772: the family, income (a spouse's
   counts) and liquid resources; SSA POMS HI 03030.025: the resource limits by
   year, before the 1,500/3,000 burial allowance SSA adds unless declined.
+- 7 CFR 273.9(a): SNAP's gross income test (130 percent; none for a household
+  with a member 60 or older or disabled) and net test (100 percent); 273.9(d)
+  the deductions, (d)(6) shelter costs; 273.8(b) the resource limit (the
+  engine's ``gov.usda.snap.asset_test.limit``); 7 USC 2014(g)(7) leaves out
+  retirement accounts under IRC 401(a), 403, 408, 408A and 457(b); 273.2(j)(2)
+  a TANF-funded benefit makes a household categorically eligible, with no
+  resource test (broad-based categorical eligibility).
+- 7 CFR 246.7(c): WIC serves pregnant, postpartum and breastfeeding women,
+  infants and children to their fifth birthday; 246.7(d)(1) income at most 185
+  percent, (d)(2)(vi) or Medicaid, SNAP or TANF; 246.7(e) nutritional risk,
+  judged at the clinic.
+- 42 USC 1758(b)(1): free school meals to 130 percent, reduced price to 185;
+  (b)(12) SNAP or TANF qualifies a child; 42 USC 1759a(a)(1)(F) a community
+  eligibility school serves every student free.
+- 42 USC 608(a)(1): TANF serves a family with a minor child (or a pregnant
+  woman); (a)(7) 60 months of federal TANF; the state sets income and assets.
+  The engine models the states with a ``<state>_tanf`` variable.
+- 42 USC 1382(a); 20 CFR 416.202: SSI at 65 or older, blind or disabled; 20 CFR
+  416.1100 countable income; 416.1205 resources to 2,000 (3,000 a couple,
+  the engine's ``gov.ssa.ssi.eligibility.resources.limit``); POMS SI
+  01120.210 counts a retirement account the owner can withdraw.
 """
 
 from __future__ import annotations
@@ -98,6 +120,12 @@ EXTRA_HELP_RESOURCES = {
 }
 BURIAL = (1_500, 3_000)  # added unless the applicant declines it
 MARRIED = ("JOINT", "SEPARATE")
+SNAP_ELDERLY_AGE = 60  # 7 CFR 271.2 "elderly or disabled member"
+WIC_AGE = 5  # 7 CFR 246.7(c)(1): children to their fifth birthday
+SCHOOL_AGES = range(5, 19)  # school age; the district confirms enrollment
+TANF_AGE = 18  # 42 USC 619(2): a minor child is under 18
+# 7 USC 2014(g)(7)(A): retirement accounts SNAP leaves out
+RETIREMENT_TYPES = ("trad_ira", "simple_ira", "inherited_ira", "roth", "gov_457b")
 
 
 @dataclass(frozen=True)
@@ -261,6 +289,115 @@ REGISTRY: tuple[Program, ...] = (
         "guideline; resources from every account on file; eligible without "
         "applying when the Medicare Savings Programs screen possibly eligible",
     ),
+    Program(
+        "snap",
+        "SNAP (food assistance)",
+        "every state and DC, through the state or county agency; most states "
+        "use broad-based categorical eligibility (higher gross limit, no "
+        "asset test)",
+        "a household that buys and prepares food together",
+        "any time of year; benefits run from the day the application is "
+        "filed, decided within 30 days (7 days if expedited); recertified "
+        "every 6 to 24 months",
+        "gross monthly income to 130% of the guideline (none with a member "
+        "60 or older or disabled), then net income to 100% after the "
+        "standard, earnings, dependent care, medical (60 or older) and "
+        "shelter deductions",
+        "people who live together and buy and prepare meals together",
+        "none: the current month and what is expected",
+        "to the federal limit (higher with a member 60 or older or disabled); "
+        "retirement accounts, the home and most cars do not count; none under "
+        "broad-based categorical eligibility",
+        "work rules (18-54 without children: 3 months in 36 unless working "
+        "20 hours a week), students, immigration status",
+        "the state SNAP agency (online, by mail or in person)",
+        (
+            "7 CFR 273.9(a), (d)",
+            "7 CFR 273.8(b)",
+            "7 CFR 273.2(j)(2)",
+            "7 USC 2014(g)(7)",
+        ),
+        "the engine's SNAP tests and allotment for the household, with no "
+        "rent or utilities; resources (accounts other than retirement) "
+        "against the engine's limit unless categorically eligible",
+    ),
+    Program(
+        "wic",
+        "WIC (nutrition for women, infants and children)",
+        "every state and DC, through local WIC clinics",
+        "pregnant, postpartum and breastfeeding women, infants and children to age 5",
+        "any time of year; certified for 6 months to a year",
+        "gross income to 185% of the guideline; Medicaid, SNAP or TANF meets it",
+        "the family the applicant lives with (a pregnant woman counts the "
+        "unborn child)",
+        "none: current income",
+        "none",
+        "nutritional risk, judged by the clinic at the appointment",
+        "the local WIC clinic",
+        ("7 CFR 246.7(c), (d)(1), (d)(2)(vi), (e)",),
+        "the engine's WIC income test and food package value for each child "
+        "under 5; pregnancy and breastfeeding are not asked",
+    ),
+    Program(
+        "school_meals",
+        "Free or reduced-price school meals",
+        "every state and DC, through the school district; some states serve "
+        "every student free",
+        "children in a participating school",
+        "any time of the school year; a school year's status lasts to the "
+        "first days of the next",
+        "household income: free to 130% of the guideline, reduced price to "
+        "185%; SNAP or TANF qualifies directly",
+        "everyone living together who shares income and expenses",
+        "none: current income",
+        "none",
+        "the child attends a school in the National School Lunch Program; "
+        "a community eligibility school serves everyone free",
+        "the school district's meal application (or direct certification through SNAP)",
+        ("42 USC 1758(b)(1), (b)(12)", "42 USC 1759a(a)(1)(F)"),
+        "the engine's free and reduced-price tiers and their value for the "
+        "household, and its list of states with universal free meals",
+    ),
+    Program(
+        "tanf",
+        "TANF (cash assistance for families)",
+        "every state and DC under its own name and rules",
+        "a family with a child under 18 (or a pregnant woman)",
+        "any time of year; 60 months of federal TANF in a lifetime (some states fewer)",
+        "the state's income test and payment standard",
+        "the child, the parents or caretakers and the child's siblings",
+        "none: current income",
+        "the state's limit, from none to a few thousand dollars",
+        "work requirements; child support cooperation; immigration status",
+        "the state or county social services office",
+        ("42 USC 608(a)(1), (a)(7)", "42 USC 602"),
+        "the engine's TANF payment for the household in a state it models; "
+        "the state's asset limit and time limits are not asked",
+    ),
+    Program(
+        "ssi",
+        "SSI (Supplemental Security Income)",
+        "every state and DC, through Social Security; some states add a supplement",
+        "people 65 or older, blind or disabled, with low income and resources",
+        "any time of year; paid from the month after the application",
+        "countable income: a $20 general exclusion, $65 and half the rest of "
+        "earnings; Social Security counts",
+        "the person, or a married couple",
+        "none: monthly",
+        "2,000 (3,000 a couple); a home, one car and burial funds do not "
+        "count; a retirement account the owner can draw counts",
+        "living in the US; no SSI in a public institution most months",
+        "Social Security (ssa.gov/ssi, by phone or at an office)",
+        (
+            "42 USC 1382(a)",
+            "20 CFR 416.202",
+            "20 CFR 416.1100",
+            "20 CFR 416.1205",
+            "SSA POMS SI 01120.210",
+        ),
+        "the engine's SSI amount for each member 65 or older; resources "
+        "from every account on file against the engine's limit",
+    ),
 )
 BY_KEY = {p.key: p for p in REGISTRY}
 
@@ -273,6 +410,8 @@ class Member:
     chip: bool
     medicare: bool = False  # the engine's is_medicare_eligible (65 or older)
     msp: str = ""  # the engine's QMB, SLMB or QI income tier, if any
+    wic: float = 0.0  # the engine's WIC food package value, yearly
+    ssi: float = 0.0  # the engine's federal SSI, yearly
 
 
 @dataclass(frozen=True)
@@ -292,6 +431,19 @@ class Facts:
     fpg: float = 0.0  # the guideline for the family (Extra Help)
     msp_limit: float | None = None  # the MSP resource limit; None: waived
     resources: float | None = None  # every account on file; None: not on file
+    state: str = ""
+    liquid: float | None = None  # accounts other than retirement (SNAP)
+    snap: float = 0.0  # the engine's allotment, yearly, with no shelter costs
+    snap_categorical: bool = False  # 7 CFR 273.2(j)(2)
+    snap_gross: bool = False  # passes the gross income test
+    snap_limit: float = 0.0  # 7 CFR 273.8(b), for this household
+    wic_income: bool = False  # 7 CFR 246.7(d)
+    meals_free: float = 0.0  # the engine's free-meal value, yearly
+    meals_reduced: float = 0.0  # the engine's reduced-price value, yearly
+    meals_universal: bool = False  # the state serves every student free
+    tanf: float = 0.0  # the engine's TANF, yearly
+    tanf_modeled: bool = False  # the engine models this state's TANF
+    ssi_limit: float = 0.0  # 20 CFR 416.1205, for one or a couple
 
 
 @dataclass(frozen=True)
@@ -496,22 +648,17 @@ def premium(f: Facts) -> Result:
     return Result("medicare_irmaa", NOT, (*why, tail), amount)
 
 
-def _resources(f: Facts, limit: float, rule: str) -> tuple[str, str]:
-    if f.resources is None:
+def _resources(
+    have: float | None, limit: float, rule: str, what: str = "accounts on file"
+) -> tuple[str, str]:
+    if have is None:
         return (
             UNKNOWN,
             f"no accounts on file to test against the {limit:,.0f} limit ({rule})",
         )
-    if f.resources > limit:
-        return (
-            NOT,
-            f"accounts on file {f.resources:,.0f}, over the {limit:,.0f} limit "
-            f"({rule})",
-        )
-    return (
-        POSSIBLE,
-        f"accounts on file {f.resources:,.0f}, within the {limit:,.0f} limit ({rule})",
-    )
+    if have > limit:
+        return NOT, f"{what} {have:,.0f}, over the {limit:,.0f} limit ({rule})"
+    return POSSIBLE, f"{what} {have:,.0f}, within the {limit:,.0f} limit ({rule})"
 
 
 def msp(f: Facts) -> Result:
@@ -544,7 +691,7 @@ def msp(f: Facts) -> Result:
     if f.msp_limit is None:
         st, w = POSSIBLE, "this state has no asset test for these programs"
     else:
-        st, w = _resources(f, f.msp_limit, "42 USC 1396d(p)(1)(C)")
+        st, w = _resources(f.resources, f.msp_limit, "42 USC 1396d(p)(1)(C)")
     base = irmaa(f.year, f.filing_status, 0.0).base
     amount = r(base * 12 * len(tiered)) if st == POSSIBLE else None
     return Result("msp", st, (*why, w), amount)
@@ -591,9 +738,178 @@ def extra_help(f: Facts, savings: Result) -> Result:
         return Result("extra_help", UNKNOWN, tuple(why))
     i = 1 if f.filing_status in MARRIED else 0
     st, w = _resources(
-        f, limits[i] + BURIAL[i], "with the burial allowance; SSA POMS HI 03030.025"
+        f.resources,
+        limits[i] + BURIAL[i],
+        "with the burial allowance; SSA POMS HI 03030.025",
     )
     return Result("extra_help", st, (*why, w))
+
+
+def _kids(f: Facts, ages: range) -> list[Member]:
+    return [m for m in f.members if m.label.startswith("dependent") and m.age in ages]
+
+
+def snap(f: Facts) -> Result:
+    rent = (
+        "rent or a mortgage and utilities are not asked: the shelter deduction "
+        "(7 CFR 273.9(d)(6)) would raise the allotment"
+    )
+    if f.snap > 0 and f.snap_categorical:
+        why = (
+            "categorically eligible through a TANF-funded benefit: no resource "
+            "test (7 CFR 273.2(j)(2))",
+            rent,
+        )
+        return Result("snap", POSSIBLE, why, r(f.snap))
+    if f.snap > 0:
+        st, w = _resources(
+            f.liquid,
+            f.snap_limit,
+            "7 CFR 273.8(b)",
+            "accounts other than retirement",
+        )
+        tests = ("passes the gross and net income tests (7 CFR 273.9(a))", w, rent)
+        return Result("snap", st, tests, r(f.snap) if st == POSSIBLE else None)
+    if not (f.snap_gross or f.snap_categorical):
+        return Result(
+            "snap",
+            NOT,
+            ("gross income over the line (130% of the guideline, 7 CFR 273.9(a)(1))",),
+        )
+    return Result(
+        "snap",
+        UNKNOWN,
+        (
+            "passes the gross income test, but no allotment without shelter costs",
+            rent.replace(
+                "would raise the allotment", "could bring net income under the line"
+            ),
+        ),
+    )
+
+
+def wic(f: Facts) -> Result:
+    kids = _kids(f, range(WIC_AGE))
+    if not kids:
+        return Result(
+            "wic",
+            NOT,
+            (
+                "no child under 5; pregnancy, a new mother and breastfeeding are "
+                "not asked (7 CFR 246.7(c))",
+            ),
+        )
+    if not f.wic_income:
+        return Result(
+            "wic",
+            NOT,
+            (
+                "income over 185% of the guideline and no Medicaid, SNAP or TANF "
+                "(7 CFR 246.7(d))",
+            ),
+        )
+    why = [f"{m.label} (age {m.age}): income qualifies" for m in kids]
+    why.append("the clinic judges nutritional risk at the appointment (7 CFR 246.7(e))")
+    amount = r(sum(m.wic for m in kids))
+    return Result("wic", POSSIBLE, tuple(why), amount or None)
+
+
+def meals(f: Facts) -> Result:
+    kids = _kids(f, SCHOOL_AGES)
+    if not kids:
+        return Result("school_meals", NOT, ("no child of school age (5 to 18)",))
+    names = ", ".join(m.label for m in kids)
+    value = r(f.meals_free or f.meals_reduced) or None
+    if f.meals_universal:
+        why = (f"{f.state} serves every public school student free meals; {names}",)
+        return Result("school_meals", POSSIBLE, why, value)
+    if f.meals_free:
+        why = (
+            f"free meals for {names}: income at most 130% of the guideline, "
+            "or SNAP or TANF (42 USC 1758(b)(1)(A), (b)(12))",
+        )
+        return Result("school_meals", POSSIBLE, why, value)
+    if f.meals_reduced:
+        why = (
+            f"reduced-price meals for {names}: income at most 185% of the "
+            "guideline (42 USC 1758(b)(1)(A))",
+        )
+        return Result("school_meals", POSSIBLE, why, value)
+    return Result(
+        "school_meals",
+        NOT,
+        (
+            "income over 185% of the guideline (42 USC 1758(b)(1)(A))",
+            "a community eligibility school serves every student free (42 USC "
+            "1759a(a)(1)(F)): ask the school",
+        ),
+    )
+
+
+def tanf(f: Facts) -> Result:
+    if not _kids(f, range(TANF_AGE)):
+        return Result(
+            "tanf",
+            NOT,
+            ("no child under 18; pregnancy is not asked (42 USC 608(a)(1))",),
+        )
+    if not f.tanf_modeled:
+        return Result(
+            "tanf",
+            UNKNOWN,
+            (
+                f"the engine does not model {f.state}'s TANF: ask the county "
+                "social services office",
+            ),
+        )
+    if not f.tanf:
+        return Result(
+            "tanf",
+            NOT,
+            (f"income over {f.state}'s TANF limit for this family",),
+        )
+    return Result(
+        "tanf",
+        POSSIBLE,
+        (
+            f"by income, {f.state}'s TANF pays this family about {f.tanf:,.2f} a year",
+            "not screened: the state's asset limit, the 60-month limit (42 USC "
+            "608(a)(7)) and work rules",
+        ),
+        r(f.tanf),
+    )
+
+
+def ssi(f: Facts) -> Result:
+    old = [m for m in _adults(f) if m.age >= MEDICARE_AGE]
+    if not old:
+        return Result(
+            "ssi",
+            NOT,
+            (
+                "no one 65 or older; blindness and disability are not asked "
+                "(20 CFR 416.202)",
+            ),
+        )
+    paid = [m for m in old if m.ssi > 0]
+    if not paid:
+        return Result(
+            "ssi",
+            NOT,
+            (
+                "countable income at or over the SSI payment (20 CFR 416.1100); "
+                "a state supplement is not screened",
+            ),
+        )
+    why = [f"{m.label}: about {m.ssi:,.2f} a year by income" for m in paid]
+    st, w = _resources(f.resources, f.ssi_limit, "20 CFR 416.1205")
+    why.append(w)
+    return Result(
+        "ssi",
+        st,
+        tuple(why),
+        r(sum(m.ssi for m in paid)) if st == POSSIBLE else None,
+    )
 
 
 def screen(f: Facts) -> list[Result]:
@@ -607,7 +923,27 @@ def screen(f: Facts) -> list[Result]:
         premium(f),
         savings,
         extra_help(f, savings),
+        snap(f),
+        wic(f),
+        meals(f),
+        tanf(f),
+        ssi(f),
     ]
+
+
+def snap_limit(year: int, ages: list[int]) -> float:
+    """7 CFR 273.8(b): the higher limit with a member 60 or older (disability
+    is not asked), at the start of the year (the fiscal year's raise comes in
+    October)."""
+    node = _system().parameters.gov.usda.snap.asset_test.limit
+    old = any(a >= SNAP_ELDERLY_AGE for a in ages)
+    return float((node.elderly_disabled if old else node.standard)(f"{year}-01-01"))
+
+
+def ssi_limit(year: int, filing_status: str) -> float:
+    node = _system().parameters.gov.ssa.ssi.eligibility.resources.limit
+    when = f"{year}-01-01"
+    return float((node.couple if filing_status in MARRIED else node.individual)(when))
 
 
 def msp_limit(year: int, state: str, filing_status: str) -> float | None:
@@ -630,6 +966,18 @@ PEOPLE = (
     "is_qi_eligible",
     "msp_countable_income",
     "msp_fpg",
+    "wic",
+    "ssi",
+)
+UNIT = (  # one figure for the whole household (the engine's SPM unit)
+    "snap",
+    "meets_snap_categorical_eligibility",
+    "meets_snap_gross_income_test",
+    "meets_wic_income_test",
+    "free_school_meals",
+    "reduced_price_school_meals",
+    "state_has_universal_free_school_meals",
+    "tanf",
 )
 
 
@@ -638,10 +986,12 @@ def facts(
     hh: Household,
     res: TaxResult | None = None,
     resources: float | None = None,
+    liquid: float | None = None,
 ) -> Facts:
     """One engine run's figures for the screen."""
     res = res or compute(year, hh)
-    got = people(year, hh, PEOPLE)
+    got = people(year, hh, PEOPLE + UNIT)
+    unit = {k: got[k][0] for k in UNIT}
     labels = ["you"] + (["spouse"] if hh.spouse is not None else [])
     labels += [f"dependent {i}" for i in range(1, len(hh.dependents) + 1)]
     ages = [hh.age] + ([hh.spouse.age] if hh.spouse is not None else [])
@@ -651,14 +1001,16 @@ def facts(
         for i in range(len(labels))
     ]
     members = tuple(
-        Member(label, age, bool(med), bool(ch), bool(mc), tier)
-        for label, age, med, ch, mc, tier in zip(
+        Member(label, age, bool(med), bool(ch), bool(mc), tier, r(w), r(s))
+        for label, age, med, ch, mc, tier, w, s in zip(
             labels,
             ages,
             got["is_medicaid_eligible"],
             got["is_chip_eligible"],
             got["is_medicare_eligible"],
             tiers,
+            got["wic"],
+            got["ssi"],
             strict=True,
         )
     )
@@ -677,6 +1029,19 @@ def facts(
         res.fpg,
         msp_limit(year, hh.state, hh.filing_status),
         resources,
+        hh.state,
+        liquid,
+        unit["snap"],
+        bool(unit["meets_snap_categorical_eligibility"]),
+        bool(unit["meets_snap_gross_income_test"]),
+        snap_limit(year, ages),
+        bool(unit["meets_wic_income_test"]),
+        unit["free_school_meals"],
+        unit["reduced_price_school_meals"],
+        bool(unit["state_has_universal_free_school_meals"]),
+        unit["tanf"],
+        f"{hh.state.lower()}_tanf" in _system().variables,
+        ssi_limit(year, hh.filing_status),
     )
 
 
@@ -689,8 +1054,9 @@ def assess(
     hh: Household,
     res: TaxResult | None = None,
     resources: float | None = None,
+    liquid: float | None = None,
 ) -> Benefits:
-    return Benefits(year, screen(facts(year, hh, res, resources)))
+    return Benefits(year, screen(facts(year, hh, res, resources, liquid)))
 
 
 def build(
@@ -705,7 +1071,12 @@ def build(
     pj = pj or magi.project(lay, year, overrides)
     st = portfolio.status(lay, year, today)
     resources = st.total if st.positions else None
-    out = assess(year, pj.inputs.household, pj.result, resources)
+    liquid = (
+        r(sum(p.value for p in st.positions if p.type not in RETIREMENT_TYPES))
+        if st.positions
+        else None
+    )
+    out = assess(year, pj.inputs.household, pj.result, resources, liquid)
     out.notes += [
         "the screen reads the projected full-year income; a program that "
         "counts monthly income tests the month you apply"
@@ -715,6 +1086,10 @@ def build(
             f"resources: every account on file ({resources:,.2f}), retirement "
             "accounts included; the agencies leave out a home, one car, burial "
             "funds and plans you cannot draw"
+        )
+        out.notes.append(
+            f"SNAP resources: accounts other than retirement ({liquid:,.2f}; "
+            "7 USC 2014(g)(7))"
         )
     return out
 
