@@ -86,6 +86,9 @@ def test_a_literal_space_matches_any_whitespace_outside_a_class() -> None:
     assert pdf._spaces("1 IRA  contributions") == r"1\s+IRA\s+contributions"
     assert pdf._spaces("[^ \\n]") == "[^ \\n]"
     assert pdf._spaces(r"a\ b[ ]c") == r"a\ b[ ]c"
+    # a quantified space keeps its quantifier: " ?" is still optional
+    assert pdf._spaces("due ?22") == r"due\s*22"
+    assert pdf._spaces("a *b +c") == r"a\s*b\s+c"
 
 
 def test_plain_text_pages_and_empty_cells_fall_back_to_plain_reading(
