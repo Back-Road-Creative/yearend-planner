@@ -7,8 +7,11 @@ way; the fields themselves are dropped. Synthetic values only: names say
 "(synthetic)" and every TIN and account field stays blank.
 
     uv run --extra dev python scripts/real_forms.py [--cache DIR] [NAME ...]
+    uv run --extra dev python scripts/real_forms.py --scan DIR [NAME ...]
 
 The manifest is tests/fixtures/real/forms.yaml; the PDFs land beside it.
+``--scan`` writes each fixture to DIR as a scanner would, an image-only PDF,
+for trying the OCR reader by hand; the tests make the same scans themselves.
 """
 
 from __future__ import annotations
@@ -26,6 +29,10 @@ ROOT = Path(__file__).resolve().parent.parent
 REAL = ROOT / "tests" / "fixtures" / "real"
 CACHE = Path.home() / ".cache" / "yearend-planner" / "irs-blanks"
 SIZE = 9.0  # the largest point size a value is printed at
+# A scan as an office scanner makes one: greyscale, a little crooked, speckled.
+SCAN_DPI = 150
+SCAN_TURN = 0.4  # degrees
+SCAN_SPECKLE = 12.0  # standard deviation of the noise, out of 255
 
 
 def fields_on(page: Any) -> dict[str, Any]:
@@ -124,6 +131,22 @@ def fill(blank: Path, page_no: int, values: dict[str, str], out: Path) -> Path:
     return out
 
 
+def scan(src: Path, out: Path, seed: int = 0, turn: float = SCAN_TURN) -> Path:
+    """An image-only PDF of ``src``'s first page as a scanner makes it:
+    greyscale at ``SCAN_DPI``, turned ``turn`` degrees, with speckle."""
+    import numpy as np
+    import pdfplumber
+    from PIL import Image
+
+    with pdfplumber.open(src) as doc:
+        image = doc.pages[0].to_image(resolution=SCAN_DPI).original.convert("L")
+    image = image.rotate(turn, Image.Resampling.BICUBIC, fillcolor=255)
+    noise = np.random.default_rng(seed).normal(0, SCAN_SPECKLE, image.size[::-1])
+    pixels = np.clip(np.asarray(image, dtype=float) + noise, 0, 255)
+    Image.fromarray(pixels.astype(np.uint8)).save(out, "PDF", resolution=SCAN_DPI)
+    return out
+
+
 def blank(entry: dict[str, Any], cache: Path) -> Path:
     """The entry's official blank, downloaded once; its hash must match."""
     url = str(entry["url"])
@@ -152,12 +175,17 @@ def manifest() -> list[dict[str, Any]]:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--cache", type=Path, default=CACHE)
+    ap.add_argument("--scan", type=Path, help="write scans of the fixtures here")
     ap.add_argument("names", nargs="*")
     args = ap.parse_args(argv)
     for entry in manifest():
         if args.names and entry["name"] not in args.names:
             continue
         out = REAL / f"{entry['name']}.pdf"
+        if args.scan:
+            args.scan.mkdir(parents=True, exist_ok=True)
+            print(scan(out, args.scan / out.name))
+            continue
         print(fill(blank(entry, args.cache), int(entry["page"]), entry["fields"], out))
     return 0
 

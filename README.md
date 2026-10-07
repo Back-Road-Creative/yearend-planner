@@ -73,6 +73,8 @@ question is derived yes from a 1099-DA or typed (unit 3e-9).
 The official IRS layouts are tested too: 18 blank 1099, 1098, 5498, 3921, 3922 and W-2
 forms filled with synthetic values read back box for box, the one-sale 1099-B and the
 2026 1099-G (state tax in box 12) included (unit 7h).
+Scans of the same forms, crooked, speckled or upside down, read back the same values
+through OCR and wait in `confirm` (unit 7h1b).
 The draft works the earned income credit on 1040 line 27a by the EIC worksheet and the
 EIC Table, with Schedule EIC for each qualifying child (unit 3c-4), and Schedule 8812's
 additional child tax credit line by line, Part II-B included (unit 3c-5).

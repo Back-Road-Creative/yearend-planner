@@ -1522,6 +1522,32 @@ To rebuild the fixtures: `uv run --extra dev python scripts/real_forms.py`.
 It downloads each blank from irs.gov once, and refuses a blank whose SHA-256
 has changed, because a new revision may move its boxes.
 
+#### Scans of the real forms
+
+`tests/test_scans.py` scans each official form the way an office scanner does
+(greyscale at 150 dpi, a little crooked, speckled; `scan` in
+`scripts/real_forms.py`) and reads the scan back with the OCR engine. Every
+form must give the same values its text layer gives. A scan has no text layer,
+so the engine reads it, and the planner rebuilds what the text layer had:
+
+- **Boxes.** The ruled boxes are found from the image's long lines. A line the
+  engine reads across two boxes is cut at the rule between them.
+- **Check boxes.** Small squares are found in the image, and a square with ink
+  inside reads as a mark, so "Short-term" or "Ordinary" counts as on the text
+  layer.
+- **Labels.** A box label the engine misreads or runs together ("1Rerts",
+  "2 Royalti es") is put back from the template's own wording when it is close
+  enough. A short label may have one letter wrong. The box number that was
+  read must match, so box 2 never becomes box 1.
+- **Upside down.** The page is read the way up it was fed. If the engine is
+  unsure of most of it, the planner reads it again turned over and keeps the
+  surer reading; the scan line shown beside each value at confirm is cut from
+  the turned page too.
+
+Values read from a scan still wait in `confirm` before they count. To try the
+reader by hand: `uv run --extra dev python scripts/real_forms.py --scan DIR`
+writes each fixture to DIR as an image-only PDF; drop one on the page.
+
 ### Tested in a real browser (unit 7g)
 
 `tests/test_browser.py` opens the live page in headless Chromium through
