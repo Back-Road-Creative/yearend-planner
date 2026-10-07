@@ -1332,7 +1332,7 @@ something another command already prints:
 | `form-8949.csv` | Form 8949 rows by box, columns (a)-(h) and the account (`planner gains`) |
 | `schedule-c.txt` | the Schedule C summary and any uncategorised rows (`planner categorize`) |
 | `schedule-b.csv` | Schedule B by part, line and payer, written only when Schedule B is required (else a note says why) |
-| `carryforward.csv` | the capital loss carried to next year |
+| `carryforward.csv` | every amount carried to next year, the line it comes from and the answer next year reads it from (unit 6c, below) |
 | `basis.csv` | cost basis of each open lot, and each Roth conversion's basis and penalty-free date |
 | `estimated-payments.csv` | federal and state estimated payments, the installment, and where each came from |
 | `forms.csv` | the expected forms, which arrived and their source files (`planner forms`) |
@@ -1393,6 +1393,33 @@ terminal, `planner ingest` then `planner close --year 2025` does the same.
   - A D-400 the draft expects but that is not on file is named.
   - Values read by OCR still waiting for `planner confirm` are named and left
     out of the record.
+
+## Carryforwards and basis history (unit 6c)
+
+Some amounts on this year's return start next year's. The draft collects each
+one with the line it comes from and the answer next year's draft reads it
+from; `carryforward.csv` in the tax pack lists them, and the rollover
+checklist (`out/rollover-<next>.txt`) has a line for each one to type. A
+carry next year's draft reads but this one cannot finish is marked "by hand"
+in both, with the form that finishes it:
+
+| Carry | This year's line | Next year's answer |
+|---|---|---|
+| Capital loss, short and long term | Capital Loss Carryover Worksheet lines 8, 13 | carried by `planner rollover` itself |
+| Basis in traditional IRAs | Form 8606 line 14 (yours and a spouse's) | `ira_basis` (or `spouse_ira_basis`) word `basis` |
+| Passive loss not allowed | Form 8582 Part VII column (c), per activity | the rental's or farm's word `prior` |
+| Annuity cost not yet recovered | Simplified Method Worksheet line 11 | the annuity's word `recovered` (line 10) |
+| Foreign tax over the credit limit (carry by hand) | Form 1116 line 14 less line 24 | `foreign_tax_carryover` after Schedule B (Form 1116), which is not drafted, drops any year over ten years old; or carry it back one year |
+| Home rental expenses over the rents | Pub. 527 Worksheet 5-1 lines 7a, 7b | the rental's words `carryover`, `carrydep` |
+| Farm conservation expenses over 25% of farm income | Schedule F line 12 | the farm's word `conservationcarry` |
+
+The tax pack and the rollover also keep the year's basis history in
+`data/private/basis/<year>.yaml`: these carries, each open lot's basis and
+each Roth conversion's basis and penalty-free date, as the ledger held them.
+Next year's draft reads it: a CHECK note says when Form 8606 line 2 does not
+match last year's line 14, when there is no Form 8606 although last year
+carried basis, and when `foreign_tax_carryover` does not match what was
+carried.
 
 ## Four snapshots of a year (unit 6b)
 

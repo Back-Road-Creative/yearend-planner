@@ -485,6 +485,11 @@ year_snapshots:
   evidence: implemented
   tests: ["tests/test_package.py::test_four_snapshots_kept_apart_and_compared", "tests/test_package.py::test_run_takes_the_years_snapshots"]
   note: "unit 6b: forecast, provisional actual, reconciled actual and filed snapshots (AGI, taxable income, federal and state tax) kept apart in data/private/snapshots/<year>.yaml; planner run takes them; planner snapshots lists them and the change between kinds"
+carryforwards:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_package.py::test_every_carry_names_its_line_and_next_years_answer", "tests/test_package.py::test_carries_reach_the_pack_the_history_and_the_rollover"]
+  note: "unit 6c: capital loss, Form 8606 line 14 basis, Form 8582 unallowed losses, annuity cost, Form 1116 excess foreign tax, Worksheet 5-1 7a/7b and Schedule F conservation carries in carryforward.csv and the rollover checklist; basis history in data/private/basis/<year>.yaml, checked by next year's draft"
 dashboard_page:
   status: verified
   evidence: implemented
