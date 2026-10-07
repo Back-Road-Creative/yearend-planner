@@ -335,6 +335,10 @@ tax it adds, the ACA credit it costs, a warning when qualified dividends spill
 into 15%, and the cash needed from outside the IRA. The profile's
 `conversion_margin` is kept below each line, `conversion_cap` is the hard cap
 and `conversion_objective` picks the recommendation; the rest stay on the page.
+The tax a candidate adds must come out of cash on hand above `cash_target`: a
+candidate that would dip into the reserve is cut to the largest amount whose tax
+fits, with a note naming both numbers, or dropped when nothing fits (Phase 10,
+2d). With no account typed `cash` the check is skipped and the page says so.
 Record the one you make with `planner convert`.
 
 ## Planners: spending and the glide path (Phase 4b)
@@ -445,18 +449,38 @@ that rests on an unknown (an income item, or a sale with no cost basis) opens
 with "NOT READY for a preparer", and so do its tax-pack page and notes. The page is also written to
 `out/plan-<year>.md` (personal, gitignored; `--no-write` skips it).
 
+Each income stream is carried to December 31 (Phase 10, unit 2c). A
+statement's year-to-date figure counts only through its last row's date, and
+the plan's notes say so when nothing covers the rest of the year. `planner
+forecast <stream> --year <year>` types the rest: a pay schedule (`--cadence
+biweekly --amount 2,400 --next 2026-10-09`; weekly, semimonthly, monthly,
+quarterly, annual and once work the same way), a `--remaining` amount, or a
+`--full-year` figure, which replaces the forecast instead of adding to it. A pay
+stub with no statement behind it starts a stream with `--ytd 40,000 --through
+2026-09-30`; a schedule with no amount so far leaves the stream unknown, never
+zero. `--low` and `--high` bound an uncertain stream and the notes show the
+full-year range. A stream whose annual form is in (a W-2, a 1099, a typed value)
+keeps it and its forecast is not used. `planner forecast --year <year>` lists
+every stream: owner, kind of income, so far, through, rest of year, full year
+and range. One owner per line until the spouse is a full person; a spouse's
+stream needs a joint return.
+
 From a terminal `planner plan` first asks the few typed fields, and each has an
 option so a script or Task Scheduler never waits (`--no-ask` skips the
 questions; Enter skips one):
 
 - **Total income** (`--total-income`): your own full-year figure when the YTD
-  ledger lags. Wages become the total less the other income the ledger counts
+  ledger lags. Wages (or the line `--total-income-line` names: se_income,
+  interest, non_qualified_dividends, ira_distributions) become the total less
+  the other income the ledger counts
   (business, interest, dividends, gains, IRA distributions and the conversions
   recorded so far; Social Security is left to the engine). Gains and losses
   count as one net figure, and a net loss only up to 3,000 (1,500 married
   filing separately), as on Form 1040 line 7. The Q4 dividends,
   planned sales and conversion below are added on top. A total below the other
-  income is refused and says by how much.
+  income is refused and says by how much, and so is a line that has its own
+  forecast. The Q4 dividends are refused beside a dividend forecast: the same
+  dividends would count twice.
 - **Q4 dividends, planned short-term and long-term sales**
   (`--q4-dividends`, `--sales-st`, `--sales-lt`): added to the year. A loss may
   be typed in parentheses.
@@ -485,8 +509,9 @@ installments use the same shift.
 tax bill or the ACA credit, each sized from the ledger, priced through the
 engine and shown beside its deadline and friction (automatic, a trade, a
 trade inside a wash-sale window, needs outside cash, irreversible). Net is
-federal tax (income + SE) plus NC tax minus the ACA credit, saved or spent
-against doing nothing; friction is never folded into the number.
+federal tax (Form 1040 line 24, which holds any repayment of an advance ACA
+credit above the credit allowed) plus NC tax, less refundable credits and the
+ACA credit paid out above the advance, saved or spent against doing nothing; friction is never folded into the number.
 
 - **Get under a line**: pairing losses against the year's realized gains
   (only enough loss to net the gain to 0; a lot can be sold in part, lots
@@ -537,7 +562,14 @@ with every watched line. It refuses what the menu would never stack: two moves
 that move the same dollars (apply one), a key listed twice, a `--set` size at or
 under 0, and a size past what the move can move (a lowering move's sized amount;
 for a conversion the IRA balance, for a gain harvest the long-term gain held, for
-an inherited-IRA withdrawal its balance). `planner thresholds --year 2026` prints the sourced
+an inherited-IRA withdrawal its balance). One feasibility check (Phase 10, 2d)
+backs the menu, `whatif` and conversion sizing: moves that give more shares
+held over a year than the taxable account holds, a gain harvest past the gain
+left once the gifts are made, or traditional and Roth contributions past the one
+IRA limit they share are refused by `whatif` and priced alone on the menu. A
+set that takes more cash by its deadline (contributions paid in, tax added)
+than is on hand above `cash_target` is shown, not refused: `whatif` prints a
+`cash:` line and the menu a note. `planner thresholds --year 2026` prints the sourced
 limits and checks the ones the engine also carries; a mismatch (the engine's
 2026 IRA limit is still 7,000 against Notice 2025-67's 7,500) means the engine
 prices with its own value until policyengine-us updates. Engine runs are
@@ -967,6 +999,15 @@ year and next from the installed policyengine-us. It needs no network.
   release the same way, `planner update --rollback` goes back to
   `python-previous/`, and `planner update --check` looks for one now. `data/`
   and `out/` are never touched.
+- **An older `data/` opens in a newer release** (Phase 10, 2e). The first
+  writing command after an update copies the ledger to
+  `data/ledger/planner.db.schemaN.bak` (N is the old schema) and then brings it
+  up to date one step at a time. A ledger written by a *newer* release (say
+  after `--rollback`, or restoring a newer backup) is refused with "written by
+  a newer planner" and left exactly as it was: use that release again, or
+  restore a backup this release made. Every release's tests open the v0.1.0
+  `data/` folder in `tests/fixtures/data-v0.1.0` (synthetic, made by the
+  v0.1.0 tag with `make.py` beside it) and run it end to end.
 - `scripts/build_release.py` writes the `.sha256` file beside the zip.
 
 ## Rolling over to the new year (Phase 7)

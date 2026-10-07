@@ -344,6 +344,11 @@ rollover:
   evidence: implemented
   tests: ["tests/test_rollover.py"]
   note: "draft->filed carry, Sch D carryover, snapshots, checklist, idempotent, corrected 1099 re-opens as a new version, dashboard button; asks spending_actual and reports the recomputed band and glide path (test_roll_asks_spending_actual_and_reports_band)"
+income_forecast:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_forecast.py"]
+  note: "every income stream carried to Dec 31: YTD through its last row + pay schedule / remaining / full year (replaces, never adds), pay-stub start, low/high range, final when the annual form is in; total_income residual on a named line"
 planner_run:
   status: verified
   evidence: implemented
@@ -364,6 +369,11 @@ input_validation:
   evidence: implemented
   tests: ["tests/test_validation.py"]
   note: "typed answers bounded and refused with what is expected; CLI years/amounts/ports ranged"
+feasibility_check:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_feasible.py"]
+  note: "one check behind conversion sizing, the lever menu and whatif: cash on hand above cash_target (shown, conversion candidates cut to fit), shares given past the lots held, gain harvest past the gain left, IRA + Roth past the shared limit (refused)"
 stale_banner:
   status: verified
   evidence: implemented

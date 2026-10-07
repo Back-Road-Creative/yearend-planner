@@ -1,0 +1,8 @@
+CASH-1:
+  balance: 15000
+  balance_date: '2026-10-05'
+  type: cash
+IRA-1:
+  balance: 80000
+  balance_date: '2026-10-05'
+  type: trad_ira
