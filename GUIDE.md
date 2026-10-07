@@ -1663,6 +1663,22 @@ year and next from the installed policyengine-us. It needs no network.
   v0.1.0 tag with `make.py` beside it) and run it end to end.
 - `scripts/build_release.py` writes the `.sha256` file beside the zip.
 
+### What an update refuses (unit 7d)
+
+| Case | What happens | Way past it |
+|---|---|---|
+| The zip does not match its published sha256 | refused before anything is unpacked | download it again |
+| A file in the staged update changed, went missing or was added before the swap (an edit, a virus scanner's quarantine, a disk fault) | the staged copy is removed; this release runs on | `planner update --check` downloads it again |
+| An older planner, an older policyengine-us, or a release that drops a tax year the installed one publishes (older rules) | refused; the staged copy is removed | `--allow-downgrade`; to go back one release, `planner update --rollback` |
+| A release, or a rollback, that reads an older ledger than yours | refused, with any flag: it would refuse every writing command | restore a backup made with that release; a rollback names the copy kept before your ledger was brought up to date (`data/ledger/planner.db.schemaN.bak`) |
+| A release that fails its selfcheck or its regression | refused; nothing of it is left behind | wait for the next release |
+| A check stopped part way | nothing is marked ready, so nothing swaps in | run the update again |
+
+When a release is staged, the sha256 of every file in it is written to its
+`READY.json`. The file list is checked again just before the swap, both in
+process and before `swap.cmd` is written, so what swaps in is exactly what
+passed the selfcheck.
+
 ## Rolling over to the new year (Phase 7)
 
 When a year ends, the dashboard shows "2026 has ended" with a **Roll over to

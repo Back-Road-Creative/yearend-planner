@@ -13,6 +13,16 @@ for the pinned engine (``data/engine-baseline.json``) to within $5:
 
 ``data/`` and ``out/`` are never touched by an update or a rollback.
 
+Safety (unit 7d): the sha256 covers the zip; once staged, every candidate file's
+sha256 is kept in ``READY.json`` and checked again just before the swap, so a
+file changed, removed or added in between (an edit, a virus scanner's
+quarantine, a disk fault) removes the candidate instead of swapping it in. An
+older planner, an older policyengine-us or a candidate that drops a tax year the
+installed one publishes waits for ``--allow-downgrade``. A release (or a
+rollback) that reads an older ledger schema than the live ledger's is refused
+outright: it would refuse every writing command. A candidate that fails any
+check leaves no folder behind.
+
 On Windows a running python.exe locks ``python/``, so the folders cannot move
 while this process lives. There, :func:`stage` verifies and self-checks the
 candidate, :func:`write_swap` writes ``data/update/swap.cmd``, and the process
@@ -265,6 +275,7 @@ def rollback(root: Path) -> str:
     prev = root / PREVIOUS
     if not (prev / "VERSION").exists():
         raise UpdateError("nothing to roll back to (no python-previous/VERSION)")
+    refuse_older_reader(prev, root, "the previous release")
     broken = root / CANDIDATE
     if broken.exists():
         shutil.rmtree(broken)
@@ -375,6 +386,119 @@ def carry_thresholds(root: Path, cand: Path) -> list[str]:
     return added
 
 
+ALLOW_DOWNGRADE = "--allow-downgrade"
+
+
+def release_schema(folder: Path) -> int | None:
+    """The ledger schema a release folder reads (its planner/ledger/db.py)."""
+    src = folder / "planner" / "ledger" / "db.py"
+    if not src.is_file():
+        return None
+    text = src.read_text(encoding="utf-8")
+    m = re.search(r"^SCHEMA_VERSION = (\d+)", text, re.MULTILINE)
+    return int(m.group(1)) if m else None
+
+
+def refuse_older_reader(folder: Path, root: Path, what: str) -> None:
+    """Raise :class:`UpdateError` when the release in ``folder`` reads an older
+    ledger schema than the live ledger was written at (or none it names): put
+    live, it would refuse every writing command. No flag overrides this."""
+    from planner.ledger import db
+
+    ledger = root / "data" / "ledger" / "planner.db"
+    live = db.schema_of(ledger)
+    reads = release_schema(folder)
+    if live is None or (reads is not None and reads >= live):
+        return
+    msg = (
+        f"{what} reads ledger schema {reads if reads is not None else '(none named)'}"
+        f" but your ledger is at schema {live}, so it would refuse it"
+    )
+    bak = ledger.with_name(f"{ledger.name}.schema{reads}.bak")
+    if reads is not None and bak.exists():
+        msg += (
+            f"; the copy kept before your ledger was brought up to date is "
+            f"data/ledger/{bak.name} (anything entered since is not in it)"
+        )
+    raise UpdateError(msg)
+
+
+def live_years() -> tuple[int, ...]:
+    """The tax years the installed engine publishes. It imports the engine, so
+    :func:`stage` asks only when the candidate reports its own years."""
+    from planner.engine.tax import published_years
+
+    return published_years()
+
+
+def hold_downgrade(cand: Path, root: Path, years: tuple[int, ...]) -> None:
+    """Raise :class:`UpdateError` for a candidate older than the live install:
+    an older planner, an older policyengine-us, or fewer published tax years
+    (stale rules)."""
+    found: list[str] = []
+    new, old = (
+        (cand / "VERSION").read_text(encoding="utf-8").strip(),
+        installed_version(root),
+    )
+    if version_key(new) < version_key(old):
+        found.append(
+            f"planner {new} is older than the installed {old} (planner update "
+            "--rollback returns to the release before this one)"
+        )
+    new_engine, old_engine = candidate_engine(cand), installed_engine()
+    if new_engine and old_engine and version_key(new_engine) < version_key(old_engine):
+        found.append(
+            f"its policyengine-us {new_engine} is older than the installed {old_engine}"
+        )
+    lost = sorted(set(live_years()) - set(years)) if years else []
+    if lost:
+        found.append(
+            f"its tax engine does not publish {format_years(tuple(lost))}, which the "
+            "installed one does"
+        )
+    if found:
+        raise UpdateError(f"{'; '.join(found)}; {ALLOW_DOWNGRADE} installs it anyway")
+
+
+def manifest(cand: Path) -> dict[str, str]:
+    """sha256 of every file in the candidate but READY.json, by relative path."""
+    return {
+        p.relative_to(cand).as_posix(): sha256(p)
+        for p in sorted(cand.rglob("*"))
+        if p.is_file() and p != cand / READY
+    }
+
+
+def verify_staged(root: Path) -> dict[str, Any]:
+    """The staged candidate's READY record once every file still matches the
+    list taken after its selfcheck. A file changed, missing or added since
+    removes the candidate (nothing is swapped) and raises."""
+    ready = staged(root)
+    if ready is None:
+        raise UpdateError("no update is staged")
+    kept: dict[str, str] = ready.get("files") or {}
+    now = manifest(root / CANDIDATE)
+    changed = sorted(k for k in kept.keys() | now.keys() if kept.get(k) != now.get(k))
+    if changed or not kept:
+        shutil.rmtree(root / CANDIDATE, ignore_errors=True)
+        first = changed[0] if changed else "READY.json"
+        how = (
+            "no file list"
+            if not kept
+            else "missing"
+            if first not in now
+            else "added"
+            if first not in kept
+            else "changed"
+        )
+        raise UpdateError(
+            f"the staged update {ready['version']} changed after its selfcheck "
+            f"({len(changed)} file(s); first {first}: {how}); it was removed and "
+            "nothing was swapped: planner update --check downloads it again"
+        )
+    return ready
+
+
 def stage(
     zip_path: Path,
     expected_sha256: str,
@@ -382,6 +506,7 @@ def stage(
     python_exe: str = "python.exe",
     allow_major: bool = False,
     today: date | None = None,
+    allow_downgrade: bool = False,
 ) -> UpdateResult:
     """Verify, extract and self-check the candidate, carry hand limits into it
     and mark it ready. Nothing live is touched. A candidate that jumps a major
@@ -390,33 +515,40 @@ def stage(
     regression over the reference cases; a figure more than $5 off the pinned
     engine's baseline (``data/engine-baseline.json``, recorded here if no run
     has yet) refuses it, ``allow_major`` or not. The tax years its engine
-    publishes are recorded, with next year flagged when absent."""
+    publishes are recorded, with next year flagged when absent. An older
+    candidate waits for ``allow_downgrade`` (:func:`hold_downgrade`); one that
+    reads an older ledger schema is refused either way. Any refusal removes
+    the candidate folder."""
     verify_zip(zip_path, expected_sha256)
-    cand = extract_candidate(zip_path, root)
-    if not allow_major:
-        try:
-            hold_major(cand, root)
-        except MajorUpdateHeld:
-            shutil.rmtree(cand, ignore_errors=True)
-            raise
     try:
-        pinned = verify.pinned_baseline(root, today)
-    except ValueError as exc:
-        raise UpdateError(str(exc)) from exc
-    check = selfcheck_candidate(cand, python_exe, pinned)
-    version = (cand / "VERSION").read_text(encoding="utf-8").strip()
-    years = years_in(check)
-    next_year = (today or date.today()).year + 1
-    missing = next_year if years and next_year not in years else None
-    carried = carry_thresholds(root, cand)
-    ready = {
-        "version": version,
-        "selfcheck": check,
-        "carried": carried,
-        "years": list(years),
-        "missing_next": missing,
-    }
-    (cand / READY).write_text(json.dumps(ready), encoding="utf-8")
+        cand = extract_candidate(zip_path, root)
+        version = (cand / "VERSION").read_text(encoding="utf-8").strip()
+        refuse_older_reader(cand, root, f"planner {version}")
+        if not allow_major:
+            hold_major(cand, root)
+        try:
+            pinned = verify.pinned_baseline(root, today)
+        except ValueError as exc:
+            raise UpdateError(str(exc)) from exc
+        check = selfcheck_candidate(cand, python_exe, pinned)
+        years = years_in(check)
+        if not allow_downgrade:
+            hold_downgrade(cand, root, years)
+        next_year = (today or date.today()).year + 1
+        missing = next_year if years and next_year not in years else None
+        carried = carry_thresholds(root, cand)
+        ready = {
+            "version": version,
+            "selfcheck": check,
+            "carried": carried,
+            "years": list(years),
+            "missing_next": missing,
+            "files": manifest(cand),
+        }
+        (cand / READY).write_text(json.dumps(ready), encoding="utf-8")
+    except BaseException:
+        shutil.rmtree(root / CANDIDATE, ignore_errors=True)
+        raise
     return UpdateResult(version, check, years, missing)
 
 
@@ -437,7 +569,13 @@ def launcher_swaps(root: Path) -> bool:
 def write_swap(root: Path, mode: str, rerun: bool) -> Path:
     """``mode`` "in" (candidate -> live, live kept as previous) or "back"
     (previous -> live, live parked in the candidate folder and deleted).
-    ``rerun`` runs the original command again on the new release."""
+    ``rerun`` runs the original command again on the new release. The same
+    checks as the in-process swap run first: the candidate's files for "in",
+    the previous release's ledger schema for "back"."""
+    if mode == "in":
+        verify_staged(root)
+    else:
+        refuse_older_reader(root / PREVIOUS, root, "the previous release")
     src, park = (CANDIDATE, PREVIOUS) if mode == "in" else (PREVIOUS, CANDIDATE)
     folder = root / "data" / "update"
     folder.mkdir(parents=True, exist_ok=True)
@@ -488,9 +626,7 @@ def _ready_note(ready: dict[str, Any]) -> str:
 
 def apply_staged(root: Path) -> str:
     """In-process swap of a staged candidate (no launcher)."""
-    ready = staged(root)
-    if ready is None:
-        raise UpdateError("no update is staged")
+    ready = verify_staged(root)
     before = installed_version(root)
     (root / CANDIDATE / READY).unlink()
     swap_in(root / CANDIDATE, root)
@@ -503,6 +639,5 @@ def apply(
     zip_path: Path, expected_sha256: str, root: Path, python_exe: str = "python.exe"
 ) -> UpdateResult:
     result = stage(zip_path, expected_sha256, root, python_exe)
-    (root / CANDIDATE / READY).unlink()
-    swap_in(root / CANDIDATE, root)
+    apply_staged(root)
     return result
