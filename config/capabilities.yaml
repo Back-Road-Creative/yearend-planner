@@ -335,6 +335,11 @@ tax_aware_placement:
   evidence: implemented
   tests: ["tests/test_placement.py"]
   note: "unit 4c: planner place and the Placement panel; the household's typed classes (planner classify; a cash account is cash, nothing else guessed) against its own target mix, the reserve kept in cash; moves inside the tax-advantaged accounts first, then spare cash, then taxable loss lots, then gain lots by least gain per dollar; a loss lot bought inside 30 days in any account is skipped (IRC 1091, Rev. Rul. 2008-5); the loss and gain sales' tax effect priced through the engine; an untyped holding or one with no cost basis named, never moved"
+longterm_path_per_account:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_longterm.py"]
+  note: "unit 4e: the glide table per account (cash, taxable, tax-deferred, inherited, Roth, HSA) to 95 in today's dollars; RMDs from the Uniform Lifetime Table (Pub. 590-B App. B Table III) at 73 or 75 by birth year (IRC 401(a)(9)(C)(v)), an inherited IRA drained by its 10-year deadline; debt payments amortized from goals; draws grossed up for federal tax (this year's brackets, standard and age-65 deduction, 0/15/20% gains, IRC 86 Social Security worksheet with unindexed thresholds) and state tax at this year's engine share of AGI; account owner (self or spouse) sets the ages; three fixed stress cases with run-out age, lifetime tax and what is left; no success percentage. Not modeled, named: NIIT, the 2025-2028 senior deduction, later-year IRMAA, state brackets"
 yearend_list:
   status: verified
   evidence: implemented
@@ -479,7 +484,7 @@ dashboard_glide_cash_band_tables:
   status: verified
   evidence: implemented
   tests: ["tests/test_dashboard.py", "tests/test_year.py", "tests/test_spending.py"]
-  note: "the glide panel shows the band and the age/year table (on-track beside the comfort-floor line), the cash panel the 24-month cash line against the target, the spending panel the return-band table; planner plan prints the same tables"
+  note: "the glide panel shows the band and the age/year table per account (on-track total beside the comfort-floor total), the cash panel the 24-month cash line against the target, the spending panel the return-band table; planner plan prints the same tables"
 limits_refresh:
   status: verified
   evidence: implemented

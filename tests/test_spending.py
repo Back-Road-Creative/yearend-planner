@@ -234,8 +234,9 @@ def test_cli_spend_and_glide(lay: Layout) -> None:
         ],
     )
     assert r.exit_code == 0, r.output
-    assert "covered" in r.output and "stress floor returns" in r.output
-    assert "comfort floor" in r.output and "(inside the band)" in r.output
+    assert "covered" in r.output and "case floor returns" in r.output
+    assert "comfort-floor real" in r.output and "(inside the band)" in r.output
+    assert "RMDs (you): from age 75 in 2046" in r.output
     assert "2026-11  " in r.output and "25,000.00" in r.output
 
 
