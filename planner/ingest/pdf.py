@@ -26,6 +26,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +35,7 @@ from planner.config import safe_load
 AMOUNT = r"(\(?-?\$?\s*[\d,]*\d(?:\.\d{1,2})?\)?)"
 # The year a form prints after its OMB number, where it has no year box (the
 # 1099-R and 1098-T print it there, above the form number).
-OMB_YEAR = r"OMB No\.\s*[\d-]+\s+"
+OMB_YEAR = r"OMB\s+No\.\s*[\d-]+\s+"
 DEFAULT_YEAR = (
     rf"(?:(?:tax year|for calendar year|calendar year)\s*:?\s*|{OMB_YEAR})(20\d\d)"
 )
@@ -43,7 +44,7 @@ DEFAULT_YEAR = (
 # so the pattern's group takes the name on the line below; or a colon.
 ADDRESS = (
     r"(?:,[^\n:]*(?:\n[ \t]*[^\n:]*?"
-    r"(?:telephone (?:no\.|number)|postal code|ZIP code)[^\n:]*)?)?[ \t]*:?\s*"
+    r"(?:telephone\s+(?:no\.|number)|postal\s+code|ZIP\s+code)[^\n:]*)?)?[ \t]*:?\s*"
 )
 DEFAULT_ISSUER = r"payer'?s nameADDRESS([^\n]+)"
 KINDS = ("amount", "text", "check")
@@ -268,6 +269,165 @@ def _compile(pattern: str) -> re.Pattern[str]:
     return re.compile(pattern, re.IGNORECASE)
 
 
+def _loose(pattern: re.Pattern[str]) -> re.Pattern[str]:
+    """``pattern`` with each run of spacing it needs made optional: OCR glues a
+    box number to its label ("4Federal") and drops spaces inside a label."""
+    loose = pattern.pattern.replace(r"\s+", r"\s*").replace("[ \\t]+", "[ \\t]*")
+    return re.compile(loose, pattern.flags)
+
+
+@cache
+def loosened(tpl: Template) -> Template:
+    """The template as it reads an OCR page: ``_loose`` on every pattern."""
+    boxes = tuple(
+        replace(
+            b,
+            pattern=_loose(b.pattern),
+            options=tuple((v, _loose(p)) for v, p in b.options),
+            labels=tuple(_loose(p) for p in b.labels),
+        )
+        for b in tpl.boxes
+    )
+    return replace(
+        tpl,
+        year_pattern=_loose(tpl.year_pattern),
+        issuer_pattern=_loose(tpl.issuer_pattern),
+        boxes=boxes,
+        event=tuple((k, _loose(p)) for k, p in tpl.event),
+    )
+
+
+def _literal(pattern: str) -> str:
+    """The words a compiled pattern opens with, as the form prints them: its
+    spacing as single spaces, up to its first group, class or repeat. A
+    pattern that is one group of choices (a check box label) gives its first."""
+    out: list[str] = []
+    i = 3 if pattern.startswith("(?:") else 0
+    while i < len(pattern):
+        for space in (r"\s+", r"\s*", "[ \\t]+", "[ \\t]*"):
+            if pattern.startswith(space, i):
+                out.append(" ")
+                i += len(space)
+                break
+        else:
+            ch = pattern[i]
+            if pattern.startswith(r"\b", i):
+                i += 2
+                continue
+            if ch == "\\" and i + 1 < len(pattern) and not pattern[i + 1].isalnum():
+                out.append(pattern[i + 1])
+                i += 2
+                continue
+            if ch in "[(|)*+{.^$\\":
+                break
+            if ch == "?":
+                if out:
+                    out.pop()  # the optional letter ("PAYER'?S")
+            else:
+                out.append(ch)
+            i += 1
+    return " ".join("".join(out).split())
+
+
+def _key(text: str) -> str:
+    return "".join(ch for ch in text.lower() if ch.isalnum())
+
+
+def label_phrases(tpl: Template) -> tuple[str, ...]:
+    """The box labels a template's patterns open with, for ``repaired``."""
+    patterns = [tpl.issuer_pattern, *(p for _k, p in tpl.event)]
+    for b in tpl.boxes:
+        patterns += [b.pattern, *b.labels, *(p for _v, p in b.options)]
+    words = {_literal(p.pattern) for p in patterns}
+    return tuple(sorted(w for w in words if len(_key(w)) >= 6))
+
+
+# How like a label the start of an OCR'd box must read; a short label may
+# have one letter wrong.
+REPAIR_RATIO = 0.85
+
+
+def repaired(text: str, phrases: Sequence[str]) -> str:
+    """An OCR'd page with the box labels it misread put back as the form prints
+    them, so the template's patterns find them. OCR glues and splits words and
+    misreads letters ("4Federal income taxwithhekd"); where the start of a box
+    (its first line and the indented lines under it) reads within
+    ``REPAIR_RATIO`` of a label, the label's words replace what was read, each
+    on the line it was read from. The page keeps its line count, so a value's
+    line is where it was read."""
+    from difflib import SequenceMatcher
+
+    keys = [(p, _key(p)) for p in phrases]
+    lines = text.split("\n")
+    start = 0
+    while start < len(lines):
+        end = start + 1
+        while end < len(lines) and lines[end].startswith("  "):
+            end += 1
+        mark = f"{CELL} " if lines[start].startswith(f"{CELL} ") else ""
+        body = [lines[start][len(mark) :]] + [ln[2:] for ln in lines[start + 1 : end]]
+        # each letter or digit of the box, with the line and place it came from
+        spots = [
+            (n, i)
+            for n, ln in enumerate(body)
+            for i, ch in enumerate(ln)
+            if ch.isalnum()
+        ]
+        read = "".join(body[n][i].lower() for n, i in spots)
+        best = (0.0, "", 0)
+        number = _number(read)
+        for phrase, key in keys:
+            # a box number that was read stands: "2 Royalties" is not "1 Rents"
+            if number and _number(key) not in ("", number):
+                continue
+            # one misread letter in a short label ("1Rerts")
+            need = min(REPAIR_RATIO, 1 - 1 / len(key)) - 1e-9
+            for cut in range(max(1, len(key) - 2), min(len(read), len(key) + 2) + 1):
+                ratio = SequenceMatcher(None, key, read[:cut]).ratio()
+                if ratio >= need and (
+                    ratio > best[0] or (ratio == best[0] and len(phrase) > len(best[1]))
+                ):
+                    best = (ratio, phrase, cut)
+        _ratio, phrase, cut = best
+        if phrase:
+            last, at = spots[cut - 1]
+            per = [sum(1 for n, _i in spots[:cut] if n == k) for k in range(last + 1)]
+            words = phrase.split()
+            scale = sum(per) / max(1, len(_key(phrase)))
+            placed: list[list[str]] = [[] for _ in per]
+            done = 0
+            for word in words:
+                mid = (done + len(_key(word)) / 2) * scale
+                k, total = 0, per[0]
+                while mid > total and k < last:
+                    k += 1
+                    total += per[k]
+                placed[k].append(word)
+                done += len(_key(word))
+            new = [" ".join(p) for p in placed]
+            rest = body[last][at + 1 :]
+            # no space where the label stops inside a word ("comp|ensation")
+            # or before its punctuation
+            glue = "" if rest[:1].isalnum() or rest[:1] in ",.;:)" else " "
+            new[last] = (new[last] + glue + rest.strip()).strip()
+            body[: last + 1] = new
+            lines[start:end] = [mark + body[0]] + ["  " + b for b in body[1:]]
+        start = end
+    return "\n".join(lines)
+
+
+def _number(key: str) -> str:
+    """The box number a label key opens with ("12a..." gives "12")."""
+    return re.match(r"\d*", key).group()  # type: ignore[union-attr]
+
+
+def split_name(name: str) -> str:
+    """An issuer's name as OCR glued it, split back into words at each change of
+    case and before a bracket ("ExampleHSABank(synthetic)")."""
+    name = re.sub(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ", name)
+    return " ".join(re.sub(r"(?<=\S)(?=\()", " ", name).split())
+
+
 def _spaces(pattern: str) -> str:
     """``pattern`` with each literal space (outside a character class) matching
     any run of whitespace, line breaks included: an official form wraps a long
@@ -400,13 +560,25 @@ def _page_text(page: Any) -> str:
         for c in table.cells
         if c and max(c[2] - c[0], c[3] - c[1]) >= CHECK_SIDE
     ]
+    words = [w for w in page.extract_words(extra_attrs=["upright"]) if w["upright"]]
+    lines = grid_lines(words, cells)
+    return Ruled(normalize("\n".join(t for t, _ in lines)), plain) if lines else plain
+
+
+def grid_lines(
+    words: list[dict[str, Any]], cells: Sequence[Sequence[float]]
+) -> list[tuple[str, list[dict[str, Any]]]]:
+    """A ruled page read one cell at a time, each line with its words: a cell's
+    first line starts with ``CELL``, its others are indented, and the words in
+    no cell follow. Each word goes to the smallest cell around its centre.
+    Empty when fewer than ``MIN_CELLS`` cells hold words. A word is a dict with
+    ``text``, ``x0``, ``x1``, ``top`` and ``bottom``; a cell is
+    ``(x0, top, x1, bottom)`` in the same units."""
     if len(cells) < MIN_CELLS:
-        return plain
+        return []
     inside: dict[int, list[dict[str, Any]]] = {}
     outside: list[dict[str, Any]] = []
-    # Rotated or stacked words (the W-2's sideways "Code") would split a
-    # cell's lines.
-    words = [w for w in page.extract_words(extra_attrs=["upright"]) if w["upright"]]
+    # Stacked words (the W-2's sideways "Code") would split a cell's lines.
     stacked = _stacked(words)
     for word in words:
         if id(word) in stacked:
@@ -422,23 +594,29 @@ def _page_text(page: Any) -> str:
         else:
             outside.append(word)
     if len(inside) < MIN_CELLS:
-        return plain
-    lines: list[str] = []
+        return []
+    lines: list[tuple[str, list[dict[str, Any]]]] = []
     for n in sorted(inside, key=lambda n: (cells[n][1], cells[n][0])):
-        rows = _rows(inside[n])
-        lines.append(f"{CELL} {rows[0]}")
-        lines.extend(f"  {row}" for row in rows[1:])
-    lines.extend(_rows(outside))
-    return Ruled(normalize("\n".join(lines)), plain)
+        first, *rest = _rows(inside[n])
+        lines.append((f"{CELL} {_join(first)}", first))
+        lines.extend((f"  {_join(row)}", row) for row in rest)
+    lines.extend((_join(row), row) for row in _rows(outside))
+    return lines
+
+
+def _join(row: list[dict[str, Any]]) -> str:
+    return " ".join(str(w["text"]) for w in row)
 
 
 def _stacked(words: list[dict[str, Any]]) -> set[int]:
-    """The ids of letters printed one above another, as a vertical label: short
-    words of letters (not a check mark) sharing a left edge on adjacent rows."""
+    """The ids of letters printed one above another, as a vertical label:
+    single letters (not a check mark) sharing a left edge on adjacent rows. A
+    word of two letters is not one: "or" in "Short-term gain or loss" sits right
+    above the "or" of "Long-term gain or loss"."""
     short = [
         w
         for w in words
-        if len(w["text"]) <= 2 and w["text"].isalpha() and w["text"] not in ("X", "x")
+        if len(w["text"]) == 1 and w["text"].isalpha() and w["text"] not in ("X", "x")
     ]
     out: set[int] = set()
     for a in short:
@@ -454,7 +632,7 @@ def _area(cell: Sequence[float]) -> float:
     return (cell[2] - cell[0]) * (cell[3] - cell[1])
 
 
-def _rows(words: list[dict[str, Any]]) -> list[str]:
+def _rows(words: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     """Words joined into lines: a word whose top is within half its height of
     the line's first word is on that line; each line reads left to right."""
     rows: list[list[dict[str, Any]]] = []
@@ -464,7 +642,7 @@ def _rows(words: list[dict[str, Any]]) -> list[str]:
             rows[-1].append(word)
         else:
             rows.append([word])
-    return [" ".join(w["text"] for w in sorted(r, key=lambda w: w["x0"])) for r in rows]
+    return [sorted(r, key=lambda w: w["x0"]) for r in rows]
 
 
 def parse_pdf(
@@ -602,17 +780,26 @@ def _read_ruled(
     both fail, the cells' reason."""
     if not isinstance(text, Ruled):
         return _read_page(page_no, text, templates, ocr)
+
+    def plain() -> tuple[list[ParsedForm], list[str]]:
+        # An OCR page keeps the cells' lines and then the plain text's, so a
+        # spot in the plain text counts on past the cells' lines.
+        found, said = _read_page(page_no, text.plain, templates, ocr)
+        by = text.count("\n") + 1
+        spots = [{k: (p, n + by) for k, (p, n) in f.spots.items()} for f in found]
+        return [replace(f, spots=s) for f, s in zip(found, spots, strict=True)], said
+
     try:
         found, said = _read_page(page_no, text, templates, ocr)
     except Unmatched as exc:
         try:
-            found, said = _read_page(page_no, text.plain, templates, ocr)
+            found, said = plain()
         except Unmatched:
             raise exc from None
         if not found:
             raise
         return found, said
-    return (found, said) if found else _read_page(page_no, text.plain, templates, ocr)
+    return (found, said) if found else plain()
 
 
 def _read_page(
@@ -624,14 +811,16 @@ def _read_page(
     for tpl in templates:
         if not tpl.matches(text):
             continue
-        year = tpl.find_year(text)
+        tpl = loosened(tpl) if ocr else tpl
+        page = repaired(text, label_phrases(tpl)) if ocr else text
+        year = tpl.find_year(page)
         if year is None:
             raise Unmatched(f"page {page_no}: {tpl.form} found but no tax year")
         if year not in tpl.years:
             notes.append(f"page {page_no}: {tpl.form} {year} has no template")
             continue
         try:
-            boxes, missing = tpl.parse_boxes(text)
+            boxes, missing = tpl.parse_boxes(page)
         except Unmatched as exc:
             raise Unmatched(f"page {page_no}: {tpl.form} {year}: {exc}") from exc
         if missing:
@@ -639,12 +828,12 @@ def _read_page(
                 f"page {page_no}: {tpl.form} {year}: required boxes not found: "
                 + ", ".join(missing)
             )
-        spots = tpl.spots(text, page_no, boxes) if ocr else {}
+        spots = tpl.spots(page, page_no, boxes) if ocr else {}
+        issuer = tpl.find_issuer(page)
+        issuer = split_name(issuer) if ocr and tpl.issuer is None else issuer
         _merge(
             forms,
-            ParsedForm(
-                tpl.form, year, tpl.find_issuer(text), page_no, boxes, ocr, spots
-            ),
+            ParsedForm(tpl.form, year, issuer, page_no, boxes, ocr, spots),
         )
     return forms, notes
 

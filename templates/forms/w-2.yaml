@@ -6,8 +6,10 @@
 # nonstatutory option income the Needed panel's 1099-B basis items look for.
 form: W-2
 years: [2024, 2025, 2026]
-match: ["W-2", "Wage and Tax Statement"]
-year_pattern: "(?:Wage and Tax Statement\\s*|tax year\\s*:?\\s*|\\bW-2\\s+)(20\\d\\d)"
+# The big outlined "W-2" defeats OCR, so the title and box a name the form; a
+# scan reads the year before "Department of the Treasury" on the title line.
+match: ["Wage and Tax Statement", "Employee's social security number"]
+year_pattern: "(?:Wage and Tax Statement\\s*|tax year\\s*:?\\s*|\\bW-2\\s+|(?=20\\d\\d Department of the Treasury))(20\\d\\d)"
 issuer_pattern: "Employer'?s nameADDRESS([^\\n]+)"
 boxes:
   "1": {label: "Wages, tips, other compensation", pattern: "\\b1 Wages, tips, other comp(?:ensation|\\.)\\s+AMOUNT", required: true}
@@ -17,16 +19,18 @@ boxes:
   "6": {label: "Medicare tax withheld", pattern: "\\b6 Medicare tax withheld\\s+AMOUNT"}
   "7": {label: "Social security tips", pattern: "\\b7 Social security tips\\s+AMOUNT"}
   "10": {label: "Dependent care benefits", pattern: "\\b10 Dependent care benefits\\s+AMOUNT"}
-  "12D": {label: "Box 12 code D: 401(k) elective deferrals", pattern: '\b12[a-d]?\s+(?:Code\s+)?D\s+AMOUNT'}
-  "12E": {label: "Box 12 code E: 403(b) elective deferrals", pattern: '\b12[a-d]?\s+(?:Code\s+)?E\s+AMOUNT'}
-  "12F": {label: "Box 12 code F: 408(k)(6) SARSEP deferrals", pattern: '\b12[a-d]?\s+(?:Code\s+)?F\s+AMOUNT'}
-  "12G": {label: "Box 12 code G: 457(b) deferrals", pattern: '\b12[a-d]?\s+(?:Code\s+)?G\s+AMOUNT'}
-  "12H": {label: "Box 12 code H: 501(c)(18)(D) contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?H\s+AMOUNT'}
-  "12S": {label: "Box 12 code S: SIMPLE 408(p) deferrals", pattern: '\b12[a-d]?\s+(?:Code\s+)?S\s+AMOUNT'}
-  "12AA": {label: "Box 12 code AA: Roth 401(k) contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?AA\s+AMOUNT'}
-  "12BB": {label: "Box 12 code BB: Roth 403(b) contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?BB\s+AMOUNT'}
-  "12EE": {label: "Box 12 code EE: Roth governmental 457(b) contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?EE\s+AMOUNT'}
-  "12V": {label: "Box 12 code V: income from nonstatutory stock options", pattern: '\b12[a-d]?\s+(?:Code\s+)?V\s+AMOUNT'}
-  "12W": {label: "Box 12 code W: employer and payroll HSA contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?W\s+AMOUNT'}
+  # A scan reads the sideways "Code" of box 12 as its first letter, and may run
+  # "box 12" of the label into one word.
+  "12D": {label: "Box 12 code D: 401(k) elective deferrals", pattern: '(?:\b|(?<=box))12[a-d]?\s+(?:C(?:ode)?\s+)?D\s+AMOUNT'}
+  "12E": {label: "Box 12 code E: 403(b) elective deferrals", pattern: '(?:\b|(?<=box))12[a-d]?\s+(?:C(?:ode)?\s+)?E\s+AMOUNT'}
+  "12F": {label: "Box 12 code F: 408(k)(6) SARSEP deferrals", pattern: '(?:\b|(?<=box))12[a-d]?\s+(?:C(?:ode)?\s+)?F\s+AMOUNT'}
+  "12G": {label: "Box 12 code G: 457(b) deferrals", pattern: '(?:\b|(?<=box))12[a-d]?\s+(?:C(?:ode)?\s+)?G\s+AMOUNT'}
+  "12H": {label: "Box 12 code H: 501(c)(18)(D) contributions", pattern: '(?:\b|(?<=box))12[a-d]?\s+(?:C(?:ode)?\s+)?H\s+AMOUNT'}
+  "12S": {label: "Box 12 code S: SIMPLE 408(p) deferrals", pattern: '(?:\b|(?<=box))12[a-d]?\s+(?:C(?:ode)?\s+)?S\s+AMOUNT'}
+  "12AA": {label: "Box 12 code AA: Roth 401(k) contributions", pattern: '(?:\b|(?<=box))12[a-d]?\s+(?:C(?:ode)?\s+)?AA\s+AMOUNT'}
+  "12BB": {label: "Box 12 code BB: Roth 403(b) contributions", pattern: '(?:\b|(?<=box))12[a-d]?\s+(?:C(?:ode)?\s+)?BB\s+AMOUNT'}
+  "12EE": {label: "Box 12 code EE: Roth governmental 457(b) contributions", pattern: '(?:\b|(?<=box))12[a-d]?\s+(?:C(?:ode)?\s+)?EE\s+AMOUNT'}
+  "12V": {label: "Box 12 code V: income from nonstatutory stock options", pattern: '(?:\b|(?<=box))12[a-d]?\s+(?:C(?:ode)?\s+)?V\s+AMOUNT'}
+  "12W": {label: "Box 12 code W: employer and payroll HSA contributions", pattern: '(?:\b|(?<=box))12[a-d]?\s+(?:C(?:ode)?\s+)?W\s+AMOUNT'}
   "16": {label: "State wages, tips, etc.", pattern: "\\b16 State wages, tips, etc\\.?\\s+AMOUNT"}
   "17": {label: "State income tax", pattern: "\\b17 State income tax\\s+AMOUNT"}
