@@ -1,10 +1,12 @@
-"""Master plan units 5a and 5b: the benefits registry and its three-way
+"""Master plan units 5a-5c: the benefits registry and its three-way
 screen. The rule tests build Facts by hand; the engine tests use synthetic
 households (single filers at 18,000 of wages in NC and TX, a head of household
 with one child, a 67-year-old on a 15,000 pension, 67-year-olds on 12,000,
 18,000, 20,500 and 22,000 of Social Security, a 63-year-old on 150,000 of
-wages, a couple of 70 and 66 on a 250,000 pension) and the synthetic layout of
-test_spending."""
+wages, a couple of 70 and 66 on a 250,000 pension; for food and cash, heads of
+household on 25,000 with children of 3 and 8 in NC and CA, one on 50,000 with
+a child of 8 in TX, a 70-year-old on 10,000 of Social Security) and the
+synthetic layout of test_spending."""
 
 from __future__ import annotations
 
@@ -56,6 +58,11 @@ def test_csr_ends_past_250_and_the_credit_past_400_in_a_capped_year() -> None:
         "medicare_irmaa": bn.NOT,
         "msp": bn.NOT,
         "extra_help": bn.NOT,
+        "snap": bn.NOT,
+        "wic": bn.NOT,
+        "school_meals": bn.NOT,
+        "tanf": bn.NOT,
+        "ssi": bn.NOT,
     }
 
 
@@ -102,6 +109,11 @@ def test_every_program_fills_every_registry_field() -> None:
         "medicare_irmaa",
         "msp",
         "extra_help",
+        "snap",
+        "wic",
+        "school_meals",
+        "tanf",
+        "ssi",
     ]
     for p in bn.REGISTRY:
         for f in fields(p):
@@ -112,6 +124,7 @@ def test_every_program_fills_every_registry_field() -> None:
         assert text.count(f"  {label}: ") == len(bn.REGISTRY)
     assert "45 CFR 156.420(a)(1)-(3)" in text and "42 CFR 457.310(b)" in text
     assert "20 CFR 418.1115" in text and "SSA POMS HI 03030.025" in text
+    assert "7 USC 2014(g)(7)" in text and "20 CFR 416.1205" in text
     res = runner.invoke(app, ["benefits", "--programs"])
     assert res.exit_code == 0 and "Premium tax credit (marketplace) [aca_ptc]" in (
         res.output
@@ -145,7 +158,7 @@ def test_savings_programs_test_resources_where_the_state_does() -> None:
 
 def test_extra_help_is_deemed_by_a_savings_program_or_tested() -> None:
     deemed = bn.screen(replace(MEDICARE, resources=1_000.0))
-    assert [x.status for x in deemed[5:]] == [bn.POSSIBLE, bn.POSSIBLE]
+    assert [x.status for x in deemed[5:7]] == [bn.POSSIBLE, bn.POSSIBLE]
     assert "423.773(c)(1)(iii)" in deemed[6].why[0]
     # over the savings programs' limit; Extra Help's is higher (with burial)
     rich = replace(MEDICARE, resources=18_090.0)
@@ -243,6 +256,111 @@ def test_engine_screen_across_states_and_members() -> None:
     assert old["aca_ptc"].status == bn.UNKNOWN
 
 
+TODDLER = bn.Member("dependent 1", 3, medicaid=True, chip=False, wic=700.0)
+PUPIL = bn.Member("dependent 2", 8, medicaid=True, chip=False)
+FAMILY = replace(BASE, filing_status="HEAD_OF_HOUSEHOLD", state="NC")
+
+
+def test_snap_tests_resources_only_without_categorical_eligibility() -> None:
+    cat = bn.snap(replace(FAMILY, snap=4_000.0, snap_categorical=True))
+    assert cat.status == bn.POSSIBLE and cat.amount == 4_000.0
+    assert "273.2(j)(2)" in cat.why[0] and "273.9(d)(6)" in cat.why[1]
+    tested = replace(FAMILY, snap=700.0, snap_gross=True, snap_limit=4_500.0)
+    assert bn.snap(tested).status == bn.UNKNOWN  # no accounts on file
+    poor = bn.snap(replace(tested, liquid=4_500.0))
+    assert poor.status == bn.POSSIBLE and poor.amount == 700.0
+    rich = bn.snap(replace(tested, liquid=4_501.0))
+    assert rich.status == bn.NOT and rich.amount is None
+    assert "accounts other than retirement 4,501, over the 4,500" in rich.why[1]
+    assert bn.snap(replace(FAMILY, snap_gross=True)).status == bn.UNKNOWN
+    assert bn.snap(FAMILY).status == bn.NOT
+
+
+def test_wic_and_school_meals_read_each_childs_age() -> None:
+    kids = replace(FAMILY, members=(ADULT, TODDLER, PUPIL))
+    assert bn.wic(kids).status == bn.NOT  # income test fails
+    got = bn.wic(replace(kids, wic_income=True))
+    assert got.status == bn.POSSIBLE and got.amount == 700.0
+    assert got.why[0] == "dependent 1 (age 3): income qualifies"
+    assert bn.wic(replace(FAMILY, wic_income=True)).status == bn.NOT
+    assert bn.meals(replace(FAMILY, members=(ADULT, TODDLER))).status == bn.NOT
+    free = bn.meals(replace(kids, meals_free=1_100.0))
+    assert free.status == bn.POSSIBLE and free.amount == 1_100.0
+    assert free.why[0].startswith("free meals for dependent 2:")
+    reduced = bn.meals(replace(kids, meals_reduced=300.0))
+    assert reduced.why[0].startswith("reduced-price meals for dependent 2")
+    universal = bn.meals(replace(kids, state="CA", meals_universal=True))
+    assert universal.status == bn.POSSIBLE and "CA serves every" in universal.why[0]
+    paid = bn.meals(kids)
+    assert paid.status == bn.NOT and "1759a(a)(1)(F)" in paid.why[1]
+
+
+def test_tanf_needs_a_child_and_a_modeled_state() -> None:
+    kids = replace(FAMILY, members=(ADULT, PUPIL))
+    assert bn.tanf(FAMILY).status == bn.NOT
+    assert bn.tanf(kids).status == bn.UNKNOWN  # the engine does not model it
+    assert bn.tanf(replace(kids, tanf_modeled=True)).status == bn.NOT
+    got = bn.tanf(replace(kids, tanf_modeled=True, tanf=5_200.0))
+    assert got.status == bn.POSSIBLE and got.amount == 5_200.0
+    assert "608(a)(7)" in got.why[1]
+
+
+def test_ssi_tests_resources_against_one_or_a_couple() -> None:
+    old = replace(OLD, ssi=2_000.0)
+    f = replace(BASE, members=(old,), ssi_limit=2_000.0)
+    assert bn.ssi(f).status == bn.UNKNOWN  # no accounts on file
+    assert bn.ssi(replace(f, resources=2_000.0)).amount == 2_000.0
+    assert bn.ssi(replace(f, resources=2_001.0)).status == bn.NOT
+    assert bn.ssi(replace(f, members=(OLD,), resources=0.0)).status == bn.NOT
+    assert bn.ssi(BASE).why[0].startswith("no one 65 or older")
+    assert bn.ssi_limit(2026, "SINGLE") == 2_000.0
+    assert bn.ssi_limit(2026, "JOINT") == 3_000.0
+    assert bn.snap_limit(2026, [40, 8]) == 3_000.0
+    assert bn.snap_limit(2026, [61]) == 4_500.0
+
+
+@pytest.mark.engine
+def test_engine_food_and_cash_screen_on_synthetic_households() -> None:
+    def run(**kw: object) -> dict[str, bn.Result]:
+        hh = Household(**kw)  # type: ignore[arg-type]
+        return {x.key: x for x in bn.assess(2026, hh).results}
+
+    kids = (Dependent(age=3), Dependent(age=8))
+    nc = run(
+        age=30,
+        filing_status="HEAD_OF_HOUSEHOLD",
+        state="NC",
+        wages=25_000,
+        dependents=kids,
+    )
+    assert nc["snap"].status == bn.POSSIBLE and (nc["snap"].amount or 0) > 0
+    assert nc["wic"].status == bn.POSSIBLE and "dependent 1" in nc["wic"].why[0]
+    assert nc["school_meals"].why[0].startswith("free meals for dependent 2")
+    assert nc["tanf"].status == bn.NOT and nc["ssi"].status == bn.NOT
+    ca = run(
+        age=30,
+        filing_status="HEAD_OF_HOUSEHOLD",
+        state="CA",
+        wages=25_000,
+        dependents=kids,
+    )
+    assert ca["tanf"].status == bn.POSSIBLE and (ca["tanf"].amount or 0) > 0
+    assert "CA serves every" in ca["school_meals"].why[0]
+    tx = run(
+        age=40,
+        filing_status="HEAD_OF_HOUSEHOLD",
+        state="TX",
+        wages=50_000,
+        dependents=(Dependent(age=8),),
+    )
+    assert [tx[k].status for k in ("snap", "wic", "school_meals", "tanf")] == [
+        bn.NOT
+    ] * 4
+    old = run(age=70, filing_status="SINGLE", state="NC", social_security=10_000)
+    assert old["ssi"].status == bn.UNKNOWN and "about" in old["ssi"].why[0]
+    assert old["snap"].status == bn.POSSIBLE
+
+
 @pytest.mark.engine
 def test_benefits_section_and_command_on_the_layout(lay: Layout) -> None:  # noqa: F811
     section = year.assemble(lay, 2026, AS_OF).section("benefits")
@@ -254,3 +372,6 @@ def test_benefits_section_and_command_on_the_layout(lay: Layout) -> None:  # noq
     assert res.exit_code == 0, res.output
     assert "Medicaid: " in res.output and "apply: " in res.output
     assert "note: the screen reads the projected full-year income" in res.output
+    assert "SNAP resources: accounts other than retirement (1,600,000.00" in (
+        res.output
+    )
