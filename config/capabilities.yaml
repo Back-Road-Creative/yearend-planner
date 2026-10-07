@@ -330,6 +330,11 @@ reserve_rule:
   evidence: implemented
   tests: ["tests/test_reserve.py", "tests/test_feasible.py"]
   note: "unit 4b: a typed cash_target wins; otherwise reserve_months of the spending floor, reserve_deductibles, the next estimated payment each agency still lacks (planner.plan.esttax) and the goals dated inside 12 months; a part not entered is named and left out (the reserve a floor), never 0; neither entered is no reserve, said in every cash check. Held back by the feasibility check (conversion sizing, the lever menu, whatif), the cash panel and planner withdraw, and the monthly cash line"
+tax_aware_placement:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_placement.py"]
+  note: "unit 4c: planner place and the Placement panel; the household's typed classes (planner classify; a cash account is cash, nothing else guessed) against its own target mix, the reserve kept in cash; moves inside the tax-advantaged accounts first, then spare cash, then taxable loss lots, then gain lots by least gain per dollar; a loss lot bought inside 30 days in any account is skipped (IRC 1091, Rev. Rul. 2008-5); the loss and gain sales' tax effect priced through the engine; an untyped holding or one with no cost basis named, never moved"
 deadline_calendar:
   status: verified
   evidence: implemented
