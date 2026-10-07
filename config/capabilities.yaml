@@ -335,6 +335,11 @@ tax_aware_placement:
   evidence: implemented
   tests: ["tests/test_placement.py"]
   note: "unit 4c: planner place and the Placement panel; the household's typed classes (planner classify; a cash account is cash, nothing else guessed) against its own target mix, the reserve kept in cash; moves inside the tax-advantaged accounts first, then spare cash, then taxable loss lots, then gain lots by least gain per dollar; a loss lot bought inside 30 days in any account is skipped (IRC 1091, Rev. Rul. 2008-5); the loss and gain sales' tax effect priced through the engine; an untyped holding or one with no cost basis named, never moved"
+yearend_list:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_yearend.py"]
+  note: "unit 4d: planner yearend and the Before Dec 31 panel; the recommended conversion and the placement sales, each with account, lot, amount, trade-by date (the last NYSE trading day; a sale counts in its trade year, Pub. 550, Rev. Rul. 93-84) and settle date (T+1, SEC Rule 15c6-1), its own tax effect through the engine, cash after, and a do-nothing line; status proposed, chosen (numbers frozen), done, reconciled once the ledger shows the recorded conversion or the lot's imported sale"
 deadline_calendar:
   status: verified
   evidence: implemented

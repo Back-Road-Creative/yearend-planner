@@ -2410,3 +2410,33 @@ Each holding's class is yours to type: `planner classify VTSAX stocks`, or
 unless typed otherwise. An untyped holding is named and left out of the mix,
 and a taxable holding with no cost-basis export is named, never sold blind. The
 reserve stays in cash, outside the mix.
+
+## The "Before Dec 31" list (Phase 10, unit 4d)
+
+`planner yearend --year 2026` lists the year-end moves the plan proposes: the
+recommended Roth conversion and the taxable sales toward your target mix
+(`planner place`). Each line gives the account, the lot, the amount, the date
+to trade by, the date it settles, the tax effect of that move alone (figured
+by the engine), and the cash after it. Under each move a "do nothing" line
+says what skipping it means.
+
+- A sale counts in the year of its trade date, so it trades by the last NYSE
+  trading day of the year. It settles one trading day later (T+1), so the
+  cash from a December 31 trade arrives in January.
+- A conversion counts in the year the IRA pays it out, so it is done by the
+  last business day of the year.
+- "Cash after" is your cash accounts plus each sale's proceeds, less each
+  move's tax effect, set aside for when that tax is due.
+
+Each move moves through four steps:
+
+1. proposed: the plan suggests it.
+2. chosen: `planner yearend --year 2026 --choose <id>` freezes its numbers. If
+   the plan later proposes a different amount, a note says so.
+3. done: `--done <id>` once you have placed the trade or the conversion.
+4. reconciled: set by the planner once the ledger shows the move, either the
+   conversion recorded or the lot's sale imported from the broker.
+
+`--undo <id>` takes a move back one step. The steps are saved in
+`data/plan/yearend-<year>.yaml`. A move still proposed or chosen after its
+trade-by date is flagged, because it now counts in the next year.

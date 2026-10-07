@@ -1587,6 +1587,53 @@ LOT = typer.Option(None, help="sell this lot first: ACCOUNT:SYMBOL:YYYY-MM-DD (r
 
 
 @app.command()
+def yearend(
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
+    choose: str | None = typer.Option(None, help="mark a proposed move chosen"),
+    done: str | None = typer.Option(None, help="mark a chosen move done"),
+    undo: str | None = typer.Option(None, help="take a move back one step"),
+    as_of: str | None = AS_OF,
+    q4_dividends: float = Q4,
+    sales_st: float = ST,
+    sales_lt: float = LT,
+    conversion: float = CONV,
+    hsa: float | None = HSA,
+) -> None:
+    """The "Before Dec 31" list: each move with its account, lot, amount,
+    trade-by and settle dates, tax effect and cash after, beside doing
+    nothing. Status runs proposed, chosen, done, reconciled (reconciled once
+    the ledger shows the move)."""
+    from datetime import date
+
+    from planner import goals
+    from planner.plan import yearend as ye
+
+    day = date.fromisoformat(as_of) if as_of else None
+    ov = _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa)
+    steps = [
+        (m, to)
+        for m, to in ((choose, "chosen"), (done, "done"), (undo, "proposed"))
+        if m
+    ]
+    if len(steps) > 1:
+        typer.echo("refused: one of --choose, --done, --undo at a time", err=True)
+        raise typer.Exit(code=2)
+    try:
+        if steps:
+            it = ye.advance(layout(), year, steps[0][0], steps[0][1], day, ov)
+            typer.echo(f"{it.id}: {it.status}")
+            return
+        out = ye.build(layout(), year, day, ov)
+    except (goals.GoalsError, ye.YearEndError) as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for line in out.lines():
+        typer.echo(line)
+    for note in out.notes:
+        typer.echo(f"note: {note}")
+
+
+@app.command()
 def place(
     year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     as_of: str | None = AS_OF,
