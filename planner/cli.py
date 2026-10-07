@@ -758,6 +758,30 @@ def close(year: int = typer.Option(..., help="tax year", min=1990, max=2100)) ->
 
 
 @app.command()
+def snapshots(
+    year: int = typer.Option(..., help="tax year", min=1990, max=2100),
+    take: bool = typer.Option(False, "--take", help="take the snapshot due now"),
+    as_of: str | None = typer.Option(None, help="YYYY-MM-DD; default today"),
+) -> None:
+    """The year's four snapshots kept apart (forecast, provisional actual,
+    reconciled actual, filed) and the change from each kind to the next."""
+    from datetime import date
+
+    from planner.taxprep import snapshots as snaps
+
+    lay = layout()
+    if take:
+        got = snaps.take(
+            lay, year, date.fromisoformat(as_of) if as_of else date.today()
+        )
+        for note in got.notes:
+            typer.echo(f"note: {note}")
+        if got.new and got.snapshot:
+            typer.echo(f"recorded {got.snapshot.kind}")
+    typer.echo("\n".join(snaps.lines(lay, year)))
+
+
+@app.command()
 def rollover(
     year: int | None = typer.Option(
         None, help="the year that ended; default last year", min=1990, max=2100
@@ -2163,6 +2187,7 @@ def run(
     from planner.ingest import ingest as _ingest
     from planner.plan import rollover
     from planner.taxprep import close as close_
+    from planner.taxprep import snapshots as snaps
 
     lay = layout()
     lay.ensure()
@@ -2197,6 +2222,9 @@ def run(
     if ro is not None and ro.new:
         typer.echo(rollover.render(ro), nl=False)
     active = year or rollover.active_year(lay, today or date.today())
+    for got in snaps.refresh(lay, active, today or date.today()):
+        if got.new and got.snapshot:
+            typer.echo(f"snapshot: {got.year} {got.snapshot.kind} recorded")
     typer.echo(f"limits: {limits.summary(limits.refresh(lay, active))}")
     pg = page.gather(lay, active, today)
     typer.echo(f"written {render.write_static(lay, pg)}")
