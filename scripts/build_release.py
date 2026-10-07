@@ -159,6 +159,18 @@ def stage_tree() -> Path:
     return STAGE
 
 
+def record_longest(stage: Path) -> str:
+    """Write the stage's deepest file path, Windows-style, to
+    python/LONGEST_PATH: planner/paths.py refuses a folder where it would pass
+    Windows' 259-character limit with long paths off."""
+    rel = max(
+        (p.relative_to(stage).as_posix() for p in stage.rglob("*") if p.is_file()),
+        key=len,
+    ).replace("/", "\\")
+    (stage / "python" / "LONGEST_PATH").write_text(rel + "\n", encoding="utf-8")
+    return rel
+
+
 def stamp_proven(stage: Path) -> None:
     """Stamp each capability record in the staged config with the commit the
     release run proved (PROVEN_COMMIT, set by release.yml once the suite has
@@ -202,6 +214,7 @@ def main() -> int:
         raise SystemExit("release refused: ID-shaped figures\n" + "\n".join(found))
     stage = stage_tree()
     stamp_proven(stage)
+    record_longest(stage)
     audit(stage)
     out = zip_stage(stage)
     # published beside the zip: the update check verifies the download with it

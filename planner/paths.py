@@ -37,8 +37,21 @@ DATA_SUBDIRS = (
 )
 
 
+# Windows refuses a path past 259 characters unless long paths are turned on
+# (LongPathsEnabled). The release records its deepest file in python/LONGEST_PATH
+# (scripts/build_release.py); in a folder so deep that file passes the limit,
+# an import fails part way with a message that names neither cause nor cure,
+# so every command but version refuses the folder first.
+MAX_PATH = 259
+LONGEST_FILE = "python/LONGEST_PATH"
+
+
 class CloudSyncedPathError(RuntimeError):
     """The planner folder sits inside a cloud-sync client's tree."""
+
+
+class PathTooLongError(RuntimeError):
+    """The planner folder is too deep for Windows with long paths off."""
 
 
 class WriterBusyError(RuntimeError):
@@ -149,6 +162,42 @@ def home() -> Path:
     if env:
         return Path(env).expanduser().resolve()
     return Path(__file__).resolve().parent.parent
+
+
+def long_paths_enabled() -> bool:
+    """Windows' LongPathsEnabled is 1; always true off Windows."""
+    if sys.platform != "win32":
+        return True
+    import winreg
+
+    key = r"SYSTEM\CurrentControlSet\Control\FileSystem"
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key) as k:
+            return bool(winreg.QueryValueEx(k, "LongPathsEnabled")[0] == 1)
+    except OSError:
+        return False
+
+
+def refuse_too_long(root: Path, enabled: bool | None = None) -> None:
+    """Raise :class:`PathTooLongError` when the release's deepest file, under
+    ``root``, passes MAX_PATH and long paths are off. A developer checkout has
+    no python/LONGEST_PATH and is never refused."""
+    try:
+        rel = (root / LONGEST_FILE).read_text(encoding="utf-8").strip()
+    except OSError:
+        return
+    full = len(str(root)) + 1 + len(rel)
+    if not rel or full <= MAX_PATH:
+        return
+    if long_paths_enabled() if enabled is None else enabled:
+        return
+    raise PathTooLongError(
+        f"{root} is too deep for Windows: the planner's deepest file would have "
+        f"a {full}-character path, past the {MAX_PATH}-character limit. Move the "
+        f"planner folder to a shorter path (at most {MAX_PATH - 1 - len(rel)} "
+        "characters), e.g. C:\\Planner, or turn on Windows long paths, and run "
+        "again."
+    )
 
 
 def is_cloud_synced(path: Path) -> bool:

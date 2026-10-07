@@ -53,9 +53,16 @@ jobs:
           tar xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP" gitleaks
           "$RUNNER_TEMP/gitleaks" git --redact --no-banner .
 
-  # The gate for a release: the zip itself, on a clean Windows machine.
+  # The gate for a release: the zip itself, on a clean Windows machine. Server
+  # 2025 shares Windows 11 24H2's build (26100); Server 2022 (20348) is the
+  # older line. The required check keeps the name windows-proof on the 2025 leg.
   windows-proof:
-    runs-on: windows-latest
+    name: ${{ matrix.os == 'windows-2025' && 'windows-proof' || 'windows-proof-2022' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, windows-2022]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -64,6 +71,7 @@ jobs:
       - name: Build release zip
         run: uv run --no-project python scripts/build_release.py
       - uses: actions/upload-artifact@v6
+        if: matrix.os == 'windows-2025'
         with:
           name: yearend-planner-win64
           path: dist/yearend-planner-*-win64.zip
