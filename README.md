@@ -169,6 +169,7 @@ major version. Nothing changed: you are still on the release you had.
 
 ```
 uv sync --frozen --extra dev
+uv run playwright install chromium   # once: the browser tests (tests/test_browser.py)
 uv run pytest            # add -m "not engine" to skip the ~1 min engine case
 uv run ruff check . && uv run ruff format --check . && uv run mypy planner tests
 uv run --no-project python scripts/build_release.py   # dist/yearend-planner-<v>-win64.zip
