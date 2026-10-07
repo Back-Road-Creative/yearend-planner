@@ -15,7 +15,14 @@ import typer
 from typer.core import TyperGroup
 
 from planner.goals import PROTECT
-from planner.paths import CloudSyncedPathError, Layout, WriterBusyError, layout
+from planner.paths import (
+    CloudSyncedPathError,
+    Layout,
+    PathTooLongError,
+    WriterBusyError,
+    layout,
+    refuse_too_long,
+)
 
 if TYPE_CHECKING:
     from planner.plan.inputs import Overrides
@@ -59,12 +66,15 @@ BUSY_EXIT = 2
 @app.callback()
 def _single_writer(ctx: typer.Context) -> None:
     """Year-End Tax & Retirement Planner. One planner writes at a time."""
-    if (
-        ctx.resilient_parsing
-        or ctx.invoked_subcommand is None
-        or ctx.invoked_subcommand in NO_LOCK
-        or ctx.meta.get("planner.help")
-    ):
+    if ctx.resilient_parsing or ctx.meta.get("planner.help"):
+        return
+    if ctx.invoked_subcommand not in (None, "version"):
+        try:
+            refuse_too_long(layout().root)
+        except PathTooLongError as exc:
+            typer.echo(f"refused: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+    if ctx.invoked_subcommand is None or ctx.invoked_subcommand in NO_LOCK:
         return
     try:
         ctx.with_resource(layout().lock())

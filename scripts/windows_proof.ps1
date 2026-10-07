@@ -1,11 +1,32 @@
 # Phase 0 proof on a clean Windows machine. Runs the RELEASE ZIP, never the repo.
 # Steps the plan requires: real calculation; path with a space and non-ASCII;
 # moved folder; network blocked; standard (non-admin) user; cloud-sync refusal.
+# Unit 7f adds: Microsoft Defender real-time protection on for every step, a
+# folder too deep for Windows, and runs stopped dead part way. CI runs it on
+# Windows Server 2025 (build 26100, Windows 11 24H2's) and Server 2022; on a
+# desktop Windows 10 or 11 machine run it the same way, as administrator.
 # -Inbox: a folder of synthetic PDFs (scripts/synthetic_inbox.py) run end to end.
 param([Parameter(Mandatory = $true)][string]$Zip, [string]$Inbox = '')
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false   # PS 7.4+: a nonzero exit is ours to check
 $expected = '$3,820.00'   # 2026 single, $50,000 wages: 10% x 12,400 + 12% x 21,500
+
+$os = Get-CimInstance Win32_OperatingSystem
+Write-Host "== on $($os.Caption) build $($os.BuildNumber)"
+$started = Get-Date
+
+Write-Host '== Defender: real-time protection on before the zip is unpacked'
+# Runner images turn real-time protection off and exclude whole drives to save
+# time; a user's computer scans each file as it is written and opened. Drop the
+# exclusions, turn it on, and prove it is on: every later step runs under it.
+$pref = Get-MpPreference
+foreach ($x in @($pref.ExclusionPath)) { if ($x) { Remove-MpPreference -ExclusionPath $x } }
+foreach ($x in @($pref.ExclusionProcess)) { if ($x) { Remove-MpPreference -ExclusionProcess $x } }
+foreach ($x in @($pref.ExclusionExtension)) { if ($x) { Remove-MpPreference -ExclusionExtension $x } }
+Set-MpPreference -DisableRealtimeMonitoring $false
+$mp = Get-MpComputerStatus
+Write-Host "  antivirus $($mp.AntivirusEnabled), real-time $($mp.RealTimeProtectionEnabled), engine $($mp.AMEngineVersion)"
+if (-not $mp.RealTimeProtectionEnabled) { throw 'Defender real-time protection could not be turned on' }
 
 $base = 'C:\pröof dir'
 $dest = Join-Path $base 'planner ✓'
@@ -15,6 +36,10 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 # multi-threaded robocopy do the same work in a fraction of the time.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::ExtractToDirectory($Zip, $dest, $true)
+Start-MpScan -ScanType CustomScan -ScanPath $dest
+$found = @(Get-MpThreatDetection | Where-Object { $_.InitialDetectionTime -ge $started })
+if ($found) { throw "Defender flagged the unzipped release: $($found.Resources -join ', ')" }
+Write-Host '  scanned the unzipped release: nothing flagged'
 
 function Copy-Tree([string]$From, [string]$To) {
     robocopy $From $To /E /MT:16 /NFL /NDL /NJH /NJS /NP | Out-Null
@@ -172,6 +197,75 @@ try {
     if ($o -notlike '*written*index.html*') { throw 'run did not rerun on the new release' }
     if ((Get-Content -LiteralPath (Join-Path $moved 'VERSION')).Trim() -ne $next) { throw 'VERSION after feed update' }
 } finally { Remove-Item Env:PLANNER_UPDATE_FEED }
+
+Write-Host '== 9. a folder too deep for Windows'
+# With long paths off (the Windows default), a path past 259 characters fails.
+# The release records its deepest file; a folder that would push it past the
+# limit is refused by name, and with long paths on the same folder works.
+$fs = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
+$was = (Get-ItemProperty -Path $fs -Name LongPathsEnabled -ErrorAction SilentlyContinue).LongPathsEnabled
+$deepest = (Get-Content -LiteralPath (Join-Path $moved 'python\LONGEST_PATH')).Trim()
+$room = 259 - 1 - $deepest.Length   # the longest folder path the release fits in
+$deep = Join-Path $base ('deep ' + ('d' * ($room + 5 - $base.Length - 6)))
+Write-Host "  deepest file $($deepest.Length) characters; folder $($deep.Length) of at most $room"
+New-Item -ItemType Directory -Force -Path $deep | Out-Null
+[System.IO.Compression.ZipFile]::ExtractToDirectory($Zip, $deep, $true)
+try {
+    Set-ItemProperty -Path $fs -Name LongPathsEnabled -Value 0 -Type DWord
+    $o = Invoke-Planner $deep 'selfcheck' 2
+    if ($o -notlike '*too deep for Windows*') { throw 'the deep folder was not refused by name' }
+    Invoke-Planner $deep 'version' | Out-Null
+    Set-ItemProperty -Path $fs -Name LongPathsEnabled -Value 1 -Type DWord
+    $o = Invoke-Planner $deep 'selfcheck'
+    if ($o -notlike "*$expected*") { throw 'selfcheck in the deep folder with long paths on' }
+} finally {
+    if ($null -eq $was) { Remove-ItemProperty -Path $fs -Name LongPathsEnabled -ErrorAction SilentlyContinue }
+    else { Set-ItemProperty -Path $fs -Name LongPathsEnabled -Value $was -Type DWord }
+}
+
+Write-Host '== 10. a run stopped dead part way, then run again'
+# taskkill /F ends python.exe at once, as a power cut ends the program (writes
+# the disk had not finished are what unit 7b's crash tests cut at each step).
+# The run is stopped as its inbox step starts and again as its page step
+# starts; the next run must finish with the same figures.
+$cut = Join-Path $base 'power cut'
+New-Item -ItemType Directory -Force -Path $cut | Out-Null
+[System.IO.Compression.ZipFile]::ExtractToDirectory($Zip, $cut, $true)
+foreach ($a in @(@('birth_date', '1971-06-15'), @('filing_status', 'single'),
+                 @('state', 'NC'), @('wages', '52,000'))) {
+    Invoke-Planner $cut @('enter', '--year', '2025', $a[0], $a[1]) | Out-Null
+}
+if ($Inbox) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $cut 'data\inbox') | Out-Null
+    Copy-Item -Path (Join-Path $Inbox '*.pdf') -Destination (Join-Path $cut 'data\inbox')
+}
+$runArgs = 'run --quiet --no-update-check --year 2025 --as-of 2026-02-10'
+$env:PYTHONUNBUFFERED = '1'
+try {
+    foreach ($mark in '[3/6] inbox', '[6/6] page') {
+        $log = Join-Path $base "cut-$($mark.Substring(1, 1)).txt"
+        $p = Start-Process -FilePath 'cmd.exe' -ArgumentList "/c `"`"$cut\planner.cmd`" $runArgs`"" `
+            -WorkingDirectory $cut -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+        $until = (Get-Date).AddMinutes(15)
+        while (-not $p.HasExited -and -not "$(Get-Content -LiteralPath $log -Raw -ErrorAction SilentlyContinue)".Contains($mark)) {
+            if ((Get-Date) -gt $until) { throw "the run never reached $mark" }
+            Start-Sleep -Milliseconds 100
+        }
+        if ($p.HasExited) { throw "the run ended before the cut at $mark" }
+        taskkill /F /T /PID $p.Id | Out-Null
+        $p.WaitForExit()
+        Write-Host "  stopped dead at $mark"
+    }
+} finally { Remove-Item Env:PYTHONUNBUFFERED }
+$o = Invoke-Planner $cut $runArgs
+if ($Inbox) {
+    $page = Get-Content -LiteralPath (Join-Path $cut 'out\index.html') -Raw
+    foreach ($shown in 'Example Bank (synthetic)', '1,235.00', '9,800.00') {
+        if ($page -notlike "*$shown*") { throw "index.html after the cut runs lacks $shown" }
+    }
+}
+if (-not (Get-MpComputerStatus).RealTimeProtectionEnabled) { throw 'Defender real-time protection went off during the proof' }
 
 Write-Host 'PROOF PASSED'
 # The last launcher call above was the refused run (exit 2) and the Actions pwsh

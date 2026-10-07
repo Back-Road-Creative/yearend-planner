@@ -660,3 +660,13 @@ update_tax_years_report:
   evidence: implemented
   tests: ["tests/test_update.py", "tests/test_dashboard.py"]
   note: "selfcheck prints the years the engine publishes; staging flags a missing next year; header shows years"
+windows_matrix:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_windows_proof.py", "tests/test_paths.py"]
+  note: "unit 7f: the release zip is proven on windows-2025 (check windows-proof, build 26100 = Windows 11 24H2) and windows-2022 (windows-proof-2022); release.yml drafts only after both prove the same zip. The proof runs with Defender real-time protection on and the runner exclusions removed, refuses a folder whose deepest file (python/LONGEST_PATH) passes 259 characters with long paths off (exit 2) and accepts it with them on, and kills run --quiet at [3/6] and [6/6] before a clean run. No desktop Windows 10 or 11 runner exists; the same script proves a desktop copy by hand"
+data_upgrade_from_v010:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_upgrade.py"]
+  note: "the v0.1.0 data/ (tests/fixtures/data-v0.1.0, made by the tag from synthetic documents) runs end to end with nothing lost; an older ledger is copied to planner.db.schemaN.bak, then migrated step by step; one from a newer planner is refused untouched, before any writing command starts"
