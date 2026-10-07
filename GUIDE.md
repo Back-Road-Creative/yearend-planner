@@ -2404,3 +2404,31 @@ rule's own inputs entered there is no reserve, and every cash check says so.
 Conversion sizing, the lever menu and `whatif` (the one feasibility check), the
 Cash buffer panel and `planner withdraw`, and the monthly cash line all hold it
 back. The Cash buffer panel lists the parts beside the total.
+
+## Placement toward the target mix (Phase 10, unit 4c)
+
+With a target mix chosen (`planner mix`), the **Placement** panel and
+`planner place --year 2026` show each class against its target and the moves
+that close the gap, the cheapest in tax first:
+
+1. inside the tax-advantaged accounts (traditional, SIMPLE and inherited IRAs,
+   Roth, HSA, 457(b)): sell an over-target class and buy an under-target one in
+   the same account; no tax;
+2. spare cash above the reserve buys an under-target class; no tax;
+3. taxable loss lots of an over-target class, the most loss per dollar first;
+4. taxable gain lots, the least gain per dollar first, long-term before
+   short-term.
+
+The sales in 3 and 4 are priced through the engine: the panel gives the tax
+effect of the loss sales and of the gain sales on top of them. A loss lot whose
+fund was bought in the last 30 days in any account, an IRA's dividend
+reinvestment included, would be a wash sale (IRC section 1091; Rev. Rul.
+2008-5) and is skipped with a note. After a loss sale the panel says until when
+no account may buy the fund.
+
+Each holding's class is yours to type: `planner classify VTSAX stocks`, or
+`planner classify account:33333333 bonds` for an account typed as one balance;
+`planner classify` lists them and `--remove` drops one. A cash account is cash
+unless typed otherwise. An untyped holding is named and left out of the mix,
+and a taxable holding with no cost-basis export is named, never sold blind. The
+reserve stays in cash, outside the mix.
