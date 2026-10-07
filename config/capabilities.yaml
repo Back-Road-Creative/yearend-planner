@@ -78,6 +78,7 @@ backup_restore: verified  # tests/test_backup.py; AES-256 or plain zip + sha256 
 input_validation: verified  # tests/test_validation.py; typed answers bounded and refused with what is expected; CLI years/amounts/ports ranged
 feasibility_check: verified  # tests/test_feasible.py; one check behind conversion sizing, the lever menu and whatif: cash on hand above cash_target (shown, conversion candidates cut to fit), shares given past the lots held, gain harvest past the gain left, IRA + Roth past the shared limit (refused)
 stale_banner: verified  # tests/test_validation.py; >90 days since last import -> banner atop the page, plan still runs
+coverage_gate: verified  # tests/test_coverage.py; household, state and unread-document gaps found after intake, each with a Needed line; panels and drafted forms tagged verified/estimated/not handled from the gaps and these rows; coverage.csv in the tax pack
 limits_notice: verified  # tests/test_notice.py, tests/test_dashboard.py, tests/test_package.py; planner.NOTICE (not tax, legal or investment advice; a preparer reviews) heads the page, draft.txt, draft.html, the taxpack summary, README and GUIDE
 ci_scans: verified  # tests/test_privacy.py::test_ci_audits_dependencies_scans_secrets_and_holds_a_coverage_floor; pip-audit on uv.lock, gitleaks full history (checksum-pinned), --cov-fail-under floor, Dependabot uv + actions
 release: verified  # tests/test_privacy.py + .github/workflows/release.yml; tag -> suite, build, windows_proof, draft release with .sha256
@@ -91,4 +92,3 @@ planner_init: verified  # tests/test_cli.py; planner init makes data/ and out/, 
 launcher_cloud_sync_warning: verified  # tests/test_launch.py; planner.cmd findstr for OneDrive, Dropbox, iCloud Drive, Google Drive, My Drive before anything runs; windows_proof.ps1 step 6
 update_major_hold: verified  # tests/test_feed.py + tests/test_update.py; a new major of policyengine-us (candidate dist-info) or planner is held until planner update --allow-major
 update_tax_years_report: verified  # tests/test_update.py + tests/test_dashboard.py; selfcheck prints the years the engine publishes; staging flags a missing next year; header shows years
-data_upgrade_from_v010: verified  # tests/test_upgrade.py; the v0.1.0 data/ (tests/fixtures/data-v0.1.0, made by the tag from synthetic documents) runs end to end with nothing lost; an older ledger is copied to planner.db.schemaN.bak, then migrated step by step; one from a newer planner is refused untouched, before any writing command starts

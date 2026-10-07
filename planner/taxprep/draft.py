@@ -18,7 +18,7 @@ import dataclasses
 import math
 from dataclasses import dataclass, field
 
-from planner import NOTICE
+from planner import NOTICE, coverage
 from planner.engine import tax
 from planner.engine.household import Household
 from planner.ingest.needs import need_values, schedule_b_required
@@ -154,11 +154,24 @@ class Draft:
     estimates: list[str] = field(default_factory=list)  # keys standing in from YTD
     unknown: list[str] = field(default_factory=list)  # keys left out (not zero)
     missing: list[str] = field(default_factory=list)  # forms still to come
+    coverage: list[coverage.Gap] = field(default_factory=list)  # the gate's gaps
+    statuses: dict[str, str] = field(default_factory=dict)  # capability rows
 
     @property
     def not_ready(self) -> str | None:
-        """The line that heads every copy of a draft resting on an unknown."""
-        return NOT_READY + ", ".join(self.unknown) if self.unknown else None
+        """The line that heads every copy of a draft resting on an unknown or
+        on a gap that touches the return (unit 2a)."""
+        parts = [g.reason for g in self.coverage if "draft" in g.touches]
+        if self.unknown:
+            parts.insert(0, NOT_READY + ", ".join(self.unknown))
+        elif parts:
+            parts[0] = "NOT READY for a preparer: " + parts[0]
+        return "; ".join(parts) or None
+
+    def tag(self, form: str) -> str:
+        """verified, estimated or not handled for one form (unit 2a)."""
+        row = FORM_CAPABILITY.get(form, "draft_return")
+        return coverage.tag(self.coverage, "draft", self.statuses.get(row))
 
     def get(self, form: str, line: str) -> float | None:
         for ln in self.lines:
@@ -347,6 +360,8 @@ def build(lay: Layout, year: int) -> Draft:
         notes=list(inp.notes),
         estimates=list(inp.estimates),
         unknown=inp.tax_unknown,
+        coverage=list(inp.coverage),
+        statuses=coverage.statuses(lay),
     )
     d.missing = [f"{e.form} from {e.issuer}" for e in inventory(lay, year).outstanding]
     sheet = _Sheet(d)
@@ -725,8 +740,6 @@ def build(lay: Layout, year: int) -> Draft:
     if hh.state == "NC":
         married = hh.filing_status == "JOINT"
         d400.lay_lines(add, d.notes, v, facts, nc_paid, year, l11, typed, married)
-    else:
-        d.notes.append(f"no state return drafted for {hh.state}: only NC's D-400 is")
 
     # The lines against the engine's own totals: a gap is a mapping the draft
     # missed, and is said, never hidden.
@@ -1232,6 +1245,20 @@ HEADINGS = {
     d400.SCHED: "NC D-400 Schedule S (additions and deductions)",
     "Carryover": "Capital loss carryover to next year",
 }
+# The capability row behind each form's tag; any other form is draft_return's.
+FORM_CAPABILITY = {
+    SCH_1A: "schedule_1a",
+    "Sch B": "schedule_b",
+    "Sch C": "schedule_c",
+    "Sch D": "schedule_d",
+    "8949": "schedule_d",
+    "Sch SE": "self_employment_tax",
+    "8889": "form_8889",
+    "8962": "aca_premium_tax_credit",
+    d400.FORM: "nc_d400_draft",
+    d400.SCHED: "nc_d400_draft",
+    "Carryover": "schedule_d",
+}
 
 
 def render(d: Draft) -> str:
@@ -1248,7 +1275,7 @@ def render(d: Draft) -> str:
         if not lines:
             continue
         out.append("")
-        out.append(HEADINGS.get(form, f"Schedule {form[4:]}"))
+        out.append(f"{HEADINGS.get(form, f'Schedule {form[4:]}')} [{d.tag(form)}]")
         for ln in lines:
             places = 2 if round(ln.value, 2) == ln.value else 4
             out.append(
