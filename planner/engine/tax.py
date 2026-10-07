@@ -500,6 +500,34 @@ def irmaa_first_tier(year: int, filing_status: str) -> float:
     return float(scale.thresholds[1]) - 1
 
 
+@dataclass(frozen=True)
+class Irmaa:
+    """Medicare's monthly Part B premium and the income surcharges for one
+    person, at the brackets of ``figures`` (the year the engine's CMS figures
+    run to; later years repeat them until CMS sets the next)."""
+
+    base: float  # the standard Part B premium
+    part_b: float  # the Part B surcharge
+    part_d: float  # the Part D surcharge (on top of the plan's premium)
+    figures: int
+
+
+def irmaa(year: int, filing_status: str, magi: float) -> Irmaa:
+    """The monthly premium and surcharges for ``year`` at ``magi`` (20 CFR
+    418.1010(b)(6): AGI plus tax-exempt interest, from the tax return two years
+    before, 418.1115), by the CMS brackets for the filing status."""
+    med = _system().parameters.gov.hhs.medicare
+    when = f"{year}-01-01"
+    key = IRMAA_STATUS[filing_status]
+    latest = med.part_b.base_premium.values_list[0].instant_str
+    return Irmaa(
+        r(float(med.part_b.base_premium(when))),
+        r(float(getattr(med.part_b.irmaa, key)(when).calc(magi))),
+        r(float(getattr(med.part_d.irmaa, key)(when).calc(magi))),
+        min(year, int(latest[:4])),
+    )
+
+
 def ss_taxation_thresholds(year: int, filing_status: str) -> tuple[float, float]:
     """IRC 86(c): provisional income above the first makes up to 50% of Social
     Security taxable, above the second up to 85%."""
