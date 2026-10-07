@@ -443,18 +443,38 @@ that rests on an unknown (an income item, or a sale with no cost basis) opens
 with "NOT READY for a preparer", and so do its tax-pack page and notes. The page is also written to
 `out/plan-<year>.md` (personal, gitignored; `--no-write` skips it).
 
+Each income stream is carried to December 31 (Phase 10, unit 2c). A
+statement's year-to-date figure counts only through its last row's date, and
+the plan's notes say so when nothing covers the rest of the year. `planner
+forecast <stream> --year <year>` types the rest: a pay schedule (`--cadence
+biweekly --amount 2,400 --next 2026-10-09`; weekly, semimonthly, monthly,
+quarterly, annual and once work the same way), a `--remaining` amount, or a
+`--full-year` figure, which replaces the forecast instead of adding to it. A pay
+stub with no statement behind it starts a stream with `--ytd 40,000 --through
+2026-09-30`; a schedule with no amount so far leaves the stream unknown, never
+zero. `--low` and `--high` bound an uncertain stream and the notes show the
+full-year range. A stream whose annual form is in (a W-2, a 1099, a typed value)
+keeps it and its forecast is not used. `planner forecast --year <year>` lists
+every stream: owner, kind of income, so far, through, rest of year, full year
+and range. One owner per line until the spouse is a full person; a spouse's
+stream needs a joint return.
+
 From a terminal `planner plan` first asks the few typed fields, and each has an
 option so a script or Task Scheduler never waits (`--no-ask` skips the
 questions; Enter skips one):
 
 - **Total income** (`--total-income`): your own full-year figure when the YTD
-  ledger lags. Wages become the total less the other income the ledger counts
+  ledger lags. Wages (or the line `--total-income-line` names: se_income,
+  interest, non_qualified_dividends, ira_distributions) become the total less
+  the other income the ledger counts
   (business, interest, dividends, gains, IRA distributions and the conversions
   recorded so far; Social Security is left to the engine). Gains and losses
   count as one net figure, and a net loss only up to 3,000 (1,500 married
   filing separately), as on Form 1040 line 7. The Q4 dividends,
   planned sales and conversion below are added on top. A total below the other
-  income is refused and says by how much.
+  income is refused and says by how much, and so is a line that has its own
+  forecast. The Q4 dividends are refused beside a dividend forecast: the same
+  dividends would count twice.
 - **Q4 dividends, planned short-term and long-term sales**
   (`--q4-dividends`, `--sales-st`, `--sales-lt`): added to the year. A loss may
   be typed in parentheses.
