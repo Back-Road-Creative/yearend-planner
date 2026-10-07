@@ -482,7 +482,12 @@ def test_needed_reaches_zero_from_page_only(live: tuple[serve.App, int]) -> None
     # every open item was set aside, not answered: the page must not read "ready"
     assert "Nothing more is needed" not in text and "every input is on hand" not in text
     aside = len(pg.needed) + len(pg.late_forms)
-    assert f"No open questions, but {aside} set aside: not ready." in text
+    assert f"No open questions, but {aside} set aside:" in text
+    # set aside is not on hand: no move rests on it, no preparer files from it
+    plan, act, prep = done.readiness
+    assert not act.ready and not prep.ready
+    assert "Ready to act: no: set aside, not on hand: " in text
+    assert "Ready for a preparer: no: " in text
     assert "Set aside (" in text
     assert 'action="/undo-dont-have?token=tok"' in text
     assert 'action="/undo-waive?token=tok"' in text

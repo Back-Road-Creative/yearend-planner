@@ -131,3 +131,105 @@ def test_an_unread_document_makes_the_draft_and_pack_not_ready(
     assert by_form["Form 1040"]["tag"] == coverage.NOT_HANDLED
     assert "k1.pdf" in by_form["Form 1040"]["why"]
     assert any(n.startswith("NOT READY") for n in pack.notes)
+
+
+# Unit 2a-2: readiness is three answers, never "no open questions" (F14).
+AREA = coverage.Item("Health premium", ("ACA credit",))
+MOVE = coverage.Item("Traditional IRA balance", ("Roth conversion",))
+
+
+def test_the_act_outputs_are_needs_outputs() -> None:
+    from planner.ingest.needs import OUTPUTS
+
+    assert set(coverage.ACTS) <= set(OUTPUTS)
+
+
+def test_nothing_open_nothing_aside_after_year_end_is_ready_three_ways() -> None:
+    plan, act, prep = coverage.readiness(
+        [], open_items=0, set_aside=[], estimates=[], year=2026, year_open=False
+    )
+    assert (plan.ready, act.ready, prep.ready) == (True, True, True)
+    assert plan.line == "Ready to plan: yes"
+    assert prep.line == "Ready for a preparer: yes"
+
+
+def test_a_set_aside_fact_cannot_make_the_plan_ready_to_act_or_file() -> None:
+    plan, act, prep = coverage.readiness(
+        [],
+        open_items=0,
+        set_aside=[MOVE, AREA],
+        estimates=[],
+        year=2026,
+        year_open=False,
+    )
+    assert plan.ready  # the figures run, tagged estimate
+    assert act.blockers == ("set aside, not on hand: Traditional IRA balance",)
+    assert prep.blockers == (
+        "set aside, not on hand: Traditional IRA balance",
+        "set aside, not on hand: Health premium",
+    )
+    assert (
+        act.line == "Ready to act: no: set aside, not on hand: Traditional IRA balance"
+    )
+
+
+def test_a_waived_form_holds_back_every_move() -> None:
+    _, act, _ = coverage.readiness(
+        [],
+        open_items=0,
+        set_aside=[coverage.Item("1099-DIV from Vanguard (waived)")],
+        estimates=[],
+        year=2026,
+        year_open=False,
+    )
+    assert not act.ready
+
+
+def test_open_items_hold_back_all_three_and_an_open_year_the_preparer() -> None:
+    plan, act, prep = coverage.readiness(
+        [], open_items=3, set_aside=[], estimates=[MOVE], year=2026, year_open=True
+    )
+    assert plan.blockers == act.blockers == ("3 open on the Needed list",)
+    assert prep.blockers == (
+        "3 open on the Needed list",
+        "still an estimate: Traditional IRA balance",
+        "the 2026 tax year is still open; its final forms arrive in January",
+    )
+
+
+def test_a_state_gap_holds_back_only_the_preparer(planner_home: Path) -> None:
+    gaps = coverage.gate(_home(planner_home, state="SC"), "SC", "SINGLE")
+    plan, act, prep = coverage.readiness(
+        gaps, open_items=0, set_aside=[], estimates=[], year=2026, year_open=False
+    )
+    assert plan.ready and act.ready
+    assert prep.blockers == (gaps[0].reason,)
+
+
+def test_an_unread_document_holds_back_all_three(planner_home: Path) -> None:
+    home = _home(planner_home)
+    _unread(home)
+    gaps = coverage.gate(home, "NC", "SINGLE")
+    answers = coverage.readiness(
+        gaps, open_items=0, set_aside=[], estimates=[], year=2026, year_open=False
+    )
+    assert all(a.blockers == (gaps[0].reason,) for a in answers)
+
+
+def test_a_long_list_is_cut_to_five_with_a_count() -> None:
+    many = [coverage.Item(f"fact {i}") for i in range(8)]
+    _, act, _ = coverage.readiness(
+        [], open_items=0, set_aside=many, estimates=[], year=2026, year_open=False
+    )
+    assert act.line.endswith("set aside, not on hand: fact 4; and 3 more")
+
+
+def test_page_and_dashboard_give_the_three_answers(planner_home: Path) -> None:
+    home = _home(planner_home)
+    pg = page.gather(home, 2026, AS_OF)
+    plan, act, prep = pg.readiness
+    assert not prep.ready  # 2026 is open on AS_OF
+    assert "the 2026 tax year is still open" in prep.line
+    html = render.html(pg)
+    for a in pg.readiness:
+        assert a.line in html

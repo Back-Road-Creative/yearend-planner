@@ -45,6 +45,8 @@ TITLES = {
     "washsales": "Wash sales",
     "calendar": "Deadlines",
 }
+# Ready to plan, to act, for a preparer (Page.readiness).
+Readiness = tuple[coverage.Answer, coverage.Answer, coverage.Answer]
 # The capability row behind each panel's coverage tag (unit 2a).
 PANEL_CAPABILITY = {
     "glide": "glide_path_and_monthly_cash",
@@ -175,6 +177,27 @@ class Page:
     def set_aside(self) -> int:
         """Inputs marked don't have and late forms waived: off the list, not on hand."""
         return len(self.dont_have) + len(self.waived_forms)
+
+    @property
+    def readiness(self) -> Readiness:
+        """Ready to plan, to act, for a preparer (unit 2a-2)."""
+        return coverage.readiness(
+            self.coverage,
+            open_items=self.needed_count - len(self.coverage),
+            set_aside=[
+                *(coverage.Item(s.need.label, s.need.unlocks) for s in self.dont_have),
+                *(
+                    coverage.Item(f"{e.form} from {e.issuer} (waived)")
+                    for e in self.waived_forms
+                ),
+            ],
+            estimates=[
+                coverage.Item(s.need.label, s.need.unlocks) for s in self.estimates
+            ],
+            year=self.year,
+            year_open=date.fromisoformat(self.as_of) <= date(self.year, 12, 31),
+            draft_blocked=self.draft_blocked,
+        )
 
     def panel(self, name: str) -> Panel:
         return next(p for p in self.panels if p.name == name)

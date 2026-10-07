@@ -202,8 +202,9 @@ assumptions, SS estimates) go to `data/profile/assumptions.yaml`, which is creat
 list and the plan shows it as unavailable; `--undo` puts it back. The loop is done when `planner needed` prints
 `nothing needed`; `--all` shows the covered items with their source. A list emptied by
 setting items aside (`dont-have`, or a waived late form) prints `nothing left to answer,
-N set aside: not ready` instead, and the page says the same: the figures that rest on
-those items are estimates, not ready to act on or hand to a preparer.
+N set aside: not ready` instead: the figures that rest on those items are estimates.
+An empty list is not readiness; the page gives three answers (see *Readiness* under
+*Coverage gate*).
 
 Every kind of item in the Needed panel can be closed on the live page. Every
 don't-have and every waiver can be undone there; a row you categorised is changed
@@ -1201,4 +1202,21 @@ else **estimated**. The dashboard lists the gaps at the top of Needed (each coun
 one open item); `planner draft` prints the tag beside each form heading and a gap that
 touches the draft makes it NOT READY for a preparer; the tax pack writes
 `coverage.csv`, a row per drafted form (tag, why, what to do) and a row per gap.
+
+### Readiness (unit 2a-2)
+
+The top of Needed, and `planner dashboard`, give three answers, each `yes` or `no` with
+its reasons (the first five, then a count):
+
+- **Ready to plan**: nothing open on the Needed list and no gap in a planner section
+  (household or an unread document). Estimates are fine here; each is tagged.
+- **Ready to act**: that, and no item set aside that a move rests on (the glide path,
+  spending, MAGI, levers, conversion, withdrawals, estimated tax, cash buffer). A waived
+  form holds back every move: the income on it may be missing.
+- **Ready for a preparer**: nothing open, nothing set aside, nothing still an estimate,
+  no gap of any kind (a state return not drafted included), the tax year ended and the
+  draft built.
+
+Marking an item *don't have* or waiving a form empties the list but never makes the plan
+ready to act or to hand to a preparer.
 

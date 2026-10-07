@@ -120,3 +120,89 @@ def statuses(lay: Layout) -> dict[str, str]:
     """The capability rows (``config/capabilities.yaml``); none when absent."""
     path = lay.config / "capabilities.yaml"
     return load_capabilities(path) if path.exists() else {}
+
+
+# Readiness is three answers (unit 2a-2), never "no open questions": an empty
+# Needed list reached by setting facts aside readies nothing (finding F14).
+# The needs outputs a move rests on (planner.ingest.needs.OUTPUTS); a fact set
+# aside that feeds one holds back acting on the plan.
+ACTS = (
+    "Glide path",
+    "Spending band",
+    "MAGI headroom",
+    "Levers",
+    "Roth conversion",
+    "Withdrawal plan",
+    "Estimated tax",
+    "Cash buffer",
+)
+SHOWN = 5  # reasons each answer lists before "and N more"
+
+
+@dataclass(frozen=True)
+class Item:
+    label: str
+    unlocks: tuple[str, ...] = ()  # the needs outputs it feeds; () = every one
+
+
+@dataclass(frozen=True)
+class Answer:
+    question: str  # "Ready to plan", "Ready to act", "Ready for a preparer"
+    blockers: tuple[str, ...] = ()  # each reason it is not, in a fixed order
+
+    @property
+    def ready(self) -> bool:
+        return not self.blockers
+
+    @property
+    def line(self) -> str:
+        if self.ready:
+            return f"{self.question}: yes"
+        more = len(self.blockers) - SHOWN
+        tail = f"; and {more} more" if more > 0 else ""
+        return f"{self.question}: no: " + "; ".join(self.blockers[:SHOWN]) + tail
+
+
+def _unique(reasons: list[str]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(reasons))
+
+
+def readiness(
+    gaps: list[Gap],
+    *,
+    open_items: int,
+    set_aside: list[Item],
+    estimates: list[Item],
+    year: int,
+    year_open: bool,
+    draft_blocked: str = "",
+) -> tuple[Answer, Answer, Answer]:
+    """Ready to plan, to act, for a preparer. Plan: nothing open and no gap in a
+    planner section (estimates are fine, they are tagged). Act: that, and no fact
+    set aside that a move rests on. Preparer: nothing open, set aside or still an
+    estimate, no gap at all, the year ended and the draft built."""
+    opened = [f"{open_items} open on the Needed list"] if open_items else []
+    planned = [g.reason for g in gaps if set(g.touches) & set(PRICED[:-1])]
+    aside = [f"set aside, not on hand: {i.label}" for i in set_aside]
+    moves = [
+        f"set aside, not on hand: {i.label}"
+        for i in set_aside
+        if not i.unlocks or set(i.unlocks) & set(ACTS)
+    ]
+    prep = [
+        *opened,
+        *(g.reason for g in gaps),
+        *aside,
+        *(f"still an estimate: {i.label}" for i in estimates),
+        *(
+            [f"the {year} tax year is still open; its final forms arrive in January"]
+            if year_open
+            else []
+        ),
+        *([draft_blocked] if draft_blocked else []),
+    ]
+    return (
+        Answer("Ready to plan", _unique(opened + planned)),
+        Answer("Ready to act", _unique(opened + planned + moves)),
+        Answer("Ready for a preparer", _unique(prep)),
+    )
