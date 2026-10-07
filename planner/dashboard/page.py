@@ -31,7 +31,16 @@ ACTUAL, ESTIMATE, UNAVAILABLE = "actual", "estimate", "unavailable"
 LOOSE_SHOWN = 40  # bank rows listed with their own form; a rule catches the rest
 STALE_DAYS = 90  # no document imported for this long: every page says so
 # Panels whose figures project the year forward from what has happened so far.
-PROJECTIONS = ("magi", "conversion", "levers", "spending", "glide", "cash", "esttax")
+PROJECTIONS = (
+    "magi",
+    "conversion",
+    "levers",
+    "spending",
+    "glide",
+    "cash",
+    "esttax",
+    "placement",
+)
 TITLES = {
     "needed": "Needed",
     "glide": "Status vs. glide path",
@@ -43,6 +52,7 @@ TITLES = {
     "esttax": "Estimated tax",
     "cash": "Cash buffer",
     "goals": "Goals",
+    "placement": "Placement",
     "washsales": "Wash sales",
     "calendar": "Deadlines",
 }
@@ -59,6 +69,7 @@ PANEL_CAPABILITY = {
     "esttax": "estimated_tax",
     "cash": "glide_path_and_monthly_cash",
     "goals": "goals_model",
+    "placement": "tax_aware_placement",
     "washsales": "wash_sales",
     "calendar": "deadline_calendar",
 }
@@ -73,6 +84,7 @@ ORDER = (
     "esttax",
     "cash",
     "goals",
+    "placement",
     "washsales",
     "calendar",
 )

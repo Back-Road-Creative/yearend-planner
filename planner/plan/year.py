@@ -43,6 +43,7 @@ SECTIONS = (
     "washsales",
     "calendar",
     "goals",
+    "placement",
 )
 MARRIED = ("married_joint", "married_separate")
 
@@ -486,6 +487,17 @@ def _goals(
     return Section("goals", True, lines or ["none entered"], notes)
 
 
+def _placement(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
+    """Unit 4c: moves toward the target mix, the cheapest in tax first."""
+    from planner.plan import placement
+
+    try:
+        pl = placement.plan(lay, year, today, ov)
+    except goals_.GoalsError as exc:
+        return Section("placement", False, [f"goals refused: {exc}"])
+    return Section("placement", True, pl.lines(), pl.notes)
+
+
 BUILDERS: dict[str, Callable[[Layout, int, date, Overrides], Section]] = {
     "needed": _needed,
     "magi": _magi,
@@ -499,6 +511,7 @@ BUILDERS: dict[str, Callable[[Layout, int, date, Overrides], Section]] = {
     "washsales": _washsales,
     "calendar": _calendar,
     "goals": _goals,
+    "placement": _placement,
 }
 
 
