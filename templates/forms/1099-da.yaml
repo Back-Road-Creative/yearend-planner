@@ -9,7 +9,7 @@ form: "1099-DA"
 years: [2025, 2026]
 match: ["1099-DA"]
 year_pattern: "\\b1e Date sold or disposed\\s*:?\\s*\\d{1,2}/\\d{1,2}/(20\\d\\d)"
-issuer_pattern: "FILER'?S name[^:\\n]*:\\s*([^\\n]+)"
+issuer_pattern: "FILER'?S nameADDRESS([^\\n]+)"
 event:
   asset: "\\b1b Name of digital asset\\s*:?\\s*([^\\n]+)"
   units: "\\b1c Number of units\\s*:?\\s*([\\d,]*\\d(?:\\.\\d+)?)"

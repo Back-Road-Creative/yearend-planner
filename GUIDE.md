@@ -1505,6 +1505,44 @@ whole year. It is a static copy for printing and backup. `planner run` (Phase
   names, file names and OCR text. It loads nothing from the internet. It
   prints cleanly, with the forms hidden.
 
+### Real form layouts (unit 7h)
+
+The form tests above use made-up text pages. `tests/test_real_forms.py` also
+reads the official IRS forms: the blank 2025 or 2026 PDF of each 1099, 1098,
+5498, 3921, 3922 and W-2 the planner reads, with synthetic values printed into
+its fields by `scripts/real_forms.py`. The manifest
+`tests/fixtures/real/forms.yaml` names each blank's irs.gov address and
+SHA-256, the values and what the planner must read back. Names say
+"(synthetic)", and every TIN and account box is left blank.
+
+An official form is a grid of ruled boxes, and its text comes out of the PDF
+with the boxes side by side on one line. The planner now reads such a page one
+box at a time: each box starts a line with `¦`, and its other lines follow
+indented. A page with no grid reads as before, and so does a grid no template
+recognizes. A space in a template's pattern matches a line break too, since a
+long box label wraps inside its box. A check mark may sit under its label. A
+small check-box square counts as part of the box around it, and letters printed
+one above another (the W-2's "Code") are skipped.
+
+Changes the real forms brought:
+
+- A one-sale 1099-B (the official form) reads through
+  `templates/forms/1099-b-sale.yaml`. Box 2 decides whether box 1d, 1e and 1g
+  count as short-term or long-term, so the sale adds to Schedule D like a
+  broker's summary does. A box 2 "Ordinary" sale is refused, not guessed.
+  Each sale's date joins its issuer, so a second sale from the same broker is
+  its own form.
+- The December 2026 Form 1099-G moves state income tax withheld to box 12
+  (`templates/forms/1099-g-2026.yaml`); the state withholding totals and the
+  NC D-400 read it.
+- The 2026 forms rename some boxes: 1099-NEC box 1 is 1a, 5498 box 5 reads
+  "FMV", and 5498-SA boxes 2 and 3 read "the calendar year". The templates
+  read both wordings.
+
+To rebuild the fixtures: `uv run --extra dev python scripts/real_forms.py`.
+It downloads each blank from irs.gov once, and refuses a blank whose SHA-256
+has changed, because a new revision may move its boxes.
+
 ### Tested in a real browser (unit 7g)
 
 `tests/test_browser.py` opens the live page in headless Chromium through
