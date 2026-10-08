@@ -134,8 +134,8 @@ def test_once_named_only_the_per_person_lines_stay_not_handled(
     planner_home: Path, status: str, spouse: bool, dependents: int
 ) -> None:
     """Income is still priced as the first person's until each document names
-    its owner (unit 2c), and the draft does not yet lay out the spouse and the
-    dependents (unit 3a-3): those sections alone stay tagged."""
+    its owner (unit 2c): the sections with per-person lines alone stay
+    tagged."""
     home = _home(planner_home, "single")
     (gap,) = coverage.gate(home, "NC", status, spouse=spouse, dependents=dependents)
     assert gap.area == "household" and gap.touches == coverage.PEOPLE_TOUCH

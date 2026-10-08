@@ -272,13 +272,13 @@ schedule_c:
 draft_return:
   status: verified
   evidence: implemented
-  tests: ["tests/test_draft.py"]
-  note: "planner draft; 1040 + Sch 1/1-A/2/3/C/SE + 8962, each line sourced to file and page, line 16 by the Tax Table, engine totals cross-checked; Sch SE Part I every line"
+  tests: ["tests/test_draft.py", "tests/test_draft_people.py"]
+  note: "planner draft; 1040 + Sch 1/1-A/2/3/8812/C/SE + 8962, the dependents listed for the preparer to type names and SSNs; Sch 8812 lines 1-17 by the form (line 13 = 1040 line 18 less Sch 3 line 8), line 27 the engine's checked against line 17; each line sourced to file and page, line 16 by the Tax Table, engine totals cross-checked; Sch SE Part I every line"
 schedule_1a:
   status: verified
   evidence: implemented
-  tests: ["tests/test_draft.py"]
-  note: "planner draft; Part V senior deduction (January 1 births count as 65) and tips, overtime, car loan interest from Needed-panel items (planner needed asks for them), line 38 = 1040 line 13b; a joint return holds one person, so line 36b (the spouse) is noted, not drafted"
+  tests: ["tests/test_draft.py", "tests/test_draft_people.py"]
+  note: "planner draft; Part V senior deduction (January 1 births count as 65) and tips, overtime, car loan interest from Needed-panel items (planner needed asks for them), line 38 = 1040 line 13b; line 36b is the spouse's (unit 3a-3), noted as waiting on spouse_birth_date when none is on file"
 schedule_b:
   status: verified
   evidence: implemented

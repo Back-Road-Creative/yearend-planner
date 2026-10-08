@@ -64,8 +64,7 @@ HOUSEHOLD_NEEDED = {
 PEOPLE = (
     "Not handled: every income figure is priced as the first person's until each "
     "document names its owner, so the per-person lines (Schedule SE and its "
-    "Social Security wage base, the IRA and HSA limits) are that person's; the "
-    "draft does not yet lay out the spouse or the dependents table"
+    "Social Security wage base, the IRA and HSA limits) are that person's"
 )
 PEOPLE_TOUCH = ("draft", "esttax")
 
