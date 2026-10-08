@@ -32,7 +32,18 @@ from typing import Any
 
 from planner.config import safe_load
 
-AMOUNT = r"(\(?-?\$?\s*[\d,]*\d(?:\.\d{1,2})?\)?)"
+# A figure is never a line number: an empty box reads on into the next line's
+# "15." or "19a.", which must not be taken for its amount, nor "15." run into
+# its label's "2025" by a scan. Nor is it a bare "00": a state form prints its
+# own cents after an empty box's line number. Nor does it start on the next
+# line, unless after a "$": that is the next line's figure. A number run into
+# a capitalized word ("76Total payments"), or opening a line before one, is
+# that line's number (a capital, whatever case the pattern ignores).
+AMOUNT = (
+    r"(?!(?<=\n)\d{1,3}[a-z]?[ \t]+(?-i:[A-Z][a-z]))"
+    r"(\(?-?(?:\$\s*)?(?!00\b)[\d,]*\d(?:\.\d{1,2})?\)?)"
+    r"(?![\d,]*[A-Za-z]?\.(?:\s|$|[A-Z][a-z]|\d{3})|\d|(?-i:[A-Z][a-z]))"
+)
 # The year a form prints after its OMB number, where it has no year box (the
 # 1099-R and 1098-T print it there, above the form number).
 OMB_YEAR = r"OMB\s+No\.\s*[\d-]+\s+"
@@ -178,19 +189,23 @@ class Template:
     # Forms W-2G and 1099-R"), so a page it matches is read as the return only
     filed: bool = False
 
-    def matches(self, text: str) -> bool:
+    def matches(self, text: str, ocr: bool = False) -> bool:
         """Every match phrase is on the page; spacing and line breaks are
-        ignored, as a ruled cell or OCR may split or glue the words."""
-        page = "".join(text.split()).lower()
-        return all("".join(m.split()).lower() in page for m in self.match)
+        ignored, as a ruled cell or OCR may split or glue the words. On a scan
+        the letters the engine confuses count as one ("Returm" is "Return")."""
+        fold = _ocr_fold if ocr else _fold
+        page = fold(text)
+        return all(fold(m) in page for m in self.match)
 
     def find_year(self, text: str) -> int | None:
         m = self.year_pattern.search(text)
         if not m:
             return None
         # A two-digit year is a revision date's (the IL-1040 back page prints
-        # only "R-12/25"), 20xx.
-        year = int(m.group(1))
+        # only "R-12/25"), 20xx. A pattern may take the year in more than one
+        # place (a scan reads "2025 Tax Year" where the text layer has "Tax
+        # Year ... 2025"): the group that matched gives it.
+        year = int(next(g for g in m.groups() if g is not None))
         return year + 2000 if year < 100 else year
 
     def find_issuer(self, text: str) -> str:
@@ -256,13 +271,16 @@ def parse_amount(raw: str) -> float:
     return -value if negative else value
 
 
+# A symbol font's glyph (an arrow, a check mark) comes through as a private-use
+# character: the Ohio IT 1040 prints one between "YOUR REFUND" and its line.
+PRIVATE_USE = re.compile("[\ue000-\uf8ff]")
 # OCR may read a bracket or stop as its fullwidth form ("Schedule 3（Form")
 FULLWIDTH = {c: c - 0xFEE0 for c in range(0xFF01, 0xFF5F)}
 
 
 def normalize(text: str) -> str:
     text = text.replace("’", "'").replace("‘", "'").replace(" ", " ")
-    return text.translate(FULLWIDTH)
+    return PRIVATE_USE.sub("", text.translate(FULLWIDTH))
 
 
 def base_issuer(issuer: str) -> str:
@@ -290,32 +308,60 @@ def _loose(pattern: re.Pattern[str]) -> re.Pattern[str]:
 
 
 def _loose_source(source: str) -> str:
-    return source.replace(r"\s+", r"\s*").replace("[ \\t]+", "[ \\t]*")
+    """A pattern's source as it reads a scan: spaces may close up, and a label's
+    comma may read as a point ("lines 10, 11.and 12")."""
+    source = source.replace(r"\s+", r"\s*").replace("[ \\t]+", "[ \\t]*")
+    out, i, in_class = [], 0, False
+    while i < len(source):
+        c = source[i]
+        if c == "\\":
+            out.append(source[i : i + 2])
+            i += 2
+            continue
+        count = None if in_class else re.match(r"\{\d*,\d*\}", source[i:])
+        if count:  # a count ("{0,2}"), not a comma
+            out.append(count.group())
+            i += len(count.group())
+            continue
+        in_class = (c != "]") if in_class else c == "["
+        out.append("[,.]" if c == "," and not in_class else c)
+        i += 1
+    return "".join(out)
 
 
-# A filed return's line ends in its number and amount ("16 5,100.00").
+# A filed return's line ends in its number, maybe with a stop, and amount
+# ("16 5,100.00", "43. 1,808.00").
 LINE_AMOUNT = re.compile(
-    r"((?:\\b)?(?:\(\?:[0-9a-z|]+\)|[0-9]+[a-z]?)\??)\\s\+" + re.escape(AMOUNT) + "$"
+    r"((?:\\b)?(?:\(\?:[0-9a-z|]+\)|[0-9]+[a-z]?)\??)(\\\.)?\\s\+"
+    + re.escape(AMOUNT)
+    + "$"
 )
-CENTS_AT_END = r"(?=\(?-?\$?[\d,]*\d\.\d\d\)?[ \t]*(?:\n|$))"
+# The figure that ends a scanned line: with its cents, or whole dollars past a
+# thousands comma (a bare "41" may be a line number).
+CENTS_AT_END = r"(?=\(?-?\$?(?:[\d,]*\d\.\d\d|\d{1,3}(?:,\d{3})+)\)?[ \t]*(?:\n|$))"
 
 
 def _loose_line(pattern: re.Pattern[str]) -> re.Pattern[str]:
     """A return line's pattern as it reads a scan: ``_loose``, but the number
-    stays apart from the amount, so "1040" is not line 10's 40. The scan may
-    drop the number at the right (it reads that column as boxes of its own):
-    a pattern that opens with the line's number, as the line does, then takes
-    the amount that ends the line, with its cents. One that opens with a label
-    alone ("Taxable amount" is 4b, 5b and 6b) still needs the number."""
+    stays apart from the amount, so "1040" is not line 10's 40, and the stop
+    after it may be lost ("43 1,808.00"). The scan may drop or misread the
+    number at the right (it reads that column as boxes of its own): a pattern
+    that opens with the line's number, as the line does, then takes the amount
+    that ends the line, with its cents or a thousands comma, past a short word
+    where the number was ("89" for 39). One that opens with a label alone
+    ("Taxable amount" is 4b, 5b and 6b) still needs the number."""
     m = LINE_AMOUNT.search(pattern.pattern)
     if not m:
         return _loose(pattern)
     head = _loose_source(pattern.pattern[: m.start()])
     number = m.group(1).removeprefix(r"\b")
-    if pattern.pattern.removeprefix(r"\b").startswith(number + r"\s+"):
-        line = rf"(?:{m.group(1)}\s+|{CENTS_AT_END})"
+    stop = r"\.?" if m.group(2) else ""
+    if pattern.pattern.removeprefix(r"\b").startswith(
+        number + (m.group(2) or "") + r"\s+"
+    ):
+        line = rf"(?:{m.group(1)}{stop}\s+|(?:\S{{1,3}}[ \t]+)?{CENTS_AT_END})"
     else:
-        line = rf"{m.group(1)}\s+"
+        line = rf"{m.group(1)}{stop}\s+"
     return re.compile(head + line + AMOUNT, pattern.flags)
 
 
@@ -378,6 +424,19 @@ def _key(text: str) -> str:
     return "".join(ch for ch in text.lower() if ch.isalnum())
 
 
+def _fold(text: str) -> str:
+    return "".join(text.split()).lower()
+
+
+# The letters a scan's engine reads for one another, each folded to one.
+OCR_ALIKE = str.maketrans("mi1|!0", "nllllo")
+
+
+def _ocr_fold(text: str) -> str:
+    # "rn" read as "m" and "m" as "rn": "Forrn" and "Form" both fold to "fon"
+    return re.sub("r+n", "n", _fold(text).translate(OCR_ALIKE))
+
+
 def label_phrases(tpl: Template) -> tuple[str, ...]:
     """The box labels a template's patterns open with, for ``repaired``."""
     patterns = [tpl.issuer_pattern, *(p for _k, p in tpl.event)]
@@ -425,9 +484,21 @@ def repaired(text: str, phrases: Sequence[str]) -> str:
             # a box number that was read stands: "2 Royalties" is not "1 Rents"
             if number and _number(key) not in ("", number):
                 continue
+            if number and not _number(key):
+                # a label the form prints after its line's number ("14. Add
+                # Lines 10, 11, 12, and 13"): the number that was read stays,
+                # with its letter ("19a.")
+                n, i = spots[len(number) - 1]
+                if body[n][i + 1 : i + 2].isalpha() and body[n][i + 2 : i + 3] == ".":
+                    i += 1
+                dot = "." if body[n][i + 1 : i + 2] == "." else ""
+                head = body[n][: i + 1].strip()
+                phrase, key = f"{head}{dot} {phrase}", _key(head) + key
             # one misread letter in a short label ("1Rerts")
             need = min(REPAIR_RATIO, 1 - 1 / len(key)) - 1e-9
-            for cut in range(max(1, len(key) - 2), min(len(read), len(key) + 2) + 1):
+            # a label read with words before it ("and STA amount") runs longer
+            top = min(len(read), int(len(key) / REPAIR_RATIO) + 2)
+            for cut in range(max(1, len(key) - 2), top + 1):
                 ratio = SequenceMatcher(None, key, read[:cut]).ratio()
                 if ratio >= need and (
                     ratio > best[0] or (ratio == best[0] and len(phrase) > len(best[1]))
@@ -451,6 +522,10 @@ def repaired(text: str, phrases: Sequence[str]) -> str:
                 done += len(_key(word))
             new = [" ".join(p) for p in placed]
             rest = body[last][at + 1 :]
+            # the label's closing stop, read again after it ("line 29)" + ")")
+            tail = phrase[len(phrase.rstrip(").,:;")) :]
+            if tail and rest.lstrip().startswith(tail):
+                rest = rest.lstrip()[len(tail) :]
             # no space where the label stops inside a word ("comp|ensation")
             # or before its punctuation
             glue = "" if rest[:1].isalnum() or rest[:1] in ",.;:)" else " "
@@ -594,7 +669,8 @@ def page_texts(path: Path) -> list[str]:
 
 def _page_text(page: Any) -> str:
     """The page's plain text, or ``Ruled`` text when it is a grid of cells."""
-    plain = normalize(page.extract_text() or "")
+    page = _lowered(_combed(_unmasked(page)))
+    plain = normalize(_upright_first(page))
     if not plain.strip():
         return plain
     found = page.find_tables(
@@ -609,6 +685,160 @@ def _page_text(page: Any) -> str:
     words = [w for w in page.extract_words(extra_attrs=["upright"]) if w["upright"]]
     lines = grid_lines(words, cells)
     return Ruled(normalize("\n".join(t for t, _ in lines)), plain) if lines else plain
+
+
+def _unmasked(page: Any) -> Any:
+    """The page without the space characters something else is drawn over. A
+    form may print a row of spaces where a field goes (the IL-1040 does), and
+    pdfplumber would read them between the field's digits ("2 , 9 0 0")."""
+    drawn: dict[int, list[dict[str, Any]]] = {}
+    for c in page.chars:
+        if c["text"].strip():
+            drawn.setdefault(int(c["x0"] + c["x1"]) // 2 // 10, []).append(c)
+
+    def masked(obj: dict[str, Any]) -> bool:
+        if obj.get("object_type") != "char" or obj["text"].strip():
+            return False
+        x, y = (obj["x0"] + obj["x1"]) / 2, (obj["top"] + obj["bottom"]) / 2
+        near = int(x) // 10
+        return any(
+            c["x0"] < x < c["x1"] and c["top"] < y < c["bottom"]
+            for cell in (near - 1, near, near + 1)
+            for c in drawn.get(cell, ())
+        )
+
+    return page.filter(lambda o: not masked(o))
+
+
+COMB_BOX = (10.0, 20.0)  # the sides a box of a comb may have, in points
+
+
+def _combed(page: Any) -> Any:
+    """The page with each filled comb's figure written whole on its row. A comb
+    is a row of small boxes, one character to a box (the NJ-1040 draws its
+    amounts so), with the form's own comma and point printed between them below
+    where a filled digit sits: pdfplumber would read "6 0 7 3 5 0 0" on one line
+    and ", , ." on the next. The digits and the marks give way to one word,
+    "60,735.00", on the marks' line, which is the label's."""
+    lo, hi = COMB_BOX
+    boxes = sorted(
+        (r for r in page.rects if lo <= r["width"] <= hi and lo <= r["height"] <= hi),
+        key=lambda r: (round(r["top"]), r["x0"]),
+    )
+    rows: list[list[dict[str, Any]]] = []
+    for r in boxes:
+        last = rows[-1][-1] if rows else None
+        if (
+            last is not None
+            and abs(r["top"] - last["top"]) <= 1
+            and 0 < r["x0"] - last["x0"] <= 1.5 * hi
+        ):
+            rows[-1].append(r)
+        else:
+            rows.append([r])
+    chars = page.chars
+    gone: set[int] = set()
+    added: list[dict[str, Any]] = []
+    for row in (r for r in rows if len(r) >= 4):
+        x0, x1 = row[0]["x0"], row[-1]["x1"]
+        top, bottom = row[0]["top"], row[0]["bottom"]
+
+        def inside(c: dict[str, Any]) -> bool:
+            x, y = (c["x0"] + c["x1"]) / 2, (c["top"] + c["bottom"]) / 2
+            return bool(x0 <= x <= x1 and top <= y <= bottom + 4)  # noqa: B023
+
+        digits = [c for c in chars if c["text"].isdigit() and inside(c)]
+        if not digits:
+            continue
+        marks = [c for c in chars if c["text"] in ",." and inside(c)]
+        run = sorted(digits + marks, key=lambda c: c["x0"])
+        text = "".join(c["text"] for c in run).lstrip(",.")
+        line = marks[0] if marks else digits[0]
+        word = dict(line)
+        word.update(
+            text=text,
+            x0=digits[0]["x0"],
+            x1=run[-1]["x1"],
+            width=run[-1]["x1"] - digits[0]["x0"],
+        )
+        gone.update(id(c) for c in run)
+        added.append(word)
+    if not added:
+        return page
+    combed = page.filter(lambda _o: True)
+    combed._objects = dict(page.objects)
+    combed._objects["char"] = [c for c in chars if id(c) not in gone] + added
+    return combed
+
+
+FIGURE = re.compile(r"\(?-?\$?\d[\d,]*(?:\.\d{1,2})?\)?")
+# A return line's end: its number, after the leader dots ("........ 8.", "15a.").
+LINE_END = re.compile(r"(?:.*\.\.)?\d{1,3}[a-z]?\.")
+RAISED = 9.0  # how far above its line's baseline a filled figure may sit, in points
+NEAR = 220.0  # how far right of its line's number a filled figure may start
+
+
+def _lowered(page: Any) -> Any:
+    """The page with each figure printed a little above its line moved down
+    onto it. A state form's field box stands taller than its label, and the
+    figure filled into it sits up to a few points above the label's baseline
+    (the GA-500, VA-760 and MI-1040 do this): pdfplumber reads the figure on
+    a line of its own, before the label it belongs to. A figure is moved when
+    nothing stands left of it on its own line and the nearest line below,
+    within ``RAISED``, ends just left of it in a line number."""
+    words = page.extract_words(return_chars=True)
+    moves: dict[int, float] = {}
+    for f in words:
+        if not FIGURE.fullmatch(f["text"]):
+            continue
+        if any(
+            abs(w["top"] - f["top"]) <= 3 and f["x0"] - NEAR < w["x1"] <= f["x0"]
+            for w in words
+        ):
+            continue
+        below = [
+            w
+            for w in words
+            if 0 < w["bottom"] - f["bottom"] <= RAISED
+            and abs(w["top"] - f["top"]) > 3
+            and f["x0"] - NEAR < w["x1"] <= f["x0"]
+        ]
+        if not below:
+            continue
+        end = max(below, key=lambda w: w["x1"])
+        if LINE_END.fullmatch(end["text"]):
+            for c in f["chars"]:
+                moves[id(c)] = end["bottom"] - f["bottom"]
+    if not moves:
+        return page
+    chars = []
+    for c in page.chars:
+        dy = moves.get(id(c))
+        if dy is not None:
+            c = dict(c)
+            for k in ("top", "bottom", "doctop"):
+                c[k] += dy
+            for k in ("y0", "y1"):
+                c[k] -= dy
+        chars.append(c)
+    lowered = page.filter(lambda _o: True)
+    lowered._objects = dict(page.objects)
+    lowered._objects["char"] = chars
+    return lowered
+
+
+def _upright_first(page: Any) -> str:
+    """The page's upright text, then its sideways text. pdfplumber orders the
+    lines of one run of same-direction characters at a time, so a sideways
+    word partway through the page ("PAID PREPARER USE ONLY" on the NC D-400)
+    would send every line drawn after it to the end of the text."""
+
+    def side(obj: dict[str, Any]) -> bool:
+        return obj.get("object_type") == "char" and not obj.get("upright", True)
+
+    upright = page.filter(lambda o: not side(o)).extract_text() or ""
+    turned = page.filter(side).extract_text() or ""
+    return upright + "\n" + turned if turned.strip() else upright
 
 
 def grid_lines(
@@ -827,7 +1057,7 @@ def _read_ruled(
     if not isinstance(text, Ruled):
         return _read_page(page_no, text, templates, ocr)
     by = text.count("\n") + 1
-    if ocr and any(t.filed and t.matches(text.plain) for t in templates):
+    if ocr and any(t.filed and t.matches(text.plain, ocr) for t in templates):
         # A scanned return reads from its plain text, which keeps each line's
         # number at the right where the cells lose it. A line the plain text
         # runs into a side note ("Qualifying surviving spouse") may still read
@@ -878,13 +1108,15 @@ def _read_page(
     ``text``'s: a box ``text`` misses is read from it."""
     forms: list[ParsedForm] = []
     notes: list[str] = []
-    found = [tpl for tpl in templates if tpl.matches(text)]
+    found = [tpl for tpl in templates if tpl.matches(text, ocr)]
     if any(tpl.filed for tpl in found):
         found = [tpl for tpl in found if tpl.filed]
     for tpl in found:
+        # the labels come from the template's own wording, not its loosened one
+        phrases = label_phrases(tpl) if ocr else []
         tpl = loosened(tpl) if ocr else tpl
-        page = repaired(text, label_phrases(tpl)) if ocr else text
-        other = spare and (repaired(spare[0], label_phrases(tpl)) if ocr else spare[0])
+        page = repaired(text, phrases) if ocr else text
+        other = spare and (repaired(spare[0], phrases) if ocr else spare[0])
         year = tpl.find_year(page)
         if year is None:
             raise Unmatched(f"page {page_no}: {tpl.form} found but no tax year")

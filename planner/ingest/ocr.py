@@ -9,6 +9,7 @@ the models shipped in its wheel; nothing is uploaded.
 from __future__ import annotations
 
 import io
+import re
 import shutil
 import sqlite3
 from collections.abc import Callable, Iterable, Iterator, Sequence
@@ -19,6 +20,8 @@ from typing import Any, cast
 
 from planner.ingest.pdf import (
     CHECK_SIDE,
+    FIGURE,
+    NEAR,
     ParsedForm,
     Ruled,
     Unmatched,
@@ -30,9 +33,32 @@ from planner.paths import Layout
 PageTexts = Callable[[Path], Sequence[str]]
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 PAGE_DPI = 200
+# A figure whose thousands commas the engine read as points ("5.000.00").
+POINTED = re.compile(r"\d{1,3}(?:\.\d{3})+\.\d\d")
+# A figure with its cents read, and the return's preprinted cents after them
+# ("2,850.00.00").
+CENTS_TWICE = re.compile(r"[\d.,]*\d\.\d\d\.00")
 # The engine's mean confidence below which a page may be upside down: upright
 # forms read at 0.95 or more, the same pages turned over at 0.7 to 0.89.
 UPRIGHT_SCORE = 0.9
+# How sure the engine must be that a spot holds text before it reads it: below
+# its default (0.5), as a lone letter in a box (a 1099-DA's "J") scores near 0.5.
+BOX_THRESH = 0.4
+# A word in capitals with an "l" the engine read for an "I" ("MlCHlGAN",
+# "Ml-1040", "(VAGl)"), taken whole: "WallSt" has none.
+CAPITAL_L = re.compile(r"(?<![A-Z])(?=[A-Zl]*[A-Z])(?=[A-Zl]*l)[A-Zl]{2,}+(?![a-z])")
+# A zero among capitals, read for an "O" ("REFUND0RN0", "B0X", "SACRAMENT0"):
+# after a capital and before no digit, or opening a word of capitals.
+CAPITAL_O = re.compile(r"(?<=[A-Z])0(?!\d)|(?<![\w$])0(?=[A-Z]{2})")
+
+
+def capitals(text: str) -> str:
+    """``text`` with each capital "I" the engine read as "l", and each capital
+    "O" read as "0", put back."""
+    text = CAPITAL_L.sub(lambda m: m.group().replace("l", "I"), text)
+    return CAPITAL_O.sub("O", text)
+
+
 NOT_INSTALLED = "OCR engine (rapidocr-onnxruntime) is not installed"
 
 
@@ -135,41 +161,110 @@ def _ink(image: Any) -> Any:
 
 # What the engine reads a check box as, empty or marked.
 BOX_GLYPHS = "口区回☐☑☒□■"
+# A check box's wall the engine read onto the end of the word before it ("loss]").
+WALL_GLYPHS = "[]|"
+# A return's line number ("46", "4b"), boxed: the square is its cell.
+LINE_NUMBER = re.compile(r"\d{2,}|\d{1,2}[a-z]")
 
 
 def check_squares(image: Any) -> list[tuple[float, float, float, float, bool]]:
     """The check boxes of a scanned form, ``(left, top, right, bottom,
     marked)`` in pixels: small square outlines, marked when ink crosses the
-    middle. The engine reads a mark as a stray glyph or not at all."""
+    middle. The engine reads a mark as a stray glyph or not at all. A digit
+    box (a comb, "[ | | ]") may be larger than a check box, and squares that
+    share their walls outline as one box, which is cut at its walls. A box
+    taller than it is wide (a return's preprinted cents, "00") is no square."""
     import cv2
 
     ink = _ink(image)
     pt = ink.shape[1] / 612  # pixels per point, from a letter page's width
-    found: list[tuple[int, int, int, int]] = []
+    found: list[tuple[int, int, int, int, int]] = []  # and how many squares across
     contours, _tree = cv2.findContours(ink, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
-        if (
-            6 * pt <= min(w, h)
-            and max(w, h) <= 1.5 * CHECK_SIDE * pt
+        if not (
+            6 * pt <= h <= 2 * CHECK_SIDE * pt
+            and 6 * pt <= w
             and cv2.contourArea(c) > 0.85 * w * h
         ):
-            found.append((x, y, x + w, y + h))
+            continue
+        across = max(1, round(w / h))
+        walls = [x + w * k // across for k in range(1, across)]
+        if (
+            abs(w - across * h)
+            > (0.15 if max(w, h) > 1.5 * CHECK_SIDE * pt else 0.25) * h
+        ):
+            continue  # not whole squares: a cell
+        if max(w, h) > 1.5 * CHECK_SIDE * pt and not all(
+            ink[y + h // 4 : y + 3 * h // 4, max(at - 3, 0) : at + 4].mean(axis=0).max()
+            > 180
+            for at in walls
+        ):
+            continue  # a wide box with no walls inside: a field, not squares
+        found.append((x, y, x + w, y + h, across))
     squares = []
-    for x0, y0, x1, y1 in found:
+    for x0, y0, x1, y1, across in found:
         if any(
             (a, b, c, d) != (x0, y0, x1, y1)
             and a <= x0
             and b <= y0
             and x1 <= c
             and y1 <= d
-            for a, b, c, d in found
+            for a, b, c, d, _n in found
         ):
             continue  # the inside edge of a square already found
-        inset = max(2, (x1 - x0) // 4)
-        middle = ink[y0 + inset : y1 - inset, x0 + inset : x1 - inset]
-        squares.append((float(x0), float(y0), float(x1), float(y1), middle.mean() > 20))
+        for k in range(across):
+            left, right = (
+                x0 + (x1 - x0) * k // across,
+                x0 + (x1 - x0) * (k + 1) // across,
+            )
+            inset = max(2, (right - left) // 4)
+            middle = ink[y0 + inset : y1 - inset, left + inset : right - inset]
+            squares.append(
+                (float(left), float(y0), float(right), float(y1), middle.mean() > 20)
+            )
     return squares
+
+
+def cents_boxes(image: Any) -> list[tuple[float, float, float, float]]:
+    """A return's preprinted cents boxes ("|00|" after each amount box, as on
+    the CA 540), ``(left, top, right, bottom)`` in pixels: outlines as tall as
+    a check box and narrower than they are tall."""
+    import cv2
+
+    ink = _ink(image)
+    pt = ink.shape[1] / 612
+    contours, _tree = cv2.findContours(ink, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    out = []
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        if (
+            CHECK_SIDE * pt <= h <= 1.5 * CHECK_SIDE * pt
+            and 0.45 * h <= w <= 0.8 * h
+            and cv2.contourArea(c) > 0.85 * w * h
+        ):
+            out.append((float(x), float(y), float(x + w), float(y + h)))
+    return out
+
+
+# The cents box's "00" as the engine reads it with a wall: "100", "[00", "l00]".
+WALLED_CENTS = re.compile(r"[\[(|1lI]?\.?00[\])|1lI]?")
+
+
+def uncented(
+    words: list[dict[str, Any]], boxes: Sequence[tuple[float, float, float, float]]
+) -> list[dict[str, Any]]:
+    """The words with each read of a preprinted cents box put back as "00": its
+    wall read as a "1" would make an empty amount box read 100."""
+    out = []
+    for w in words:
+        mid = (w["x0"] + w["x1"]) / 2, (w["top"] + w["bottom"]) / 2
+        if WALLED_CENTS.fullmatch(w["text"]) and any(
+            a <= mid[0] <= c and b <= mid[1] <= d for a, b, c, d in boxes
+        ):
+            w = dict(w, text="00")
+        out.append(w)
+    return out
 
 
 def _cell(cells: Sequence[Sequence[float]], x: float, y: float) -> int:
@@ -225,16 +320,131 @@ def marked(
 ) -> list[dict[str, Any]]:
     """The words with the check boxes read from the image instead: a word
     inside a square goes, a glyph the engine read for a square comes off its
-    word, and each marked square reads ``[X]``."""
+    word, and each marked square reads ``[X]``. A square the engine read a
+    number of two or more digits in (a return's line number, boxed: "46") is
+    the number's cell, not a check box. A word running into a square loses
+    the wall it read there."""
+
+    def inside(w: dict[str, Any], square: Sequence[float]) -> bool:
+        cx, cy = (w["x0"] + w["x1"]) / 2, (w["top"] + w["bottom"]) / 2
+        return bool(square[0] <= cx <= square[2] and square[1] <= cy <= square[3])
+
+    squares = [
+        q
+        for q in squares
+        if not any(
+            LINE_NUMBER.fullmatch(w["text"].strip()) and inside(w, q) for w in words
+        )
+    ]
     out = []
     for w in words:
         cx, cy = (w["x0"] + w["x1"]) / 2, (w["top"] + w["bottom"]) / 2
         text = w["text"].strip(BOX_GLYPHS)
+        if any(
+            a < w["x1"] <= c + (c - a) / 2 and b <= cy <= d
+            for a, b, c, d, _m in squares
+        ):
+            text = text.rstrip(WALL_GLYPHS)
         if not text or any(a <= cx <= c and b <= cy <= d for a, b, c, d, _m in squares):
             continue
         out.append({**w, "text": text})
     out += [_word("[X]", a, c, b, d) for a, b, c, d, m in squares if m]
     return out
+
+
+# What a comb square's one digit is read as when a stroke touches its walls.
+ZERO_LIKE = str.maketrans("DOoQ", "0000")
+
+
+def combs(
+    image: Any, squares: Sequence[tuple[float, float, float, float, bool]]
+) -> tuple[list[dict[str, Any]], list[tuple[float, float, float, float, bool]]]:
+    """The amounts written one digit to a square (a comb: three or more squares
+    side by side) as words, and the squares with the combs' unmarked, so they
+    read as no check box. The engine finds a lone digit in a square unreliably,
+    so the ink inside each square is recognized alone, cropped close (a thin
+    "1" inks too little to count as a check mark). The squares come in groups set
+    apart by the printed separators; a last group of two is the cents. A
+    square found by its inside edge is grown to the comb's outside first, so
+    the squares of a group touch."""
+    ink, page = _ink(image), image.convert("RGB")
+    rows: list[list[tuple[float, float, float, float, bool]]] = []
+    for sq in sorted(squares):  # left to right: a crooked scan staggers the tops
+        side = sq[3] - sq[1]
+        row = next(
+            (
+                r
+                for r in rows
+                if abs(r[-1][1] - sq[1]) < side / 2
+                and 0 <= sq[0] - r[-1][2] < 0.6 * side
+            ),
+            None,
+        )
+        if row is None:
+            rows.append([sq])
+        else:
+            row.append(sq)
+    words, rest = [], []
+    for row in rows:
+        if len(row) < 3:
+            rest += row
+            continue
+        rest += [(a, b, c, d, False) for a, b, c, d, _m in row]
+        side = max(q[3] - q[1] for q in row)
+        grown = [
+            (q[0] - (side - q[3] + q[1]) / 2, q[2] + (side - q[3] + q[1]) / 2)
+            for q in row
+        ]
+        groups: list[list[str]] = [[]]
+        for n, (a, b, c, d, _inked) in enumerate(row):
+            if n and grown[n][0] - grown[n - 1][1] > 0.06 * side:
+                groups.append([])
+            groups[-1].append(_digit(page, ink, (a, b, c, d)))
+        cents = (
+            "".join(groups.pop()) if len(groups) > 1 and len(groups[-1]) == 2 else ""
+        )
+        whole = "".join("".join(g) for g in groups)
+        text = whole + ("." + cents if cents else "")
+        if whole or cents:
+            top, bottom = min(q[1] for q in row), max(q[3] for q in row)
+            words.append(_word(text, row[0][0], row[-1][2], top, bottom))
+    return words, rest
+
+
+# How sure the recognizer must be of a comb square's digit (it is least sure of
+# a "0").
+DIGIT_SCORE = 0.3
+
+
+def _digit(page: Any, ink: Any, square: tuple[float, float, float, float]) -> str:
+    """The digit written in a comb square, or "" for none: read from the
+    square inside its walls and from its ink cropped close, the surer of the
+    two."""
+    import numpy as np
+
+    a, b, c, d = (int(v) for v in square)
+    inset = max(2, (c - a) // 6)  # clear of the walls
+    x0, y0, x1, y1 = a + inset, b + inset, c - inset, d - inset
+    ys, xs = np.nonzero(ink[y0:y1, x0:x1])
+    if not len(xs):
+        return ""
+    margin = 3
+    close = (
+        x0 + max(int(xs.min()) - margin, 0),
+        y0 + max(int(ys.min()) - margin, 0),
+        x0 + min(int(xs.max()) + margin + 1, x1 - x0),
+        y0 + min(int(ys.max()) + margin + 1, y1 - y0),
+    )
+    best, sure = "", DIGIT_SCORE
+    for box in ((x0, y0, x1, y1), close):
+        read, _elapsed = _engine()(
+            np.asarray(page.crop(box)), use_det=False, use_cls=False
+        )
+        for text, score in read or []:
+            digits = [ch for ch in str(text).translate(ZERO_LIKE) if ch.isdigit()]
+            if digits and float(score) >= sure:
+                best, sure = digits[0], float(score)
+    return best
 
 
 def layout(result: list[list[Any]] | None) -> list[Line]:
@@ -287,9 +497,66 @@ def _ocr(image: Any) -> tuple[list[list[Any]], float]:
     import numpy as np
 
     result, _elapsed = _engine()(
-        np.asarray(image.convert("RGB")), use_cls=False, return_word_box=True
+        np.asarray(image.convert("RGB")),
+        use_cls=False,
+        return_word_box=True,
+        box_thresh=BOX_THRESH,
     )
     return result or [], sum(float(r[2]) for r in result or [])
+
+
+# A return's preprinted cents beside its amount box, as a scan reads them.
+PRINTED_CENTS = re.compile(r"\[?\.?00\]?")
+
+
+def _lowered(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The scan's words with each filled amount set level with the word
+    nearest it on its left (its line's number, or the label's end), as
+    ``pdf._lowered`` does the text layer's. A filled figure sits a little off
+    its line, and a section heading on the line above ("Step 2: Income" on the
+    IL-1040) would otherwise take it. A number with words close on its right
+    is a line's own number, and stays; a return's preprinted cents on its right
+    ("00") do not count, and those just beside it move with it. A figure may
+    sit up to its own height off its line (CA 540). The reach, in points
+    there, is in pixels here. A figure read with points for its commas gets
+    them back, and one read with the printed
+    cents after its own loses them."""
+    reach = NEAR * PAGE_DPI / 72
+    out = [dict(w) for w in words]
+    moved: dict[int, float] = {}  # a figure's printed cents, and how far it moved
+    for f in out:
+        height = f["bottom"] - f["top"]
+        mid = (f["top"] + f["bottom"]) / 2
+
+        def off(w: dict[str, Any], mid: float = mid) -> float:
+            return float(abs((w["top"] + w["bottom"]) / 2 - mid))
+
+        left = [
+            w
+            for w in words
+            if off(w) <= height and f["x0"] - reach < w["x1"] <= f["x0"]
+        ]
+        right = [
+            k
+            for k, w in enumerate(words)
+            if off(w) <= height / 2 and f["x1"] <= w["x0"] < f["x1"] + reach
+        ]
+        cents = [k for k in right if PRINTED_CENTS.fullmatch(words[k]["text"])]
+        right = [k for k in right if k not in cents]
+        cents = [k for k in cents if words[k]["x0"] - f["x1"] <= 2 * height]
+        if CENTS_TWICE.fullmatch(f["text"]):
+            f["text"] = f["text"][: -len(".00")]
+        if POINTED.fullmatch(f["text"]):
+            whole, point = f["text"].rsplit(".", 1)
+            f["text"] = whole.replace(".", ",") + "." + point
+        printed = PRINTED_CENTS.fullmatch(f["text"])
+        if FIGURE.fullmatch(f["text"]) and not printed and left and not right:
+            dy = min(left, key=off)["top"] - f["top"]
+            f["top"], f["bottom"] = f["top"] + dy, f["bottom"] + dy
+            moved.update(dict.fromkeys(cents, dy))
+    for k, dy in moved.items():  # the cents go with their figure
+        out[k]["top"], out[k]["bottom"] = words[k]["top"] + dy, words[k]["bottom"] + dy
+    return out
 
 
 def _read(image: Any) -> str:
@@ -301,11 +568,14 @@ def _read(image: Any) -> str:
         if more > total:
             image, result, turned = over, again, True
     ruled = grid_cells(image)
-    words = marked(words_of(result, ruled), check_squares(image))
+    digits, squares = combs(image, check_squares(image))
+    words = _lowered(
+        uncented(marked(words_of(result, ruled), squares), cents_boxes(image)) + digits
+    )
     lines = layout(
         [[[[w["x0"], w["top"]], [w["x1"], w["bottom"]]], w["text"], 1.0] for w in words]
     )
-    plain = Read(normalize("\n".join(line.text for line in lines)), lines)
+    plain = Read(capitals(normalize("\n".join(line.text for line in lines))), lines)
     plain.turned = turned
     cells = grid_lines(words, ruled)
     if not cells:
@@ -322,7 +592,7 @@ def _read(image: Any) -> str:
         )
         for text, row in cells
     ]
-    grid = Grid(normalize("\n".join(t for t, _ in cells)), plain, boxes)
+    grid = Grid(capitals(normalize("\n".join(t for t, _ in cells))), plain, boxes)
     grid.turned = turned
     return grid
 

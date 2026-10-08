@@ -1572,6 +1572,41 @@ To rebuild the fixtures: `uv run --extra dev python scripts/real_forms.py`.
 It downloads each blank from irs.gov once, and refuses a blank whose SHA-256
 has changed, because a new revision may move its boxes.
 
+#### Reading state returns (unit 7h2b)
+
+A state return prints its figures in ways the federal forms do not. On the text
+layer:
+
+- **A row of spaces under a field** (several states print one) no longer splits
+  the figure set over it.
+- **A figure set a little above its line** moves down onto it, so a heading on
+  the line above never takes it.
+- **A word turned sideways** partway down the page ("PAID PREPARER") reads
+  after the page, not through the middle of a line.
+- **Amounts drawn one digit to a box** read as one figure on their label's line.
+- **A line number or printed cents is never an amount** ("13 12.Unpaid tax",
+  "13 00"), and an empty line's amount is not the next line's figure, unless a
+  "$" ends the line.
+
+And on a scan:
+
+- **Digit boxes.** A row of squares holding one digit each is read square by
+  square, the surer of two readings kept, and its last two digits are the
+  cents. Its squares are not check boxes, nor is a boxed line number ("46",
+  "4b"). A word running into a check box loses the wall the engine read there
+  ("loss]").
+- **Letters the engine confuses.** A capital I read as "l" and a capital O read
+  as a zero are put back inside a capitals word ("MlCHlGAN", "SACRAMENT0");
+  a figure's zeros stay. A form's title matches through "rn" read for "m" and
+  the other way round ("Forrn", "Returm").
+- **Figures off their line.** A filled figure sits up to its own height off its
+  line and is set level with the line's number, its printed cents ("00") moving
+  with it; a figure read with the printed cents after its own ("2,850.00.00")
+  loses them.
+- **Labels.** A misread label is put back from the template's own wording, and
+  the line number read before it ("14.", "19a.") is kept. A comma read as a
+  point counts as a comma.
+
 #### Scans of the real forms
 
 `tests/test_scans.py` scans each official form the way an office scanner does
