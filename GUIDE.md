@@ -766,9 +766,17 @@ Schedule 1 (line 13, and line 8f for taxable distributions) and Schedule 2
   HSA deduction. Until then, the typed HSA contribution stands.
 - **The HSA lever.** The year-end HSA lever now takes payroll money off the room
   it offers.
+- **Each spouse's own (unit 3a-7).** On a joint return a spouse with an HSA has
+  their own Form 8889 (`8889 (spouse)` in the draft), from the documents marked
+  theirs (`data/inbox/spouse/` or `planner owner`) and their own answers
+  (`spouse_hsa_coverage`, `spouse_hsa_months`, `spouse_hsa_qualified_expenses`).
+  If either spouse has family coverage, both are treated as having it. When each
+  has an HSA the family limit is split on line 6, equally unless
+  `hsa_family_share` (your percent) says otherwise, and each spouse 55 or older
+  adds their own $1,000 on line 7. Schedule 1 line 13 adds both line 13s (2025
+  Instructions for Form 8889, Part I and lines 6-7).
 - **Not handled, and named.** Archer MSA contributions (line 4), a funding
-  distribution from an IRA (line 10), rollovers (line 14b), and a family limit
-  split with a spouse's own HSA (line 6).
+  distribution from an IRA (line 10) and rollovers (line 14b).
 
 ## The NC return: D-400 and Schedule S (Phase 4k)
 
@@ -788,7 +796,10 @@ and its Schedule S. It uses the same engine run as the federal return.
 - **Tax and payments.**
   - Line 18 (use tax): `nc_use_tax` when typed; until then, the use tax table's
     estimate for your income, and the draft says so.
-  - Line 20a: NC withholding from W-2 box 17 and 1099-R box 14.
+  - Line 20a: NC withholding from W-2 box 17 and 1099-R box 14. On a joint return
+    line 20a is yours and line 20b the spouse's (2025 D-401 p. 15), from the documents
+    marked theirs (`data/inbox/spouse/` or `planner owner`; unit 3a-6); with none
+    marked and withholding on file, a note says how to mark them.
   - Line 21a: the NC estimated payments from the bank export or typed.
   - The draft ends on line 26a/27 (owed) or line 28/34 (refund).
 - **Check.** Line 14 is compared with the engine's NC taxable income, with the
@@ -1107,7 +1118,8 @@ saved:
 
 - **Amounts** may carry `$`, commas or (parentheses) for a negative. They must be finite,
   at most 100,000,000, and not negative except gains and self-employment income.
-- **Whole numbers** have their ranges (Social Security claim age 62-70, HSA months 0-12).
+- **Whole numbers** have their ranges (Social Security claim age 62-70, HSA months 0-12, `hsa_family_share` 0-100;
+  a spouse's `spouse_*` answer takes the same range).
 - **Fractions** run from 0 to 1, or take a percent such as `4%`.
 - **Dates** are YYYY-MM-DD, between 1900 and today.
 - **Choices** must be one of the listed options.
@@ -1189,7 +1201,7 @@ checks its own folder first with `findstr` and prints the same warning before
 it downloads or runs anything, so a double-click in a synced folder explains
 itself in the window it keeps open.
 
-## Scope guard and the household's people (Phase 10, units 0b and 3a-2 to 3a-5)
+## Scope guard and the household's people (Phase 10, units 0b and 3a-2 to 3a-7)
 
 The profile names the household's people: `spouse_birth_date` (asked when the filing
 status is married_joint) and `dependents` (asked for married_joint and
@@ -1213,12 +1225,9 @@ Until they are named, `planner.coverage.HOUSEHOLD` holds one line per status:
   larger household for the ACA credit and benefits are left out.
 
 The line leads the dashboard's alerts (kind `scope`), reaches the draft return's notes,
-`planner magi` and the tax pack's notes. Once the people are named it is replaced by
-`coverage.PEOPLE` on a joint return, which touches only the draft and the estimated
-tax: a spouse's own HSA is not modeled (the HSA deduction and Form 8889 are the first
-person's). The draft lays out the spouse's Schedule 1-A line 36b and the dependents'
-Schedule 8812 (unit 3a-3) and each spouse's own Schedule SE (unit 3a-5). A single
-filer or a head of household with dependents has none.
+`planner magi` and the tax pack's notes. Once the people are named it goes: the draft lays out the spouse's Schedule 1-A line 36b and the dependents'
+Schedule 8812 (unit 3a-3), each spouse's own Schedule SE (unit 3a-5) and Form 8889
+(unit 3a-7).
 
 Each document is one person's (unit 3a-4). Drop the spouse's W-2, 1099-R, SSA-1099,
 5498 and 1099-NEC in `data/inbox/spouse/` (any case); everything else is yours. A

@@ -293,13 +293,13 @@ schedule_d:
 form_8889:
   status: verified
   evidence: implemented
-  tests: ["tests/test_hsa.py"]
-  note: "planner hsa; limit by coverage and months, 55+ catch-up, W-2 code W, excess named, taxable distributions + 20%"
+  tests: ["tests/test_hsa.py", "tests/test_hsa_spouse.py"]
+  note: "planner hsa; limit by coverage and months, 55+ catch-up, W-2 code W, excess named, taxable distributions + 20%; a joint spouse's own 8889 from their documents, family limit split on line 6 (unit 3a-7, 2025 i8889)"
 nc_d400_draft:
   status: verified
   evidence: implemented
   tests: ["tests/test_d400.py"]
-  note: "planner draft; Schedule S 16/18/19/20-40/41, D-400 6-34 for a full-year resident; Schedule PN, D-400TC, D-422 named, not drafted"
+  note: "planner draft; Schedule S 16/18/19/20-40/41, D-400 6-34 for a full-year resident (joint: 20a yours, 20b the spouse's by document owner, unit 3a-6, D-401 p. 15); Schedule PN, D-400TC, D-422 named, not drafted"
 taxpack:
   status: verified
   evidence: implemented

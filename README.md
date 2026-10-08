@@ -43,8 +43,8 @@ whole tax unit (the spouse's age, the child tax credit, the household size for t
 credit), and the draft return carries the spouse's senior deduction and a Schedule 8812
 for the dependents, and each spouse's own Schedule SE. The spouse's documents go in
 `data/inbox/spouse/` (or `planner owner <file> spouse`), so their wages, IRA and Social
-Security are theirs; the draft and estimated tax stay tagged only for the spouse's own
-HSA.
+Security are theirs, and so are their Schedule SE and Form 8889 (the family HSA limit
+split between the spouses' HSAs).
 Married filing separately stays
 **Not handled**. The state return drafted is NC's D-400; another state
 gets the engine's estimate and a **Not handled** line saying to have a preparer draft it.
@@ -77,7 +77,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `forms` | The forms the year should produce (from last year's issuers, the accounts and the Needed panel), which have arrived, and where to download the rest. |
 | `gains` | Form 8949 and Schedule D: each closed lot in a taxable account, wash sales across every account (code W), 1099-DIV capital gain distributions and the loss carried in. |
 | `glide` | The age/year table to 95 under the planning return, the accessible-bucket floor through the IRA access age, the comfort-floor line (the same rule at the floor return) beside it, three stress rows, and the month-by-month cash line for this year and next, with estimated payments from `esttax` and the planned sales and conversion tax (no `--cash-in` needed). |
-| `hsa` | Form 8889: the HSA limit for your coverage and months, employer money against it, the deduction, any excess, and distributions not spent on medical care. |
+| `hsa` | Form 8889 (and a joint spouse's own): the HSA limit for the coverage and months, employer money against it, the deduction, any excess, and distributions not spent on medical care. |
 | `ingest` | Read every file in data/inbox/ into the ledger; archive or mark UNMATCHED. |
 | `init` | Set up this folder: create data/ and out/ with every subfolder. Refuses a folder inside OneDrive, Dropbox, iCloud Drive or Google Drive (exit 2). Safe to repeat. |
 | `levers` | Every move left this year that changes the tax bill or the ACA credit, sized from the ledger, priced through the engine and ranked: moves that get you under a line, and moves that use the room below the next one. |

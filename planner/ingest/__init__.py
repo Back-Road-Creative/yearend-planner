@@ -360,6 +360,7 @@ def ingest(
                 report.derived[year] = n
             schedule_c.store(conn, lay, year)
             capgains.store(conn, lay, year)
-            hsa.store(conn, lay, year)
+            for who in hsa.WHO:
+                hsa.store(conn, lay, year, who=who)
     conn.close()
     return report
