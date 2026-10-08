@@ -533,6 +533,126 @@ def r(x: float) -> float:
     return round(x, ROUND)
 
 
+EXCLUSION = "dependent_care_assistance_exclusion"
+
+
+@dataclass(frozen=True)
+class DependentCare:
+    """Form 2441 Part III (2025 Form 2441 and its instructions, lines 12-31):
+    the employer's dependent care benefits, what of them is excluded and taxed,
+    and the care left for the credit in Part II. Lines 22 and 24 (benefits from
+    your own sole proprietorship or partnership) are taken as 0."""
+
+    line12: float  # W-2 box 10, both spouses
+    line13: float  # grace-period carryover used
+    line14: float  # forfeited or carried forward
+    line15: float  # 12 + 13 - 14
+    line16: float  # care incurred
+    line17: float  # smaller of 15 and 16
+    line18: float  # your earned income, not counting line 12
+    line19: float  # the spouse's (yours again when not joint)
+    line20: float  # smallest of 17, 18 and 19
+    line21: float  # the exclusion's dollar cap
+    line25: float  # excluded: smaller of 20 and 21
+    line26: float  # taxable (Form 1040 line 1e): 15 - 25
+    line27: float  # $3,000 a qualifying person, two at most
+    line29: float  # 27 - 28 (line 28 = line 25 here)
+    line30: float  # care paid less line 28
+    line31: float  # smaller of 29 and 30: Part II line 3
+
+
+_CARE: dict[tuple[int, str], tuple[Household, DependentCare | None]] = {}
+
+
+def dependent_care(
+    year: int, household: Household
+) -> tuple[Household, DependentCare | None]:
+    """The household the engine prices once Form 2441 Part III is worked out,
+    and the form's lines (None, and the household unchanged, without W-2 box 10
+    benefits). The engine caps the exclusion at the dollar cap and the lower
+    earner's income but not at the care incurred (line 17), never taxes the
+    excess (line 26), and claims care up to the $3,000 limit less the
+    exclusion where the form claims the care not paid with benefits (line 30).
+    So the exclusion is pinned to line 25, the care to line 30 and line 26 is
+    added to the wages of whoever received the benefits (pro rata between
+    spouses). The returned household holds no benefits, so a second call
+    leaves it as it is. Earned income is the engine's, read before line 26
+    joins it (lines 18-19 leave the benefits out; Part II then counts them)."""
+    sp = household.spouse
+    mine = household.dependent_care_benefits
+    theirs = sp.dependent_care_benefits if sp is not None else 0
+    if not mine + theirs:
+        return household, None
+    key = (year, repr(household))
+    if (hit := _CARE.get(key)) is not None:
+        return hit
+    base = replace(
+        household, tax_unit_inputs={**household.tax_unit_inputs, EXCLUSION: 0.0}
+    )
+    sim = _sim(year, base)
+    head = float(_calc(sim, "head_earned", year)[0])
+    spouse = float(_calc(sim, "spouse_earned", year)[0])
+    limit = float(_calc(sim, "cdcc_limit", year)[0])  # line 27: nothing excluded
+    p = _system().parameters(f"{year}-01-01").gov.irs.gross_income
+    cap = float(
+        getattr(
+            p.dependent_care_assistance_programs.reduction_amount,
+            household.filing_status,
+        )
+    )
+    l12 = float(mine + theirs)
+    l15 = max(
+        l12 + household.dependent_care_grace - household.dependent_care_forfeited, 0.0
+    )
+    l16 = float(household.care_expenses)
+    l17 = min(l15, l16)
+    l19 = max(spouse, 0.0) if household.filing_status == "JOINT" else max(head, 0.0)
+    l18 = max(head, 0.0)
+    l20 = min(l17, l18, l19)
+    l25 = min(l20, cap)
+    l26 = max(l15 - l25, 0.0)
+    l29 = max(limit - l25, 0.0)
+    l30 = max(l16 - l25, 0.0)
+    care = DependentCare(
+        l12,
+        float(household.dependent_care_grace),
+        float(household.dependent_care_forfeited),
+        l15,
+        l16,
+        l17,
+        l18,
+        l19,
+        l20,
+        cap,
+        l25,
+        l26,
+        limit,
+        l29,
+        l30,
+        min(l29, l30),
+    )
+    taxed = int(round(l26))
+    yours = int(round(taxed * mine / l12))
+    out = replace(
+        household,
+        wages=household.wages + yours,
+        care_expenses=int(round(l30)),
+        dependent_care_benefits=0,
+        dependent_care_grace=0,
+        dependent_care_forfeited=0,
+        tax_unit_inputs={**household.tax_unit_inputs, EXCLUSION: l25},
+        spouse=(
+            replace(sp, wages=sp.wages + taxed - yours, dependent_care_benefits=0)
+            if sp is not None
+            else None
+        ),
+    )
+    if len(_CARE) >= MEMO_SIZE:
+        _CARE.clear()
+    _CARE[key] = (out, care)
+    return out, care
+
+
 # One engine run per distinct household: the planners on the plan page price the
 # same base household many times. The engine is deterministic and TaxResult is
 # frozen, so a repeat is returned from here.
@@ -546,7 +666,7 @@ def compute(year: int, household: Household) -> TaxResult:
     if hit is None:
         if len(_MEMO) >= MEMO_SIZE:
             _MEMO.clear()
-        hit = _MEMO[key] = _compute(year, household)
+        hit = _MEMO[key] = _compute(year, dependent_care(year, household)[0])
     return hit
 
 
@@ -696,7 +816,8 @@ def values(
     figures come from the simulation at the settled health insurance deduction
     (``_settle``), and two keys report that settlement: ``se_health_converged``
     (1 or 0) and ``se_health_ptc`` (the credit allowed, or -1 when no premiums
-    were settled)."""
+    were settled). Form 2441 Part III is worked out first (``dependent_care``)."""
+    household = dependent_care(year, household)[0]
     settled = _settle(year, household)
     sim = settled.sim
     out = {name: float(_calc(sim, name, year)[0]) for name in names}
@@ -736,9 +857,12 @@ def engine_slcsp(year: int, household: Household) -> float:
 def compute_sweep(
     year: int, household: Household, variable: str, lo: int, hi: int, step: int
 ) -> list[dict[str, float]]:
-    """Sweep one of the first person's inputs in one engine run (engine axes)."""
+    """Sweep one of the first person's inputs in one engine run (engine axes).
+    Form 2441 Part III is worked out at the base household and held across the
+    sweep (the taxable benefits and the exclusion do not move with it)."""
     if step <= 0 or hi < lo:
         raise ValueError("sweep needs step > 0 and hi >= lo")
+    household = dependent_care(year, household)[0]
     count = (hi - lo) // step + 1
     axis = {
         "name": variable,

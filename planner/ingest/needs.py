@@ -688,6 +688,51 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("MAGI headroom", "Levers", "Draft 1040", "Expected forms"),
     ),
     Need(
+        "dependent_care_benefits",
+        "Dependent care benefits from an employer",
+        "Form 2441 Part III: benefits above the care incurred, or above the "
+        "lower earner's income, are taxable (line 26); the rest lowers the "
+        "credit's $3,000 or $6,000 limit (line 28)",
+        "box 10; type 0 if none",
+        "money",
+        boxes=(("W-2", "10"),),
+        doc="w2",
+        asked=lambda s: bool(s.get("dependents")),
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "care_expenses",
+        "Care paid this year for a child under 13, so you (and your spouse) could work",
+        "the credit for child and dependent care expenses (Form 2441 Part II, "
+        "column d) and the benefits test (line 16): up to $3,000 for one child, "
+        "$6,000 for two or more",
+        "the care provider's receipts or your dependent care account's claims "
+        "history; type 0 if none",
+        "money",
+        asked=lambda s: bool(s.get("dependents")),
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "dependent_care_grace",
+        "Dependent care benefits carried from last year and used in this year's "
+        "grace period",
+        "Form 2441 line 13: added to this year's benefits",
+        "your dependent care account's statement; type 0 if none",
+        "money",
+        asked=lambda s: _dependent_care(s),
+        unlocks=("Draft 1040",),
+    ),
+    Need(
+        "dependent_care_forfeited",
+        "Dependent care benefits forfeited, or carried to next year",
+        "Form 2441 line 14: what you did not receive is not taxable",
+        "your dependent care account's year-end statement (box 10 less what it "
+        "reimbursed); type 0 if none",
+        "money",
+        asked=lambda s: _dependent_care(s),
+        unlocks=("Draft 1040",),
+    ),
+    Need(
         "qualified_tips",
         "Qualified tips (already in wages)",
         "the Schedule 1-A tips deduction, tax years 2025 to 2028 (P.L. 119-21 sec. 70201)",
@@ -1012,6 +1057,16 @@ NEEDS: tuple[Need, ...] = (
 )
 
 SPOUSE = "spouse_"  # a joint spouse's own line: the head's key behind this
+
+
+def _dependent_care(s: dict[str, Any]) -> bool:
+    """Either spouse has W-2 box 10 benefits (Form 2441 lines 13-14 follow)."""
+    return any(
+        float(s.get(k) or 0) > 0
+        for k in ("dependent_care_benefits", SPOUSE + "dependent_care_benefits")
+    )
+
+
 # Each spouse's own Form 8889 (unit 3a-7): typed and summed per person, like
 # PERSON_INPUTS, though the engine takes only the household's deduction.
 PERSON_HSA = (

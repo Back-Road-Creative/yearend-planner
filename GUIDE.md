@@ -1316,6 +1316,41 @@ A typed `total_income` is the couple's: the head's wages are what is left after 
 spouse's own income. The ledger is schema 5 (`documents.owner`); an older one is
 copied aside and brought up as the head's.
 
+## Child and dependent care (Phase 10, unit 3c-1)
+
+A household with dependents is asked for `care_expenses` (care paid in the year for a
+child under 13 so you, and a joint spouse, could work) and `dependent_care_benefits`
+(W-2 box 10; a joint spouse's own as `spouse_dependent_care_benefits`). With benefits it
+also asks `dependent_care_grace` (last year's benefits used in this year's grace period,
+Form 2441 line 13) and `dependent_care_forfeited` (forfeited or carried to next year,
+line 14). Type 0 for none.
+
+The draft lays out Form 2441 (2025 Form 2441 and instructions):
+
+- Part III (lines 12-31), when there are benefits. The exclusion (line 25) is the
+  smallest of the benefits less forfeitures, the care incurred, each earner's income
+  without the benefits, and $5,000 ($2,500 married filing separately). The rest
+  (line 26) is wages on Form 1040 line 1e. The excluded amount lowers the credit's
+  $3,000/$6,000 limit (line 29), and care paid with benefits leaves the credit (line 30).
+- Part II (lines 2-11): the qualifying children, the care (line 3), each earner's
+  income (lines 4-5, which now include any line 1e), the line 8 decimal (35% down to 20%
+  as AGI passes $15,000 to $43,000), and the credit, capped at the tax (line 10 = 1040
+  line 18). The credit goes on Schedule 3 line 2.
+
+The engine excludes benefits but neither taxes the excess nor drops the care paid with
+them, so `planner.engine.tax.dependent_care` works Part III out first and prices the
+household that results: the exclusion pinned to line 25, the care cut to line 30, line 26
+added to the wages of whoever received the benefits. The plan, the draft and the
+planners all price that household. A sweep (`planner levers` curves) holds Part III at
+the base household's figures.
+
+Not drafted: Part I (each provider's name, address and ID, from their receipts), line 9b
+(last year's care paid this year), benefits from your own business (lines 22 and 24),
+and a dependent 13 or over, or a spouse, who cannot care for themselves (they qualify;
+the draft does not count them, so see a preparer). A married person filing separately
+gets no credit unless they lived apart from their spouse the last six months of the year;
+the draft takes none and says so.
+
 ## Coverage gate (Phase 10, unit 2a)
 
 `planner.coverage.gate` runs right after intake, before any plan or draft, and lists

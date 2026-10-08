@@ -51,6 +51,9 @@ spouse who died during the year stays on that year's joint return at their age a
 death (unit 3b-3). A couple married during the year gets Form 8962's alternative
 calculation for the year of marriage when it lowers the repayment (`marriage_date`,
 unit 3b-4, Pub. 974).
+A household with a child under 13 is asked for the care it paid and any dependent care
+benefits (W-2 box 10); the draft carries Form 2441, its credit on Schedule 3 line 2 and
+benefits above the care or the lower earner's income on Form 1040 line 1e (unit 3c-1).
 `planner separate` prices a joint couple's two married-filing-separately returns, each
 on that spouse's own documents, against the joint return (unit 3b-2; not in a
 community property state). Filing as married filing separately stays
