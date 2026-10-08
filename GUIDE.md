@@ -203,7 +203,8 @@ from the fixed list); a bad answer is refused, never guessed. Profile items (bir
 filing status, state, county, spending band, cash target, return and conversion
 assumptions, SS estimates) go to `data/profile/assumptions.yaml`, which is created from
 `config/assumptions.example.yaml` on first use; year items go to
-`data/manual/<year>.yaml`. `planner dont-have <item> --year 2026` takes an item off the
+`data/manual/<year>.yaml`. A YAML file edited by hand that gives one key twice is
+refused with the repeated key and its line named, never read with the last one winning. `planner dont-have <item> --year 2026` takes an item off the
 list and the plan shows it as unavailable; `--undo` puts it back. The loop is done when `planner needed` prints
 `nothing needed`; `--all` shows the covered items with their source. A list emptied by
 setting items aside (`dont-have`, or a waived late form) prints `nothing left to answer,

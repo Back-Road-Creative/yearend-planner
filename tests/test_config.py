@@ -60,6 +60,35 @@ def test_every_hand_year_lists_every_lever_row(repo_root: Path) -> None:
         assert LEVER_ROWS <= set(rows), (year, sorted(LEVER_ROWS - set(rows)))
 
 
+def test_a_key_given_twice_is_refused_at_any_depth(tmp_path: Path) -> None:
+    """PyYAML keeps the last of two equal keys without a word, so a pasted row
+    would silently replace an earlier one. Every planner YAML read refuses it."""
+    import yaml
+
+    from planner.config import load_yaml, safe_load
+
+    p = tmp_path / "c.yaml"
+    p.write_text("a: 1\nb: 2\na: 3\n", encoding="utf-8")
+    with pytest.raises(yaml.YAMLError, match="(?s)duplicate key 'a'.*line 3"):
+        load_yaml(p)
+    with pytest.raises(yaml.YAMLError, match="duplicate key 'y'"):
+        safe_load("x:\n  y: 1\n  y: 2\n")
+    assert safe_load("x:\n  y: 1\nz: [1, 1]\n") == {"x": {"y": 1}, "z": [1, 1]}
+    assert safe_load("") is None
+
+
+def test_no_planner_code_reads_yaml_past_the_strict_loader() -> None:
+    root = Path(__file__).resolve().parents[1]
+    loose = [
+        str(f.relative_to(root))
+        for d in ("planner", "scripts")
+        for f in (root / d).rglob("*.py")
+        if "yaml.safe_load(" in f.read_text(encoding="utf-8")
+        or "yaml.load(" in f.read_text(encoding="utf-8")
+    ]
+    assert loose == [], loose
+
+
 def test_threshold_without_source_is_rejected(tmp_path: Path) -> None:
     p = tmp_path / "t.yaml"
     p.write_text("2026:\n  x:\n    value: 1\n", encoding="utf-8")
