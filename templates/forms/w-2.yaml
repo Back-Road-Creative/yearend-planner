@@ -6,9 +6,10 @@
 # nonstatutory option income the Needed panel's 1099-B basis items look for.
 form: W-2
 years: [2024, 2025, 2026]
-# The big outlined "W-2" defeats OCR, so the title and box a name the form; a
-# scan reads the year before "Department of the Treasury" on the title line.
-match: ["Wage and Tax Statement", "Employee's social security number"]
+# The big outlined "W-2" defeats OCR, so the title alone names the form (a
+# payroll export may leave out box a); a scan reads the year before
+# "Department of the Treasury" on the title line.
+match: ["Wage and Tax Statement"]
 year_pattern: "(?:Wage and Tax Statement\\s*|tax year\\s*:?\\s*|\\bW-2\\s+|(?=20\\d\\d Department of the Treasury))(20\\d\\d)"
 issuer_pattern: "Employer'?s nameADDRESS([^\\n]+)"
 boxes:
