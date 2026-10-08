@@ -130,6 +130,9 @@ ENGINE_LINE = {
     "37": "additional_senior_deduction",
 }
 SS_WAGES = (("W-2", "3"), ("W-2", "7"))  # Social Security wages and tips
+SCH_SE_SPOUSE = "Sch SE (spouse)"
+# Read for each spouse alone: each has their own Schedule SE (unit 3a-5)
+OWN = ("self_employment_income", "employment_income", "self_employment_tax")
 SCH_8812 = "Sch 8812"
 # Schedule 8812 per year: (a child under 17, its refundable most). P.L. 119-21
 # sec. 70104 sets $2,200 from 2025; Rev. Proc. 2024-40 (2025) and Rev. Proc.
@@ -348,13 +351,10 @@ def build(lay: Layout, year: int) -> Draft:
     # Schedule SE line 8a is W-2 boxes 3 and 7, which pre-tax 401(k) deferrals
     # put above box 1. The engine takes box 1 as the wage base's earnings unless
     # told: give it the form's figure so its SE tax is the line 12 below.
-    # The schedule is the head's, so only the head's W-2s (a spouse's: unit 3a-4).
-    mine = [f for f in facts if f.owner == "you"]
-    ss_wages = (
-        _sum(mine, SS_WAGES) if any((f.form, f.box) in SS_WAGES for f in mine) else None
-    )
+    # Each spouse's schedule reads their own W-2s (owners: unit 3a-4).
+    ss_wages, ss_spouse = (_ss_wages(facts, who) for who in ("you", "spouse"))
+    cap = tax.self_employment_parameters(year)["wage_base"]
     if ss_wages is not None:
-        cap = tax.self_employment_parameters(year)["wage_base"]
         hh = dataclasses.replace(
             hh,
             other={
@@ -362,6 +362,9 @@ def build(lay: Layout, year: int) -> Draft:
                 "taxable_earnings_for_social_security": int(round(min(ss_wages, cap))),
             },
         )
+    if ss_spouse is not None and hh.spouse is not None:
+        sp = dataclasses.replace(hh.spouse, ss_wages=int(round(min(ss_spouse, cap))))
+        hh = dataclasses.replace(hh, spouse=sp)
     # Tips and overtime need a joint return if married (Schedule 1-A lines
     # 4-5 and 14-15; P.L. 119-21 secs. 70201-70202). The engine does not apply
     # that rule, so a separate filer's engine run holds neither: its taxable
@@ -369,7 +372,7 @@ def build(lay: Layout, year: int) -> Draft:
     priced = hh
     if hh.filing_status == "SEPARATE" and year in SCH_1A_YEARS:
         priced = dataclasses.replace(hh, qualified_tips=0, qualified_overtime=0)
-    v = tax.values(year, priced, (*ENGINE, *d400.ENGINE), PRIOR)
+    v = tax.values(year, priced, (*ENGINE, *d400.ENGINE), PRIOR, OWN)
     d = Draft(
         year,
         tax.engine_version(),
@@ -425,7 +428,7 @@ def build(lay: Layout, year: int) -> Draft:
     # 31; Schedule 1 carries both results.
     for line, label, value, src in schedule_c.sheet(sc):
         add("Sch C", line, label, value, src)
-    profit, profit_src = v["self_employment_income"], origin("se_income")
+    profit, profit_src = v["self_employment_income@you"], origin("se_income")
     line_31 = sc.lines.get("31")
     if line_31 is not None:
         d.notes.extend(sc.notes)
@@ -439,10 +442,31 @@ def build(lay: Layout, year: int) -> Draft:
                 "a 1099 estimate, or Schedule C facts out of date: run "
                 f"planner categorize --year {year})"
             )
-    se = _schedule_se(sheet, d, v, profit, profit_src, ss_wages) if profit else None
+    sp_profit, sp_src = v["self_employment_income@spouse"], origin("spouse_se_income")
+    ses = [
+        (form, *_schedule_se(sheet, d, v, who, form, gain, src, base))
+        for who, form, gain, src, base in (
+            ("you", "Sch SE", profit, profit_src, ss_wages),
+            ("spouse", SCH_SE_SPOUSE, sp_profit, sp_src, ss_spouse),
+        )
+        if gain
+    ]
+    se = (sum(s[1] for s in ses), sum(s[2] for s in ses)) if ses else None
+    if se and abs(se[1] - v["self_employment_tax_ald"]) > TOLERANCE:
+        d.notes.append(
+            f"CHECK: Schedule SE line 13 against the engine's deduction: "
+            f"{se[1]:,.2f} vs {v['self_employment_tax_ald']:,.2f}"
+        )
+    se_src = " + ".join(s[0] for s in ses)
 
     # Schedule 1
-    s1_3 = add("Sch 1", "3", "Business income", profit, profit_src)
+    s1_3 = add(
+        "Sch 1",
+        "3",
+        "Business income",
+        profit + sp_profit,
+        f"{profit_src} + the spouse's {sp_src}" if sp_profit else profit_src,
+    )
     s1_9 = 0.0
     if h.lines.get("16"):
         add("Sch 1", "8f", "Income from Form 8889", h.lines["16"], "Form 8889 line 16")
@@ -470,7 +494,7 @@ def build(lay: Layout, year: int) -> Draft:
         if var == SEHI and hh.se_health_premiums:
             src = "premiums less the premium tax credit, settled with it (IRS Pub. 974)"
         elif var == "self_employment_tax_ald" and se:
-            value, src = se[1], "Sch SE line 13"
+            value, src = se[1], f"{se_src} line 13"
         named += add("Sch 1", ln, label, value, src)
     add(
         "Sch 1",
@@ -507,7 +531,7 @@ def build(lay: Layout, year: int) -> Draft:
         "4",
         "Self-employment tax",
         se[0] if se else v["self_employment_tax"],
-        "Sch SE line 12" if se else "engine self_employment_tax",
+        f"{se_src} line 12" if se else "engine self_employment_tax",
     )
     s2_11 = add(
         "Sch 2",
@@ -914,33 +938,45 @@ def _schedule_8812(
     return l14, l27
 
 
+def _ss_wages(facts: list[db.FactRow], owner: str) -> float | None:
+    """The owner's W-2 boxes 3 and 7 on file (Schedule SE line 8a), or None."""
+    mine = [f for f in facts if f.owner == owner]
+    if not any((f.form, f.box) in SS_WAGES for f in mine):
+        return None
+    return _sum(mine, SS_WAGES)
+
+
 def _schedule_se(
     sheet: _Sheet,
     d: Draft,
     v: dict[str, float],
+    who: str,
+    form: str,
     profit: float,
     profit_src: str,
     ss_wages: float | None,
 ) -> tuple[float, float]:
-    """Schedule SE Part I, line by line: (self-employment tax on line 12, the
-    deduction for half of it on line 13). The Social Security wage base, the
-    rates and the $400 floor are the engine's own parameters; the engine's
-    totals are checked against the lines. ``ss_wages`` is the sum of the W-2
-    boxes 3 and 7 on file, or None."""
+    """One person's Schedule SE Part I, line by line (``who`` is you or spouse;
+    each spouse files their own: unit 3a-5): (self-employment tax on line 12,
+    the deduction for half of it on line 13). The Social Security wage base,
+    the rates and the $400 floor are the engine's own parameters; the engine's
+    tax for that person is checked against line 12. ``ss_wages`` is the sum of
+    their W-2 boxes 3 and 7 on file, or None."""
     p = tax.self_employment_parameters(d.year)
     add = sheet.add
+
     share = p["net_earnings_share"]
-    l2 = add("Sch SE", "2", "Net profit or (loss) from Schedule C", profit, profit_src)
-    l3 = add("Sch SE", "3", "Combine lines 1a, 1b and 2", l2, "line 2 (no farm profit)")
+    l2 = add(form, "2", "Net profit or (loss) from Schedule C", profit, profit_src)
+    l3 = add(form, "3", "Combine lines 1a, 1b and 2", l2, "line 2 (no farm profit)")
     l4a = add(
-        "Sch SE",
+        form,
         "4a",
         f"Net earnings (x {share:.2%})",
         l3 * share if l3 > 0 else l3,
         f"3 x {share:.2%}" if l3 > 0 else "line 3 (a loss)",
     )
     l4c = add(
-        "Sch SE",
+        form,
         "4c",
         "Combine lines 4a and 4b",
         l4a,
@@ -948,60 +984,58 @@ def _schedule_se(
     )
     if l4c < p["floor"]:
         why = f"line 4c under ${p['floor']:,.0f}: no self-employment tax"
-        l12 = add("Sch SE", "12", "Self-employment tax", 0.0, why)
-        l13 = add("Sch SE", "13", "Deduction for half of SE tax", 0.0, why)
+        l12 = add(form, "12", "Self-employment tax", 0.0, why)
+        l13 = add(form, "13", "Deduction for half of SE tax", 0.0, why)
     else:
-        l6 = add("Sch SE", "6", "Add lines 4c and 5b", l4c, "line 4c (no church pay)")
+        l6 = add(form, "6", "Add lines 4c and 5b", l4c, "line 4c (no church pay)")
         l7 = add(
-            "Sch SE",
+            form,
             "7",
             "Social Security wage base",
             p["wage_base"],
             "Schedule SE line 7 (engine gov.irs.payroll.social_security.cap)",
         )
         l8a = add(
-            "Sch SE",
+            form,
             "8a",
             "Social Security wages and tips",
-            v["employment_income"] if ss_wages is None else ss_wages,
+            v[f"employment_income@{who}"] if ss_wages is None else ss_wages,
             "wages: W-2 box 1 stands in for boxes 3 and 7 (no W-2 box 3 or 7 on file)"
             if ss_wages is None
             else "W-2 boxes 3 and 7",
         )
         l8d = add(
-            "Sch SE",
+            form,
             "8d",
             "Add lines 8a, 8b and 8c",
             l8a,
             "line 8a (no Form 4137 or 8919)",
         )
-        l9 = add("Sch SE", "9", "Wage base left", max(l7 - l8d, 0.0), "7 - 8d")
+        l9 = add(form, "9", "Wage base left", max(l7 - l8d, 0.0), "7 - 8d")
         ss = p["social_security_rate"]
         l10 = add(
-            "Sch SE",
+            form,
             "10",
             f"Social Security part (x {ss:.1%})",
             min(l6, l9) * ss,
             f"smaller of 6 and 9, x {ss:.1%}",
         )
         md = p["medicare_rate"]
-        l11 = add(
-            "Sch SE", "11", f"Medicare part (x {md:.1%})", l6 * md, f"6 x {md:.1%}"
-        )
-        l12 = add("Sch SE", "12", "Self-employment tax", l10 + l11, "10 + 11")
+        l11 = add(form, "11", f"Medicare part (x {md:.1%})", l6 * md, f"6 x {md:.1%}")
+        l12 = add(form, "12", "Self-employment tax", l10 + l11, "10 + 11")
         l13 = add(
-            "Sch SE",
+            form,
             "13",
             "Deduction for half of SE tax",
             l12 * p["deductible_share"],
             f"12 x {p['deductible_share']:.0%}",
         )
-    for got, want, what in (
-        (l12, v["self_employment_tax"], "line 12 against the engine's SE tax"),
-        (l13, v["self_employment_tax_ald"], "line 13 against the engine's deduction"),
-    ):
-        if abs(got - want) > TOLERANCE:
-            d.notes.append(f"CHECK: Schedule SE {what}: {got:,.2f} vs {want:,.2f}")
+    want = v[f"self_employment_tax@{who}"]
+    if abs(l12 - want) > TOLERANCE:
+        d.notes.append(
+            f"CHECK: {form} line 12 against the engine's SE tax: "
+            f"{l12:,.2f} vs {want:,.2f}"
+        )
     return l12, l13
 
 
@@ -1391,6 +1425,7 @@ ORDER = (
     "Sch C",
     "Sch D",
     "Sch SE",
+    SCH_SE_SPOUSE,
     "8949",
     "8889",
     "8962",
@@ -1414,6 +1449,7 @@ FORM_CAPABILITY = {
     "Sch D": "schedule_d",
     "8949": "schedule_d",
     "Sch SE": "self_employment_tax",
+    SCH_SE_SPOUSE: "self_employment_tax",
     "8889": "form_8889",
     "8962": "aca_premium_tax_credit",
     d400.FORM: "nc_d400_draft",

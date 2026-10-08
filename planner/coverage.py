@@ -62,9 +62,8 @@ HOUSEHOLD_NEEDED = {
 }
 # Once the people are named, what is still per person (units 2c and 3a-3).
 PEOPLE = (
-    "Not handled: the draft lays out Schedule SE and Form 8889 for the first person "
-    "only; a spouse's self-employment income is priced but their Schedule SE is not "
-    "drafted, and a spouse's own HSA is not modeled"
+    "Not handled: a spouse's own HSA is not modeled; the HSA deduction and the "
+    "draft's Form 8889 are the first person's"
 )
 PEOPLE_TOUCH = ("draft", "esttax")
 
@@ -125,13 +124,13 @@ def gate(
                 PRICED,
             )
         )
-    elif spouse or dependents:
+    elif spouse:
         out.append(
             Gap(
                 "household",
                 PEOPLE,
-                "have a preparer check the per-person lines and lay out the spouse "
-                "and the dependents on the return",
+                "have a preparer add the spouse's own HSA (their Form 8889), if "
+                "they have one",
                 PEOPLE_TOUCH,
             )
         )

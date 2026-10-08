@@ -128,20 +128,29 @@ def test_until_the_people_are_named_every_figure_is_not_handled(
 
 @pytest.mark.parametrize(
     ("status", "spouse", "dependents"),
-    [("JOINT", True, 0), ("JOINT", True, 2), ("HEAD_OF_HOUSEHOLD", False, 1)],
+    [("JOINT", True, 0), ("JOINT", True, 2)],
 )
-def test_once_named_only_the_per_person_lines_stay_not_handled(
+def test_once_named_only_the_spouses_hsa_stays_not_handled(
     planner_home: Path, status: str, spouse: bool, dependents: int
 ) -> None:
-    """Income is still priced as the first person's until each document names
-    its owner (unit 2c): the sections with per-person lines alone stay
-    tagged."""
+    """Each spouse has their own Schedule SE (unit 3a-5); a spouse's own HSA is
+    not modeled, so the sections it touches alone stay tagged."""
     home = _home(planner_home, "single")
     (gap,) = coverage.gate(home, "NC", status, spouse=spouse, dependents=dependents)
     assert gap.area == "household" and gap.touches == coverage.PEOPLE_TOUCH
-    assert "Not handled:" in gap.reason and "Schedule SE" in gap.reason
+    assert "Not handled:" in gap.reason and "HSA" in gap.reason
+    assert "Schedule SE" not in gap.reason
     assert coverage.tag([gap], "magi", "verified") == coverage.VERIFIED
     assert coverage.tag([gap], "draft", "verified") == coverage.NOT_HANDLED
+
+
+def test_a_head_of_household_with_dependents_has_no_household_gap(
+    planner_home: Path,
+) -> None:
+    """The dependents are on Schedule 8812 (unit 3a-3) and no spouse is
+    named: nothing about the people stays tagged."""
+    home = _home(planner_home, "single")
+    assert coverage.gate(home, "NC", "HEAD_OF_HOUSEHOLD", dependents=1) == []
 
 
 @pytest.mark.engine

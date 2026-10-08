@@ -3,7 +3,10 @@ Synthetic 2025 households only: Schedule 1-A line 36b takes a spouse 65 or
 over; Schedule 8812 counts the children under 17 and the other dependents
 (2025 Schedule 8812 lines 4-12 and 16a-17: $2,200 a child, $500 another
 dependent, cut $50 a $1,000 over $200,000 or $400,000 joint, $1,700 a child
-refundable)."""
+refundable).
+Unit 3a-5: each spouse's self-employment income has its own Schedule SE, with
+their own Social Security wage base (2025: $176,100, 92.35% of profit, 12.4%
+and 2.9%; IRS 2025 Schedule SE lines 4a-12)."""
 
 from __future__ import annotations
 
@@ -12,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from planner.ingest.needs import enter
+from planner.ledger import db
 from planner.paths import Layout
 from planner.taxprep import draft
 
@@ -167,3 +171,82 @@ def test_schedule_8812_refundable_part(planner_home: Path) -> None:
 def test_no_dependents_no_schedule_8812(planner_home: Path) -> None:
     d = draft.build(_joint_seniors(planner_home, "100,000"), YEAR)
     assert not [ln for ln in d.lines if ln.form == "Sch 8812"]
+
+
+def _joint_se(home: Path, **typed: str) -> Layout:
+    return _lay(
+        home,
+        birth_date="1971-06-15",
+        filing_status="married_joint",
+        spouse_birth_date="1973-02-01",
+        **typed,
+    )
+
+
+def _se_tax(profit: float) -> float:
+    return profit * 0.9235 * 0.153
+
+
+def test_each_spouse_has_their_own_schedule_se(planner_home: Path) -> None:
+    lay = _joint_se(
+        planner_home,
+        wages="0",
+        se_income="40,000",
+        spouse_wages="0",
+        spouse_se_income="30,000",
+    )
+    d = draft.build(lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert _need(d, "Sch SE", "2") == 40_000.0
+    assert _need(d, "Sch SE", "12") == pytest.approx(_se_tax(40_000), abs=0.01)
+    assert _need(d, "Sch SE (spouse)", "2") == 30_000.0
+    assert _need(d, "Sch SE (spouse)", "12") == pytest.approx(_se_tax(30_000), abs=0.01)
+    both = _se_tax(40_000) + _se_tax(30_000)
+    assert _need(d, "Sch 2", "4") == pytest.approx(both, abs=0.01)
+    assert _need(d, "Sch 1", "3") == 70_000.0
+    assert _need(d, "Sch 1", "15") == pytest.approx(both / 2, abs=0.01)
+
+
+def test_the_spouses_schedule_se_reads_their_own_w2(planner_home: Path) -> None:
+    """Box 3 above box 1 (pre-tax deferrals): the spouse's line 8a is their
+    box 3, and the engine's SE tax agrees with line 12."""
+    lay = _joint_se(planner_home, wages="60,000", spouse_se_income="30,000")
+    conn = db.connect(lay.data / "ledger" / "planner.db")
+    db.add_document(
+        conn,
+        fingerprint="synthetic-spouse-w2",
+        file_name="w2.pdf",
+        kind="pdf",
+        pages=1,
+        batch="b1",
+        owner="spouse",
+        facts=[
+            db.Fact("W-2", YEAR, "Example Employer (synthetic)", b, b, v, 1)
+            for b, v in (("1", 150_000.0), ("3", 170_000.0))
+        ],
+    )
+    conn.close()
+    d = draft.build(lay, YEAR)
+    assert _checks(d) == [], d.notes
+    assert not [ln for ln in d.lines if ln.form == "Sch SE"]
+    assert _need(d, "Sch SE (spouse)", "8a") == 170_000.0
+    assert _need(d, "Sch SE (spouse)", "9") == 6_100.0
+    net = 30_000 * 0.9235
+    assert _need(d, "Sch SE (spouse)", "12") == pytest.approx(
+        6_100 * 0.124 + net * 0.029, abs=0.01
+    )
+
+
+def test_a_single_filer_has_no_spouse_schedule_se(planner_home: Path) -> None:
+    d = draft.build(
+        _lay(
+            planner_home,
+            birth_date="1971-06-15",
+            filing_status="single",
+            wages="0",
+            se_income="40,000",
+        ),
+        YEAR,
+    )
+    assert _need(d, "Sch SE", "2") == 40_000.0
+    assert not [ln for ln in d.lines if ln.form == "Sch SE (spouse)"]
