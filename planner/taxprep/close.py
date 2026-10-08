@@ -19,6 +19,7 @@ from typing import Any
 
 import yaml
 
+from planner.config import safe_load
 from planner.engine.household import MissingInputError
 from planner.ledger import db
 from planner.paths import Layout
@@ -114,7 +115,7 @@ def _versions(lay: Layout, year: int) -> list[dict[str, Any]]:
     path = record_path(lay, year)
     if not path.exists():
         return []
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = safe_load(path.read_text(encoding="utf-8")) or {}
     versions = data.get("versions", []) if isinstance(data, dict) else []
     return [v for v in versions if isinstance(v, dict)]
 

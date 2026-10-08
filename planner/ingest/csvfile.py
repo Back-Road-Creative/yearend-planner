@@ -17,8 +17,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-import yaml
-
+from planner.config import safe_load
 from planner.ingest.pdf import Unmatched, parse_amount
 from planner.ledger.db import Row, to_cents
 
@@ -43,7 +42,7 @@ class CsvTemplate:
 def load_csv_templates(folder: Path) -> list[CsvTemplate]:
     out: list[CsvTemplate] = []
     for p in sorted(folder.glob("*.yaml")):
-        raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+        raw = safe_load(p.read_text(encoding="utf-8"))
         out.append(
             CsvTemplate(
                 source=str(raw["source"]),

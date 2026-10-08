@@ -28,6 +28,7 @@ from typing import Any
 
 import yaml
 
+from planner.config import safe_load
 from planner.ingest.needs import DOCS, load_profile, need_value
 from planner.ledger import db, portfolio
 from planner.paths import Layout
@@ -142,7 +143,7 @@ def load_waived(lay: Layout, year: int) -> set[tuple[str, str]]:
     path = waived_path(lay)
     data: Any = {}
     if path.exists():
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = safe_load(path.read_text(encoding="utf-8")) or {}
     rows = data.get(year, []) if isinstance(data, dict) else []
     return {(str(r["form"]), str(r["issuer"])) for r in rows}
 
@@ -151,7 +152,7 @@ def _save_waived(lay: Layout, year: int, pairs: set[tuple[str, str]]) -> None:
     path = waived_path(lay)
     data: Any = {}
     if path.exists():
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = safe_load(path.read_text(encoding="utf-8")) or {}
     data = dict(data) if isinstance(data, dict) else {}
     data[year] = [{"form": f, "issuer": i} for f, i in sorted(pairs)]
     path.parent.mkdir(parents=True, exist_ok=True)

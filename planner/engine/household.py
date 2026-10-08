@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
-import yaml
+from planner.config import safe_load
 
 FILING_STATUSES = (
     "SINGLE",
@@ -270,7 +270,7 @@ class Household:
 
 def load_household(path: Path) -> Household:
     with path.open("r", encoding="utf-8") as fh:
-        data = yaml.safe_load(fh) or {}
+        data = safe_load(fh) or {}
     if not isinstance(data, dict):
         raise ValueError(f"{path}: expected a mapping")
     return Household.from_mapping(data)

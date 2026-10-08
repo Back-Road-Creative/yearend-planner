@@ -30,6 +30,7 @@ from typing import Any
 
 import yaml
 
+from planner.config import safe_load
 from planner.engine.household import Household
 from planner.engine.tax import compute, engine_version
 
@@ -87,7 +88,7 @@ class Report:
 
 def _mapping(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as fh:
-        data = yaml.safe_load(fh) or {}
+        data = safe_load(fh) or {}
     if not isinstance(data, dict):
         raise ValueError(f"{path}: expected a mapping")
     return data
