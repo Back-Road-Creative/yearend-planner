@@ -1,0 +1,12 @@
+# The statement summary that heads a Bank of America download. Not rows: its
+# Total credits and Total debits must equal the file's own rows, so a cut-short
+# or edited download is refused rather than read.
+source: bofa_summary
+kind: summary
+match: [Description, Summary Amt.]
+columns:
+  description: Description
+  amount: Summary Amt.
+totals:
+  Total credits: credits
+  Total debits: debits

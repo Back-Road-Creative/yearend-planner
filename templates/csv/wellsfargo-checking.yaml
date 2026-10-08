@@ -1,0 +1,12 @@
+# Wells Fargo checking download: no header line. Five columns by position:
+# date, signed amount, a "*" marker, check number, description. `shape` is the
+# pattern each cell must fit, so no other headerless file is read as this one.
+# Layout cited in tests/fixtures/real/csv/layouts.yaml.
+source: wellsfargo_checking
+kind: bank
+positions: [Date, Amount, Marker, Check Number, Description]
+shape: ['\d{2}/\d{2}/\d{4}', '-?\d[\d,]*\.\d{2}', '\*?', '\d*', '.*']
+columns:
+  date: Date
+  description: Description
+  amount: Amount

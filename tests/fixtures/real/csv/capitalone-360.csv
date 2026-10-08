@@ -1,0 +1,4 @@
+Account Number,Transaction Description,Transaction Date,Transaction Type,Transaction Amount,Balance
+1122,Debit Card Purchase - EXAMPLE STORE (synthetic),11/27/25,Debit,21.00,888.83
+1122,Monthly Interest Paid,11/30/25,Credit,0.35,889.18
+1122,Deposit from EXAMPLE PAYROLL (synthetic),11/26/25,Credit,504.48,909.83

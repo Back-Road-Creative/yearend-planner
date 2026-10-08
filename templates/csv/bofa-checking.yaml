@@ -1,0 +1,12 @@
+# Bank of America checking/savings download: a signed Amount and a Running
+# Bal. column. The opening "Beginning balance" line has no amount and is not a
+# row. Layout cited in tests/fixtures/real/csv/layouts.yaml.
+source: bofa_checking
+kind: bank
+match: [Date, Description, Amount, Running Bal.]
+columns:
+  date: Date
+  description: Description
+  amount: Amount
+skip:
+  Amount: [""]
