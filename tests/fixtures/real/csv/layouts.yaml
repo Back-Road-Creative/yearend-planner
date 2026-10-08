@@ -1,0 +1,24 @@
+# Unit 7h3b: each CSV export as its issuer's own download lays it out, taken
+# from a public sample of that download (cited, with its licence) and filled
+# with synthetic figures. `expect` counts the rows each template's `source`
+# reads from the file; tests/test_csv_layouts.py checks every template under
+# templates/csv/ is either read here or listed under `unsourced` with why.
+layouts:
+  - name: vanguard-download
+    file: vanguard-download.csv
+    source: https://github.com/bogle-tools/financial-variables/blob/deba40b539520cf91e7719bdad27543774a2a533/data/custodians/vanguard.csv
+    licence: CC0-1.0
+    expect:
+      vanguard_holdings: 4
+      vanguard_transactions: 3
+      vanguard_plan_holdings: 1
+      vanguard_plan_transactions: 1
+# No public sample of these exports was found (searched 2026-10-08: issuer help
+# pages, open-source importers, forums). Their column names are the planner's
+# expectation; `planner acceptance` on your own export is the check.
+unsourced:
+  vanguard-cost-basis: "Vanguard's cost-basis (unrealized) export: no published sample"
+  vanguard-realized: "Vanguard's realized gain/loss export: no published sample"
+  vanguard-income: "Vanguard's dividends and interest export: no published sample"
+  bank-generic: "a generic signed-Amount layout, not one issuer's"
+  bank-debit-credit: "a generic Debit/Credit layout, not one issuer's"

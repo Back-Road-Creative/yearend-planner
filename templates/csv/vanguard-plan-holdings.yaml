@@ -1,0 +1,12 @@
+# Vanguard download, employer plan (401(k), 403(b)) holdings block: one row
+# per fund. Layout from a public sample of the download, cited in
+# tests/fixtures/real/csv/layouts.yaml.
+source: vanguard_plan_holdings
+kind: holding
+match: [Plan Number, Plan Name, Fund Name, Shares, Price, Total Value]
+columns:
+  account: Plan Number
+  description: Fund Name
+  quantity: Shares
+  price: Price
+  amount: Total Value
