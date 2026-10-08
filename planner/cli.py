@@ -492,6 +492,38 @@ def restore(
 
 
 @app.command()
+def acceptance(
+    paths: list[Path] = typer.Argument(  # noqa: B008
+        None, help="files or folders to check; default: data/inbox"
+    ),
+) -> None:
+    """Check that your own documents would import, without importing them:
+    PASS or FAIL per file, by form and year only. Nothing moves and nothing
+    reaches the ledger; the result is kept in data/private/acceptance/."""
+    from planner import acceptance as _acceptance
+    from planner.ingest import ocr
+
+    lay = layout()
+    lay.ensure()
+    targets = list(paths or [lay.data / "inbox"])
+    for p in targets:
+        if not p.exists():
+            typer.echo(f"{p}: no such file or folder")
+            raise typer.Exit(2)
+    checks = _acceptance.check(targets, ocr=ocr.page_texts if ocr.available() else None)
+    if not checks:
+        typer.echo("nothing to check: no files found")
+        raise typer.Exit(2)
+    for c in checks:
+        typer.echo(f"{'PASS' if c.ok else 'FAIL'} {c.name}: {c.detail}")
+    kept = _acceptance.write_report(lay, checks)
+    typer.echo(_acceptance.tally(checks))
+    typer.echo(f"kept in {kept}")
+    if not all(c.ok for c in checks):
+        raise typer.Exit(1)
+
+
+@app.command()
 def ingest() -> None:
     """Read every file in data/inbox/ into the ledger; archive or mark UNMATCHED."""
     from planner.ingest import ingest as _ingest

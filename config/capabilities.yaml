@@ -690,6 +690,11 @@ update_tax_years_report:
   evidence: implemented
   tests: ["tests/test_update.py", "tests/test_dashboard.py"]
   note: "selfcheck prints the years the engine publishes; staging flags a missing next year; header shows years"
+acceptance_self_check:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_acceptance.py"]
+  note: "unit 7h3: planner acceptance reads your own files (folders, ZIPs) as ingest would, PASS/FAIL by form and year only, moves nothing, writes no ledger, keeps the result in data/private/acceptance; exit 0 all pass, 1 any fail, 2 nothing to check"
 windows_matrix:
   status: verified
   evidence: implemented

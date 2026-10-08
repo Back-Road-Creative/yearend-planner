@@ -1648,6 +1648,28 @@ Values read from a scan still wait in `confirm` before they count. To try the
 reader by hand: `uv run --extra dev python scripts/real_forms.py --scan DIR`
 writes each fixture to DIR as an image-only PDF; drop one on the page.
 
+#### Check your own documents (unit 7h3)
+
+`planner acceptance` checks that your own documents would import, without
+importing them. It reads each file the way `planner ingest` does and prints
+`PASS` or `FAIL` for it. With no argument it checks `data/inbox/`; give it
+files or folders to check others, e.g. `planner acceptance "D:\Tax 2025"`.
+Each file inside a ZIP is checked on its own, and a ZIP inside a ZIP too.
+
+- Nothing moves, nothing is unpacked beside a ZIP, and nothing reaches the
+  ledger. Run `planner ingest` to import.
+- A passing file is named by its form and year, such as `1099-INT 2025`, or
+  `bank 2 rows` for a statement. A scan read by the OCR engine says `(scan)`.
+  No figure, payer or account number is printed.
+- A failing file gives the reason `planner ingest` would give, so you know
+  whether the form is unknown, unreadable or missing a value.
+- The result is kept in `data/private/acceptance/<time>.txt` and goes nowhere
+  else; nothing is collected or sent.
+- It exits 0 when every file passes, 1 when any fails, and 2 when there is
+  nothing to check or a path does not exist.
+
+It is a self-check you run on your own documents. It is not part of a release.
+
 ### Tested in a real browser (unit 7g)
 
 `tests/test_browser.py` opens the live page in headless Chromium through
