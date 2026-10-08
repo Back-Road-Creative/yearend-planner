@@ -19,7 +19,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-import yaml
+from planner.config import safe_load
 
 AMOUNT = r"(\(?-?\$?\s*[\d,]*\d(?:\.\d{1,2})?\)?)"
 DEFAULT_YEAR = r"(?:tax year|for calendar year|calendar year)\s*:?\s*(20\d\d)"
@@ -194,7 +194,7 @@ def _box(path: Path, name: object, spec: dict[str, Any]) -> Box:
 
 def load_template(path: Path) -> Template:
     with path.open(encoding="utf-8") as fh:
-        raw: dict[str, Any] = yaml.safe_load(fh)
+        raw: dict[str, Any] = safe_load(fh)
     boxes = tuple(_box(path, name, spec) for name, spec in raw["boxes"].items())
     return Template(
         form=str(raw["form"]),

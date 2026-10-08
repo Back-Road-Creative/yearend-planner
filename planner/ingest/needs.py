@@ -26,7 +26,7 @@ from typing import Any
 
 import yaml
 
-from planner.config import ASSUMPTION_FIELDS, load_assumptions
+from planner.config import ASSUMPTION_FIELDS, load_assumptions, safe_load
 from planner.engine.household import PERSON_INPUTS
 from planner.ingest.derive import county_from_zip
 from planner.ledger import db, portfolio
@@ -1065,7 +1065,7 @@ def dont_have_path(lay: Layout) -> Path:
 def _read(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = safe_load(path.read_text(encoding="utf-8")) or {}
     return data if isinstance(data, dict) else {}
 
 

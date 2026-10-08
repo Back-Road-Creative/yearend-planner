@@ -25,6 +25,7 @@ from typing import Any
 
 import yaml
 
+from planner.config import safe_load
 from planner.ingest.derive import FORM as YTD_FORM
 from planner.ingest.derive import Gap, gaps
 from planner.ledger import db
@@ -60,7 +61,7 @@ def load_accounts(lay: Layout) -> dict[str, dict[str, Any]]:
     path = accounts_path(lay)
     if not path.exists():
         return {}
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = safe_load(path.read_text(encoding="utf-8")) or {}
     return (
         {str(k): dict(v or {}) for k, v in data.items()}
         if isinstance(data, dict)

@@ -26,6 +26,7 @@ from typing import Any
 
 import yaml
 
+from planner.config import safe_load
 from planner.engine.household import MissingInputError
 from planner.ledger import db
 from planner.paths import Layout
@@ -98,7 +99,7 @@ def _state(lay: Layout) -> dict[str, Any]:
     path = state_path(lay)
     if not path.exists():
         return {"active_year": None, "rolled": {}}
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = safe_load(path.read_text(encoding="utf-8")) or {}
     data.setdefault("active_year", None)
     data["rolled"] = {int(k): v for k, v in (data.get("rolled") or {}).items()}
     return data

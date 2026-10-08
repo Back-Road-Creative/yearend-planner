@@ -45,9 +45,44 @@ class ConfigError(ValueError):
     pass
 
 
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """``yaml.SafeLoader`` that refuses a mapping key given twice (PyYAML keeps
+    the last one silently)."""
+
+    def construct_mapping(self, node: Any, deep: bool = False) -> Any:
+        seen: set[Any] = set()
+        for key_node, _value in node.value:
+            if key_node.tag == "tag:yaml.org,2002:merge":
+                continue
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                again = key in seen
+            except TypeError:
+                continue  # an unhashable key; the base class refuses it
+            if again:
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    f"found duplicate key {key!r}",
+                    key_node.start_mark,
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep)
+
+
+def safe_load(stream: Any) -> Any:
+    """``yaml.safe_load`` that refuses a duplicate key; every planner YAML read
+    goes through it."""
+    loader = _UniqueKeyLoader(stream)
+    try:
+        return loader.get_single_data()
+    finally:
+        loader.dispose()
+
+
 def load_yaml(path: Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as fh:
-        data = yaml.safe_load(fh)
+        data = safe_load(fh)
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: expected a mapping at top level")
     return data

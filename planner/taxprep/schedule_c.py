@@ -25,6 +25,7 @@ from typing import Any
 
 import yaml
 
+from planner.config import safe_load
 from planner.ledger import db
 from planner.paths import Layout
 
@@ -87,7 +88,7 @@ def load_rules(lay: Layout) -> tuple[list[tuple[str, str]], dict[str, str]]:
     path = categories_path(lay)
     data: dict[str, Any] = {}
     if path.exists():
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = safe_load(path.read_text(encoding="utf-8")) or {}
     rules = [
         (str(r["match"]), _check(str(r["category"]))) for r in data.get("rules", [])
     ]
