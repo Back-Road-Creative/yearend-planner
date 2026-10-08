@@ -1,9 +1,10 @@
 # Schedule SE (Form 1040): self-employment tax.
 form: 1040-SCHSE
 years: [2024, 2025, 2026]
-match: ["Schedule SE (Form 1040)"]
+match: ["Schedule SE (Form 1040)", "Self-Employment Tax"]
 year_pattern: 'Schedule SE \(Form 1040\)\s*(20\d\d)'
 issuer: self
+return: true
 boxes:
-  "12": {label: "Self-employment tax", pattern: 'Self-employment tax[^\n]*?\b12\s+AMOUNT', required: true}
-  "13": {label: "Deduction for one-half of SE tax", pattern: 'Deduction for one-half of self-employment tax[^\n]*?\b13\s+AMOUNT'}
+  "12": {label: "Self-employment tax", pattern: '\b12 Self-employment tax[^\n]*(?:\n[^\n]*?){0,4}?\b12\s+AMOUNT', required: true}
+  "13": {label: "Deduction for one-half of SE tax", pattern: 'Deduction for one-half of self-employment tax[^\n]*(?:\n[^\n]*?){0,4}?\b13\s+AMOUNT'}

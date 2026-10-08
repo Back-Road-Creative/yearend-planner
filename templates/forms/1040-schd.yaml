@@ -1,10 +1,11 @@
 # Schedule D (Form 1040): capital gains and losses. Form 8949 totals roll up here.
 form: 1040-SCHD
 years: [2024, 2025, 2026]
-match: ["Schedule D (Form 1040)"]
+match: ["Schedule D (Form 1040)", "Capital Gains and Losses"]
 year_pattern: 'Schedule D \(Form 1040\)\s*(20\d\d)'
 issuer: self
+return: true
 boxes:
-  "7": {label: "Net short-term gain or loss", pattern: 'Net short-term capital gain or \(loss\)[^\n]*?\b7\s+AMOUNT'}
-  "15": {label: "Net long-term gain or loss", pattern: 'Net long-term capital gain or \(loss\)[^\n]*?\b15\s+AMOUNT'}
-  "16": {label: "Combined gain or loss", pattern: 'Combine lines 7 and 15[^\n]*?\b16\s+AMOUNT', required: true}
+  "7": {label: "Net short-term gain or loss", pattern: 'Net short-term capital gain or \(loss\)[^\n]*(?:\n[^\n]*?){0,4}?\b7\s+AMOUNT'}
+  "15": {label: "Net long-term gain or loss", pattern: 'Net long-term capital gain or \(loss\)[^\n]*(?:\n[^\n]*?){0,4}?\b15\s+AMOUNT'}
+  "16": {label: "Combined gain or loss", pattern: 'Combine lines 7 and 15[^\n]*?\b16\s+AMOUNT'}

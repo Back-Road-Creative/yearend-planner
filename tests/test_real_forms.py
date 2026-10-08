@@ -77,7 +77,9 @@ def test_the_fixtures_are_irs_blanks_with_synthetic_values_only() -> None:
     )
     for e in FORMS:
         assert e["url"].startswith("https://www.irs.gov/"), e["name"]
-        assert "(synthetic)" in e["expect"]["issuer"], e["name"]
+        named = [e["expect"]["issuer"], *e["fields"].values()]
+        assert e["expect"]["issuer"] == "self" or "(synthetic)" in named[0], e["name"]
+        assert any("(synthetic)" in v for v in named), e["name"]
         for value in e["fields"].values():
             assert not TIN.search(value), (e["name"], value)
 

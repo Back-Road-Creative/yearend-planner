@@ -1539,6 +1539,34 @@ Changes the real forms brought:
   "FMV", and 5498-SA boxes 2 and 3 read "the calendar year". The templates
   read both wordings.
 
+#### Filed returns (unit 7h2a)
+
+The 2025 Form 1040 and Schedules 1, 2, 3, C, D and SE are tested the same way:
+the official blanks, every page printed, with a synthetic taxpayer
+("Alex (synthetic) Sample") and figures that tie across the forms. A last
+year's return dropped in reads as the return, issuer "self". What it took:
+
+- **A return owns its page.** The 1040 says "Attach Forms W-2G and 1099-R", so
+  the 1099-R template matched it too. A template marked `return: true` wins
+  the page over any form it names.
+- **A total may sit on page 2.** Schedules 1, 2 and D print their totals (26,
+  21 and 16) on their second page, and the 2025 1040 moved lines 11b to 15
+  there. Each such page has its own template (`1040-sch1-p2.yaml` and the
+  like) that requires the total, so a missing page 2 is reported, not read
+  as zero.
+- **Cells first, then the plain text.** A ruled page whose cells hold none of a
+  form's boxes is read again from its plain text, since a return's lines run
+  across the page rather than inside boxes.
+- **A scanned return reads its plain text first.** The OCR engine reads a
+  return's right-hand column of line numbers as boxes of their own, so the
+  cells lose each line's number; the plain text keeps it and goes first, and a
+  box it misses is taken from the cells. On a scan a line's number stays apart
+  from its amount ("1040" is never line 10's 40), and a line whose number the
+  scan lost still reads when the line opens with its number and ends with the
+  amount, cents and all. A label several lines share ("Taxable amount" is 4b,
+  5b and 6b) still needs its number. Fullwidth brackets the engine sometimes
+  reads ("（") count as plain ones.
+
 To rebuild the fixtures: `uv run --extra dev python scripts/real_forms.py`.
 It downloads each blank from irs.gov once, and refuses a blank whose SHA-256
 has changed, because a new revision may move its boxes.

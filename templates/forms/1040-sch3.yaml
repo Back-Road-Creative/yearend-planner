@@ -1,10 +1,11 @@
 # Schedule 3 (Form 1040): additional credits and payments.
 form: 1040-SCH3
 years: [2024, 2025, 2026]
-match: ["Schedule 3 (Form 1040)"]
+match: ["Schedule 3 (Form 1040)", "Additional Credits and Payments"]
 year_pattern: 'Schedule 3 \(Form 1040\)\s*(20\d\d)'
 issuer: self
+return: true
 boxes:
   "1": {label: "Foreign tax credit", pattern: 'Foreign tax credit[^\n]*?\b1\s+AMOUNT'}
-  "8": {label: "Total nonrefundable credits", pattern: 'Add lines 6z and 7[^\n]*?\b8\s+AMOUNT', required: true}
+  "8": {label: "Total nonrefundable credits", pattern: '\b8 Add lines[^\n]*?\b8\s+AMOUNT', required: true}
   "9": {label: "Net premium tax credit", pattern: 'Net premium tax credit[^\n]*?\b9\s+AMOUNT'}

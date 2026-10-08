@@ -174,6 +174,9 @@ class Template:
     # event (Form 3921 per exercise): added to the issuer, so a second form is
     # its own and only a corrected copy of the same event replaces it
     event: tuple[tuple[str, re.Pattern[str]], ...] = ()
+    # a page of a filed return: the return names the forms it reports ("attach
+    # Forms W-2G and 1099-R"), so a page it matches is read as the return only
+    filed: bool = False
 
     def matches(self, text: str) -> bool:
         """Every match phrase is on the page; spacing and line breaks are
@@ -200,12 +203,18 @@ class Template:
         said = ", ".join(f"{label} {e.group(1)}" for label, e in found if e)
         return f"{name} [{said}]" if said else name
 
-    def parse_boxes(self, text: str) -> tuple[dict[str, tuple[str, Value]], list[str]]:
+    def parse_boxes(
+        self, text: str, spare: str | None = None
+    ) -> tuple[dict[str, tuple[str, Value]], list[str]]:
+        """The boxes read from ``text``, and the required ones not found; a box
+        ``text`` misses is read from ``spare``, another reading of the page."""
         found: dict[str, tuple[str, Value]] = {}
         missing: list[str] = []
         # A box filed by another box's value reads after the boxes it names.
         for box in sorted(self.boxes, key=lambda b: b.by is not None):
             value = box.read(text)
+            if value is None and spare is not None:
+                value = box.read(spare)
             key = box.key(found) if value is not None else None
             if value is None or key is None:
                 if box.required:
@@ -247,8 +256,13 @@ def parse_amount(raw: str) -> float:
     return -value if negative else value
 
 
+# OCR may read a bracket or stop as its fullwidth form ("Schedule 3（Form")
+FULLWIDTH = {c: c - 0xFEE0 for c in range(0xFF01, 0xFF5F)}
+
+
 def normalize(text: str) -> str:
-    return text.replace("’", "'").replace("‘", "'").replace(" ", " ")
+    text = text.replace("’", "'").replace("‘", "'").replace(" ", " ")
+    return text.translate(FULLWIDTH)
 
 
 def base_issuer(issuer: str) -> str:
@@ -272,17 +286,48 @@ def _compile(pattern: str) -> re.Pattern[str]:
 def _loose(pattern: re.Pattern[str]) -> re.Pattern[str]:
     """``pattern`` with each run of spacing it needs made optional: OCR glues a
     box number to its label ("4Federal") and drops spaces inside a label."""
-    loose = pattern.pattern.replace(r"\s+", r"\s*").replace("[ \\t]+", "[ \\t]*")
-    return re.compile(loose, pattern.flags)
+    return re.compile(_loose_source(pattern.pattern), pattern.flags)
+
+
+def _loose_source(source: str) -> str:
+    return source.replace(r"\s+", r"\s*").replace("[ \\t]+", "[ \\t]*")
+
+
+# A filed return's line ends in its number and amount ("16 5,100.00").
+LINE_AMOUNT = re.compile(
+    r"((?:\\b)?(?:\(\?:[0-9a-z|]+\)|[0-9]+[a-z]?)\??)\\s\+" + re.escape(AMOUNT) + "$"
+)
+CENTS_AT_END = r"(?=\(?-?\$?[\d,]*\d\.\d\d\)?[ \t]*(?:\n|$))"
+
+
+def _loose_line(pattern: re.Pattern[str]) -> re.Pattern[str]:
+    """A return line's pattern as it reads a scan: ``_loose``, but the number
+    stays apart from the amount, so "1040" is not line 10's 40. The scan may
+    drop the number at the right (it reads that column as boxes of its own):
+    a pattern that opens with the line's number, as the line does, then takes
+    the amount that ends the line, with its cents. One that opens with a label
+    alone ("Taxable amount" is 4b, 5b and 6b) still needs the number."""
+    m = LINE_AMOUNT.search(pattern.pattern)
+    if not m:
+        return _loose(pattern)
+    head = _loose_source(pattern.pattern[: m.start()])
+    number = m.group(1).removeprefix(r"\b")
+    if pattern.pattern.removeprefix(r"\b").startswith(number + r"\s+"):
+        line = rf"(?:{m.group(1)}\s+|{CENTS_AT_END})"
+    else:
+        line = rf"{m.group(1)}\s+"
+    return re.compile(head + line + AMOUNT, pattern.flags)
 
 
 @cache
 def loosened(tpl: Template) -> Template:
-    """The template as it reads an OCR page: ``_loose`` on every pattern."""
+    """The template as it reads an OCR page: ``_loose`` on every pattern, and
+    ``_loose_line`` on a filed return's boxes."""
+    box_pattern = _loose_line if tpl.filed else _loose
     boxes = tuple(
         replace(
             b,
-            pattern=_loose(b.pattern),
+            pattern=box_pattern(b.pattern),
             options=tuple((v, _loose(p)) for v, p in b.options),
             labels=tuple(_loose(p) for p in b.labels),
         )
@@ -529,6 +574,7 @@ def load_template(path: Path) -> Template:
         event=tuple(
             (str(k), _compile(str(v))) for k, v in raw.get("event", {}).items()
         ),
+        filed=bool(raw.get("return", False)),
     )
 
 
@@ -780,12 +826,20 @@ def _read_ruled(
     both fail, the cells' reason."""
     if not isinstance(text, Ruled):
         return _read_page(page_no, text, templates, ocr)
+    by = text.count("\n") + 1
+    if ocr and any(t.filed and t.matches(text.plain) for t in templates):
+        # A scanned return reads from its plain text, which keeps each line's
+        # number at the right where the cells lose it. A line the plain text
+        # runs into a side note ("Qualifying surviving spouse") may still read
+        # in the cells, so a box the plain text misses is taken from them.
+        found, said = _read_page(page_no, text.plain, templates, ocr, (text, -by))
+        shifted = [{k: (p, n + by) for k, (p, n) in f.spots.items()} for f in found]
+        return [replace(f, spots=s) for f, s in zip(found, shifted, strict=True)], said
 
     def plain() -> tuple[list[ParsedForm], list[str]]:
         # An OCR page keeps the cells' lines and then the plain text's, so a
         # spot in the plain text counts on past the cells' lines.
         found, said = _read_page(page_no, text.plain, templates, ocr)
-        by = text.count("\n") + 1
         spots = [{k: (p, n + by) for k, (p, n) in f.spots.items()} for f in found]
         return [replace(f, spots=s) for f, s in zip(found, spots, strict=True)], said
 
@@ -799,20 +853,38 @@ def _read_ruled(
         if not found:
             raise
         return found, said
-    return (found, said) if found else plain()
+    if not found:
+        return plain()
+    if any(f.boxes for f in found):
+        return found, said
+    # a template with no required box finds its form in the cells even when
+    # they hold none of its boxes: the plain text may
+    try:
+        again = plain()
+    except Unmatched:
+        return found, said
+    return again if any(f.boxes for f in again[0]) else (found, said)
 
 
 def _read_page(
-    page_no: int, text: str, templates: list[Template], ocr: bool
+    page_no: int,
+    text: str,
+    templates: list[Template],
+    ocr: bool,
+    spare: tuple[str, int] | None = None,
 ) -> tuple[list[ParsedForm], list[str]]:
-    """The forms on one page, and a note for each form with no template."""
+    """The forms on one page, and a note for each form with no template.
+    ``spare`` is another reading of the page, and how far its lines count from
+    ``text``'s: a box ``text`` misses is read from it."""
     forms: list[ParsedForm] = []
     notes: list[str] = []
-    for tpl in templates:
-        if not tpl.matches(text):
-            continue
+    found = [tpl for tpl in templates if tpl.matches(text)]
+    if any(tpl.filed for tpl in found):
+        found = [tpl for tpl in found if tpl.filed]
+    for tpl in found:
         tpl = loosened(tpl) if ocr else tpl
         page = repaired(text, label_phrases(tpl)) if ocr else text
+        other = spare and (repaired(spare[0], label_phrases(tpl)) if ocr else spare[0])
         year = tpl.find_year(page)
         if year is None:
             raise Unmatched(f"page {page_no}: {tpl.form} found but no tax year")
@@ -820,7 +892,7 @@ def _read_page(
             notes.append(f"page {page_no}: {tpl.form} {year} has no template")
             continue
         try:
-            boxes, missing = tpl.parse_boxes(page)
+            boxes, missing = tpl.parse_boxes(page, other)
         except Unmatched as exc:
             raise Unmatched(f"page {page_no}: {tpl.form} {year}: {exc}") from exc
         if missing:
@@ -829,6 +901,9 @@ def _read_page(
                 + ", ".join(missing)
             )
         spots = tpl.spots(page, page_no, boxes) if ocr else {}
+        if ocr and spare and other:
+            for key, (p, n) in tpl.spots(other, page_no, boxes).items():
+                spots.setdefault(key, (p, n + spare[1]))
         issuer = tpl.find_issuer(page)
         issuer = split_name(issuer) if ocr and tpl.issuer is None else issuer
         _merge(

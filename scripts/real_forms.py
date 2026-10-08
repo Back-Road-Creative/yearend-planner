@@ -79,10 +79,38 @@ def _ops(rect: list[float], value: str) -> list[str]:
     ]
 
 
-def fill(blank: Path, page_no: int, values: dict[str, str], out: Path) -> Path:
-    """One page of ``blank`` with each value printed in the field whose full
-    name ends with its key; a key must name exactly one field."""
+def fill(
+    blank: Path, page_no: int | list[int], values: dict[str, str], out: Path
+) -> Path:
+    """The page (or pages, for a return) of ``blank`` with each value printed
+    in the field whose full name ends with its key; a key must name exactly one
+    field across the pages."""
     from pypdf import PdfReader, PdfWriter
+
+    reader = PdfReader(blank)
+    numbers = page_no if isinstance(page_no, list) else [page_no]
+    found = [fields_on(reader.pages[n]) for n in numbers]
+    ops: list[list[str]] = [[] for _ in numbers]
+    for key, value in values.items():
+        hits = [
+            (i, name) for i, f in enumerate(found) for name in f if name.endswith(key)
+        ]
+        if len(hits) != 1:
+            raise ValueError(f"{blank.name}: field {key!r} matches {hits}")
+        i, name = hits[0]
+        ops[i] += _ops([float(v) for v in found[i][name]["/Rect"]], str(value))
+    writer = PdfWriter()
+    for i, n in enumerate(numbers):
+        writer.add_page(reader.pages[n])
+        _print(writer, writer.pages[i], ops[i])
+    writer.compress_identical_objects()
+    with out.open("wb") as fh:
+        writer.write(fh)
+    return out
+
+
+def _print(writer: Any, copy: Any, ops: list[str]) -> None:
+    """Drop the page's fields and draw ``ops`` over it in Helvetica."""
     from pypdf.generic import (
         ArrayObject,
         DecodedStreamObject,
@@ -90,17 +118,6 @@ def fill(blank: Path, page_no: int, values: dict[str, str], out: Path) -> Path:
         NameObject,
     )
 
-    page = PdfReader(blank).pages[page_no]
-    found = fields_on(page)
-    ops: list[str] = []
-    for key, value in values.items():
-        hits = [name for name in found if name.endswith(key)]
-        if len(hits) != 1:
-            raise ValueError(f"{blank.name}: field {key!r} matches {hits}")
-        ops += _ops([float(v) for v in found[hits[0]]["/Rect"]], str(value))
-    writer = PdfWriter()
-    writer.add_page(page)
-    copy = writer.pages[0]
     if "/Annots" in copy:
         del copy["/Annots"]
     font = DictionaryObject(
@@ -125,25 +142,27 @@ def fill(blank: Path, page_no: int, values: dict[str, str], out: Path) -> Path:
         joined.append(contents)
     joined.append(writer._add_object(stream))
     copy[NameObject("/Contents")] = joined
-    writer.compress_identical_objects()
-    with out.open("wb") as fh:
-        writer.write(fh)
-    return out
 
 
 def scan(src: Path, out: Path, seed: int = 0, turn: float = SCAN_TURN) -> Path:
-    """An image-only PDF of ``src``'s first page as a scanner makes it:
+    """An image-only PDF of ``src``'s pages as a scanner makes them:
     greyscale at ``SCAN_DPI``, turned ``turn`` degrees, with speckle."""
     import numpy as np
     import pdfplumber
     from PIL import Image
 
+    rng = np.random.default_rng(seed)
+    pages = []
     with pdfplumber.open(src) as doc:
-        image = doc.pages[0].to_image(resolution=SCAN_DPI).original.convert("L")
-    image = image.rotate(turn, Image.Resampling.BICUBIC, fillcolor=255)
-    noise = np.random.default_rng(seed).normal(0, SCAN_SPECKLE, image.size[::-1])
-    pixels = np.clip(np.asarray(image, dtype=float) + noise, 0, 255)
-    Image.fromarray(pixels.astype(np.uint8)).save(out, "PDF", resolution=SCAN_DPI)
+        for page in doc.pages:
+            image = page.to_image(resolution=SCAN_DPI).original.convert("L")
+            image = image.rotate(turn, Image.Resampling.BICUBIC, fillcolor=255)
+            noise = rng.normal(0, SCAN_SPECKLE, image.size[::-1])
+            pixels = np.clip(np.asarray(image, dtype=float) + noise, 0, 255)
+            pages.append(Image.fromarray(pixels.astype(np.uint8)))
+    pages[0].save(
+        out, "PDF", resolution=SCAN_DPI, save_all=True, append_images=pages[1:]
+    )
     return out
 
 
@@ -186,7 +205,7 @@ def main(argv: list[str]) -> int:
             args.scan.mkdir(parents=True, exist_ok=True)
             print(scan(out, args.scan / out.name))
             continue
-        print(fill(blank(entry, args.cache), int(entry["page"]), entry["fields"], out))
+        print(fill(blank(entry, args.cache), entry["page"], entry["fields"], out))
     return 0
 
 
