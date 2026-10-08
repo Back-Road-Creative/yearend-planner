@@ -7,6 +7,7 @@ speckled) and must read back what its text layer does."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,26 @@ def test_a_label_the_scan_misread_is_put_back() -> None:
     # the box number that was read stands; a line like no label is left alone
     assert pdf.repaired("¦ 2Rerts\n  $ 7,200.00", phrases) == "¦ 2Rerts\n  $ 7,200.00"
     assert pdf.repaired("¦ Somethingelse\n  1", phrases) == "¦ Somethingelse\n  1"
+
+
+def test_a_thousands_comma_the_scan_read_as_a_stop_still_reads_whole() -> None:
+    # Windows renders the scan so the engine may take "8,450.00" for "8.450.00"
+    amount = re.compile(r"1 Mortgage interest\s+" + pdf.AMOUNT)
+    for read, value in (
+        ("8.450.00", 8450.0),
+        ("$12.000.00", 12000.0),
+        ("1.234.567.89", 1234567.89),
+        ("(1.500.00)", -1500.0),
+        ("8,450.00", 8450.0),
+        ("8.45", 8.45),
+    ):
+        m = amount.search(f"1 Mortgage interest {read}")
+        assert m and pdf.parse_amount(m.group(1)) == value, read
+    # a return line whose number the scan lost still takes the whole amount
+    line = re.compile(r"\b10\s+Adjustments[^\n]*?\b10\s+" + pdf.AMOUNT, re.I)
+    loose = pdf._loose_line(line)
+    m = loose.search("10 Adjustments to income 4.189.00\n")
+    assert m and pdf.parse_amount(m.group(1)) == 4189.0
 
 
 def test_the_labels_come_from_the_templates_patterns_and_check_boxes() -> None:
@@ -73,6 +94,20 @@ def test_an_engine_box_across_two_boxes_of_the_form_is_cut_in_two() -> None:
     assert (words[1]["x0"], words[1]["x1"]) == (110, 128)
     whole = ocr.words_of([item("no letters")], cells)
     assert [w["text"] for w in whole] == ["no letters"]
+
+
+def test_a_square_the_engine_read_onto_a_label_comes_off_it() -> None:
+    # Windows renders the square's edge so the engine reads it as a bracket on
+    # the label beside it: "Long-term gain or loss]"
+    square = (1055.0, 536.0, 1080.0, 562.0, True)
+    near = {"text": "loss]", "x0": 1017.0, "x1": 1081.0, "top": 540.0, "bottom": 558.0}
+    texts = [w["text"] for w in ocr.marked([near], [square])]
+    assert texts == ["loss", "[X]"]
+    before = {**near, "text": "[Ordinary", "x0": 1060.0, "x1": 1140.0}
+    assert [w["text"] for w in ocr.marked([before], [square])][0] == "Ordinary"
+    # a bracket clear of every square is the form's own
+    clear = {**near, "text": "(loss]", "x1": 1050.0}
+    assert [w["text"] for w in ocr.marked([clear], [square])][0] == "(loss]"
 
 
 def upside_down_engine(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
