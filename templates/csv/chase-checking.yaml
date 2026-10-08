@@ -1,0 +1,10 @@
+# Chase checking download: a signed Amount (deposits positive), dated by
+# Posting Date. Layout cited in tests/fixtures/real/csv/layouts.yaml.
+source: chase_checking
+kind: bank
+match: [Details, Posting Date, Description, Amount, Type, Balance]
+columns:
+  date: Posting Date
+  type: Type
+  description: Description
+  amount: Amount

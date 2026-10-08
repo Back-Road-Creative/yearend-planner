@@ -1,0 +1,12 @@
+Run Date,Account,Account Number,Action,Symbol,Description,Type,Exchange Quantity,Exchange Currency,Currency,Price,Quantity,Exchange Rate,Commission,Fees,Accrued Interest,Amount,Settlement Date
+12/03/2025,"IRA (synthetic)","X12345678","DIVIDEND RECEIVED VANGUARD BD INDEX FDS TOTAL BND MRKT (BND) (Cash)",BND,"VANGUARD BD INDEX FDS TOTAL BND MRKT",Cash,0,,USD,,0.000,0,,,,71.30,
+12/03/2025,"IRA (synthetic)","X12345678","REINVESTMENT VANGUARD BD INDEX FDS TOTAL BND MRKT (BND) (Cash)",BND,"VANGUARD BD INDEX FDS TOTAL BND MRKT",Cash,0,,USD,74.29,0.960,0,,,,-71.30,
+12/01/2025,"CMA (synthetic)","X23456789","DIRECT DEPOSIT EXAMPLE INC. PAYROLL (synthetic) (Cash)", ,"No Description",Cash,0,,USD,,0.000,0,,,,2100.00,
+11/24/2025,"Brokerage (synthetic)","X34567890","YOU SOLD EXAMPLE INDEX FUND (synthetic) (EXIF) (Cash)",EXIF,"EXAMPLE INDEX FUND (synthetic)",Cash,0,,USD,52.00,-10.000,0,,0.02,,519.98,11/25/2025
+11/20/2025,"Brokerage (synthetic)","X34567890","YOU BOUGHT VANGUARD INDEX FDS VANGUARD TOTAL STK MKT ETF (VTI) (Cash)",VTI,"VANGUARD INDEX FDS VANGUARD TOTAL STK MKT ETF",Cash,0,,USD,198.00,2.000,0,,,,-396.00,11/21/2025
+
+
+
+
+
+Date downloaded 12/04/2025 3:00 pm

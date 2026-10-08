@@ -1,0 +1,17 @@
+# Schwab "Positions" download (all accounts): each account is a title line
+# ("Individual ...321") over its own header, ending in an "Account Total"
+# line; "--" where Schwab has no figure. Layout cited in
+# tests/fixtures/real/csv/layouts.yaml.
+source: schwab_positions
+kind: holding
+match: [Symbol, Description, Quantity, Price, Market Value, Cost Basis, Security Type]
+columns:
+  account: "[title]"
+  description: Description
+  symbol: Symbol
+  quantity: Quantity
+  price: Price
+  amount: Market Value
+  basis: Cost Basis
+skip:
+  Symbol: [Account Total]

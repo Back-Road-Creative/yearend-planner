@@ -113,8 +113,9 @@ and photos go through OCR with confirm (Phase 2e, below).
 
 CSV exports go in the same inbox. Each header-led block is matched against
 `templates/csv/` (Vanguard download: holdings and transactions in one file; Vanguard
-cost basis by lot; realized gains; dividends and interest; bank exports with a signed
-Amount or Debit/Credit columns) and lands in the ledger's `rows` table: one row per
+cost basis by lot; realized gains; dividends and interest; Fidelity positions and
+activity; Schwab positions, brokerage history and checking; Chase checking; bank
+exports with a signed Amount or Debit/Credit columns) and lands in the ledger's `rows` table: one row per
 line, money in cents, the source line kept verbatim. A row's identity is the broker's
 transaction ID when the export carries one, else a hash of the row plus file name and
 line, so the same file twice is a no-op, an overlapping export does not double-count a
@@ -126,7 +127,12 @@ edit, never a code change. `planner rows --year 2025 --kind transaction` lists r
 Vanguard's download is checked against its published layout: each account's rows
 parted by a blank line with no repeated header (a data row after a blank line carries on
 the block above), trailing commas, and the employer-plan holdings and plan transactions
-blocks a 401(k) adds. `tests/fixtures/real/csv/layouts.yaml` cites the source of every
+blocks a 401(k) adds. Fidelity's and Schwab's downloads are checked the same way: a
+one-cell line is a title or a note, never a row (Schwab's title names the account),
+"Account Total" and "Transactions Total" lines are skipped, "--", "n/a" and
+"Incomplete" are no figure rather than zero, and a Schwab date "01/02/2026 as of
+12/31/2025" counts from the as-of date. When two templates fit a block, the one naming
+more of its headers wins. `tests/fixtures/real/csv/layouts.yaml` cites the source of every
 real layout and names the templates that have none yet. Vanguard's cost-basis,
 realized-gains and income exports and the two bank layouts are among those: they are
 matched on the column names in `templates/csv/`, verified against synthetic files, and

@@ -1,0 +1,11 @@
+# Schwab Bank checking download: Withdrawal and Deposit columns. Layout cited
+# in tests/fixtures/real/csv/layouts.yaml.
+source: schwab_checking
+kind: bank
+match: [Date, Status, Type, Description, Withdrawal, Deposit, RunningBalance]
+columns:
+  date: Date
+  type: Type
+  description: Description
+  debit: Withdrawal
+  credit: Deposit

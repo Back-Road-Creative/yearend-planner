@@ -1,0 +1,19 @@
+# Schwab brokerage "History" download: a title line naming the account, then
+# one row per transaction, ending in a "Transactions Total" line. A date
+# "01/02/2026 as of 12/31/2025" counts from the as-of date. Layout cited in
+# tests/fixtures/real/csv/layouts.yaml.
+source: schwab_transactions
+kind: transaction
+match: [Date, Action, Symbol, Description, Quantity, Price, Fees & Comm, Amount]
+title: "for account (.+?) as of"
+columns:
+  account: "[title]"
+  date: Date
+  type: Action
+  description: Description
+  symbol: Symbol
+  quantity: Quantity
+  price: Price
+  amount: Amount
+skip:
+  Date: [Transactions Total]

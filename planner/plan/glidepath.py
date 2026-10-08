@@ -298,7 +298,12 @@ def _month_days(d: date) -> int:
 
 def _income_by_month(conn: sqlite3.Connection, year: int) -> dict[int, float]:
     income = _by_month(
-        conn, year, "income", lambda rw: _classify_income("income", rw.type) is not None
+        conn,
+        year,
+        "income",
+        lambda rw: (
+            _classify_income("income", rw.type, rw.amount_cents or 0) is not None
+        ),
     )
     if income:
         return income
@@ -306,7 +311,9 @@ def _income_by_month(conn: sqlite3.Connection, year: int) -> dict[int, float]:
         conn,
         year,
         "transaction",
-        lambda rw: _classify_income("transaction", rw.type) is not None,
+        lambda rw: (
+            _classify_income("transaction", rw.type, rw.amount_cents or 0) is not None
+        ),
     )
 
 
