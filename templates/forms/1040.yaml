@@ -2,10 +2,9 @@
 # Box ids follow the 2024 form; the 2025 form's 7a, 11a, 12e and 13a match too.
 # The filed return is the taxpayer's own document: issuer is the literal "self".
 # filing_status (check boxes), state and zip (the city/state/ZIP line) are text
-# boxes: the words are kept as printed, never inferred. Qualifying surviving
-# spouse is not one of the planner's filing statuses, so it is left unread and
-# the question stays on the Needed panel. Form 1040 (2024, 2025) filing-status
-# block and "City, town, or post office ... State ZIP code" address line.
+# boxes: the words are kept as printed, never inferred (qualifying surviving
+# spouse since unit 3b-1). Form 1040 (2024, 2025) filing-status block and
+# "City, town, or post office ... State ZIP code" address line.
 form: 1040
 years: [2024, 2025, 2026]
 match: ["U.S. Individual Income Tax Return"]
@@ -20,6 +19,7 @@ boxes:
       married_joint: Married filing jointly
       married_separate: Married filing separately
       head_of_household: Head of household
+      qualifying_surviving_spouse: Qualifying surviving spouse
   "state":
     label: State (address line)
     kind: text

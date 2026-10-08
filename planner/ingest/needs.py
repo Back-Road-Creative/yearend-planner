@@ -41,7 +41,13 @@ MANUAL_VALUES = "values"
 MANUAL_DONT_HAVE = "dont_have"
 ACCOUNT = "account:"  # dynamic keys: account:<number>, account:<number>:death
 SCHEDULE_B_OVER = 1500.0  # interest or ordinary dividends over this need Schedule B
-FILING = ("single", "married_joint", "married_separate", "head_of_household")
+FILING = (
+    "single",
+    "married_joint",
+    "married_separate",
+    "head_of_household",
+    "qualifying_surviving_spouse",  # unit 3b-1
+)
 
 
 # The Medicaid work requirement's first year (config/thresholds.yaml
@@ -306,7 +312,23 @@ NEEDS: tuple[Need, ...] = (
         "dependents",
         PROFILE,
         asked=lambda s: (
-            s.get("filing_status") in ("married_joint", "head_of_household")
+            s.get("filing_status")
+            in ("married_joint", "head_of_household", "qualifying_surviving_spouse")
+        ),
+        unlocks=("MAGI headroom", "Roth conversion", "Levers", "Draft 1040"),
+    ),
+    Need(
+        "spouse_death_date",
+        "Date your spouse died (or none)",
+        "a spouse who died during the year is on a joint return with income to the "
+        "date of death and counts as 65 only if 65 at death; a qualifying surviving "
+        "spouse files at joint rates only for the two years after the year of "
+        "death, while a dependent child lives at home",
+        "the date as YYYY-MM-DD, or none",
+        "date_or_none",
+        PROFILE,
+        asked=lambda s: (
+            s.get("filing_status") in ("married_joint", "qualifying_surviving_spouse")
         ),
         unlocks=("MAGI headroom", "Roth conversion", "Levers", "Draft 1040"),
     ),
@@ -1218,6 +1240,8 @@ def parse_value(need: Need, text: str) -> Any:
     s = text.strip()
     if need.kind == "date":
         return _date(need.key, s)
+    if need.kind == "date_or_none":
+        return "none" if s.lower() == "none" else _date(need.key, s)
     if need.kind == "dependents":
         return _dependents(need.key, s)
     if need.kind == "money":
@@ -1231,7 +1255,9 @@ def parse_value(need: Need, text: str) -> Any:
         v = _number(need, s, "a whole number")
         if v != int(v):
             raise ValueError(f"{need.key}: a whole number, got {s}")
-        lo, hi = INT_RANGE.get(need.key.removeprefix(SPOUSE), (0, MONEY_MAX))
+        lo, hi = INT_RANGE.get(
+            need.key, INT_RANGE.get(need.key.removeprefix(SPOUSE), (0, MONEY_MAX))
+        )
         if not lo <= v <= hi:
             raise ValueError(f"{need.key}: between {lo} and {hi}, got {s}")
         return int(v)

@@ -1202,11 +1202,12 @@ checks its own folder first with `findstr` and prints the same warning before
 it downloads or runs anything, so a double-click in a synced folder explains
 itself in the window it keeps open.
 
-## Scope guard and the household's people (Phase 10, units 0b and 3a-2 to 3a-7)
+## Scope guard and the household's people (Phase 10, units 0b, 3a-2 to 3a-7 and 3b-1 to 3b-3)
 
 The profile names the household's people: `spouse_birth_date` (asked when the filing
-status is married_joint) and `dependents` (asked for married_joint and
-head_of_household), typed as birth dates with `student` (full-time this year) or
+status is married_joint), `spouse_death_date` (a date or `none`; asked for married_joint
+and qualifying_surviving_spouse) and `dependents` (asked for married_joint, head_of_household and
+qualifying_surviving_spouse), typed as birth dates with `student` (full-time this year) or
 `disabled` after one, or `none`:
 
     planner enter spouse_birth_date 1974-05-02
@@ -1224,11 +1225,53 @@ Until they are named, `planner.coverage.HOUSEHOLD` holds one line per status:
   separate returns arrive (unit 3b).
 - Head of household: no qualifying person is entered, so dependents' credits and the
   larger household for the ACA credit and benefits are left out.
+- Qualifying surviving spouse (unit 3b-1): joint rates (the joint brackets, standard
+  deduction and IRA and Roth phase-outs, Pub. 590-A) with no spouse in the tax unit,
+  for the two years after the year of death while a dependent child lives at home
+  (2025 Form 1040 instructions). With no child named, or a `spouse_death_date` outside
+  those two years, the line says what to file instead: married_joint for the year of
+  death, single or head_of_household after the second year. Medicare's IRMAA tiers and
+  the Social Security taxation thresholds are the single ones, as the law sets them.
+- Married filing jointly after the year the spouse died (unit 3b-3): a joint return is
+  filed for the year of death at the latest, so a later year names what to file instead
+  (qualifying_surviving_spouse for the two years after, else single or head_of_household).
+
+A spouse who died during the year (unit 3b-3) stays on the joint return, with their
+income to the date of death and the survivor's for the whole year (2025 Form 1040
+instructions, Married Filing Jointly). The spouse is priced at their age at death and
+counts as 65 only if 65 then, reached the day before the 65th birthday (Pub. 501:
+born February 14, 1960 and died February 13, 2025 is 65; died February 12 is not).
+The draft's notes say to check the spouse's Deceased box with the date and to sign
+"Filing as surviving spouse". A death after the year ends, before the return is filed,
+leaves that year's joint return as it is. The date is the current spouse's: after a
+remarriage in the year the joint return is with the new spouse (`none`), and the
+deceased spouse's own return, married filing separately, is not drafted.
 
 The line leads the dashboard's alerts (kind `scope`), reaches the draft return's notes,
 `planner magi` and the tax pack's notes. Once the people are named it goes: the draft lays out the spouse's Schedule 1-A line 36b and the dependents'
 Schedule 8812 (unit 3a-3), each spouse's own Schedule SE (unit 3a-5) and Form 8889
 (unit 3a-7).
+
+A married couple filing jointly can price the other way to file (unit 3b-2):
+
+    planner separate --year 2026
+
+prices the joint return and each spouse's married-filing-separately return, and says
+which costs less (cost as in `planner levers`). Each separate return takes that
+spouse's own lines: their wages, SE income, IRA, Social Security, tips and overtime,
+their own Form 8889 line 13, and the interest, dividends, gains and deductions on
+their own documents. What no document places (a typed mortgage interest figure, a
+planned sale) is split equally, and a note names it. The rules applied:
+
+- If one spouse itemizes the other must (2025 Form 1040 instructions); both returns
+  are priced with the standard deduction and both itemized, and the cheaper pair is shown.
+- The health plan's premiums and advance credit go 50% to each return and neither
+  takes the premium credit (2025 Form 8962 instructions, Allocation Situation 2), so
+  each repays its half against its own income. The domestic-abuse and abandonment
+  exceptions are not handled.
+- The children are claimed on one return, priced both ways.
+- A community property state (AZ, CA, ID, LA, NV, NM, TX, WA, WI; Pub. 555) is refused:
+  each spouse reports half the community income, which the ledger cannot tell apart.
 
 Each document is one person's (unit 3a-4). Drop the spouse's W-2, 1099-R, SSA-1099,
 5498 and 1099-NEC in `data/inbox/spouse/` (any case); everything else is yours. A

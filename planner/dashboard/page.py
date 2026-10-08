@@ -386,6 +386,8 @@ def gather(
         FILING.get(str(status)) if status else None,
         spouse=status == "married_joint" and bool(answer.get("spouse_birth_date")),
         dependents=len(answer.get("dependents") or ()),
+        death_year=coverage.death_year(answer.get("spouse_death_date")),
+        year=year,
     )
     page.scope = [g.reason for g in page.coverage if g.area != "document"]
     rows = coverage.statuses(lay)

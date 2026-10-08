@@ -1981,6 +1981,32 @@ def whatif(
 
 
 @app.command()
+def separate(
+    year: int = typer.Option(..., help="tax year", min=1990, max=2100),
+    q4_dividends: float = Q4,
+    sales_st: float = ST,
+    sales_lt: float = LT,
+    conversion: float = CONV,
+    hsa: float | None = HSA,
+) -> None:
+    """Price the year married filing jointly and as two separate returns, each
+    spouse on their own lines, and show which costs less."""
+    from planner.engine.household import MissingInputError
+    from planner.plan import separate as sep
+
+    try:
+        c = sep.compare(
+            layout(),
+            year,
+            _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa),
+        )
+    except (ValueError, MissingInputError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(sep.render(c), nl=False)
+
+
+@app.command()
 def thresholds(
     year: int = typer.Option(..., help="tax year", min=1990, max=2100),
 ) -> None:

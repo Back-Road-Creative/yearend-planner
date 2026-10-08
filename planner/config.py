@@ -15,6 +15,7 @@ ASSUMPTION_FIELDS = (
     "state",
     "county",
     "spouse_birth_date",
+    "spouse_death_date",  # a joint (3b-3) or qualifying surviving spouse's (3b-1)
     "dependents",
     "spending_floor",
     "spending_ceiling",

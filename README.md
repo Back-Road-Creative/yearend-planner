@@ -45,7 +45,13 @@ for the dependents, and each spouse's own Schedule SE. The spouse's documents go
 `data/inbox/spouse/` (or `planner owner <file> spouse`), so their wages, IRA and Social
 Security are theirs, and so are their Schedule SE and Form 8889 (the family HSA limit
 split between the spouses' HSAs).
-Married filing separately stays
+A qualifying surviving spouse is priced at joint rates for the two years after the
+year of death while a dependent child lives at home (`spouse_death_date`, unit 3b-1); a
+spouse who died during the year stays on that year's joint return at their age at
+death (unit 3b-3).
+`planner separate` prices a joint couple's two married-filing-separately returns, each
+on that spouse's own documents, against the joint return (unit 3b-2; not in a
+community property state). Filing as married filing separately stays
 **Not handled**. The state return drafted is NC's D-400; another state
 gets the engine's estimate and a **Not handled** line saying to have a preparer draft it.
 A document no template reads is named the same way. Each panel and drafted form is tagged
@@ -92,6 +98,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `run` | The one command: read the inbox, run every planner and the draft return, write out/index.html, then serve the page on this computer and open it. |
 | `schedule` | Register a monthly quiet run (`planner.cmd run --quiet`, the 1st at 09:00) with Windows Task Scheduler; `--remove` deletes it. |
 | `selfcheck` | Run one real federal calculation through the tax engine and print it; --regression runs the shipped reference cases instead and prints the engine's figure for each. |
+| `separate` | Price the year married filing jointly and as two separate returns, each spouse on their own lines, and show which costs less. |
 | `spend` | The spending band: rate x balance clamped to the floor and ceiling, the drawdown rule against the inflation-adjusted peak, and the return-band table under the floor and planning returns (real dollars). |
 | `status` | The portfolio today: every account, total, accessible and locked money, the Roth withdrawal order, the all-time peak, YTD income by type and its gap to the filed 1099s, unrealized gains and the carryforward. |
 | `sweep` | Sweep one input across a range in a single engine run; one JSON row per step. |
