@@ -5,6 +5,8 @@ birth_date: null          # YYYY-MM-DD; the one fact no document supplies
 filing_status: null       # single | married_joint | married_separate | head_of_household
 state: null               # two-letter, e.g. NC
 county: null              # county, e.g. Macon or Macon County; read from the return's ZIP when one county
+spouse_birth_date: null   # YYYY-MM-DD; a joint return's spouse (asked when married_joint)
+dependents: null          # [{birth_date: YYYY-MM-DD, student: false, disabled: false}]; [] for none
 spending_floor: null      # annual, dollars: the lowest the household can run on
 spending_ceiling: null    # annual, dollars: comfortable spending
 withdrawal_rate: null     # fraction of investable assets per year, e.g. 0.035

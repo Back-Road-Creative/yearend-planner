@@ -34,12 +34,16 @@ copy the folder or run `planner backup`.
 
 ## Who it handles
 
-The planner models **one person with no dependents**. A single filer gets the full plan
-and draft. Married filing jointly, married filing separately and head of household are
-priced as that one person and tagged **Not handled** first in the alerts, in the draft
-return's notes, in `planner magi` and in the tax pack, because a spouse or a qualifying
-person changes the answer and neither is entered. Treat those figures as one person's
-share, not the household's return. The state return drafted is NC's D-400; another state
+A single filer gets the full plan and draft. A joint filer is asked for the spouse's
+birth date, and a joint or head-of-household filer for the dependents (birth dates, marked
+`student` or `disabled`, or `none`); until they are named, the plan is priced as one
+person and tagged **Not handled** first in the alerts, in the draft return's notes, in
+`planner magi` and in the tax pack. Once they are named the household is priced as the
+whole tax unit (the spouse's age, the child tax credit, the household size for the ACA
+credit); every income figure is still priced as the first person's until each document
+names its owner, so the draft return and the estimated-tax figures stay tagged for the
+per-person lines (Schedule SE, IRA and HSA limits). Married filing separately stays
+**Not handled**. The state return drafted is NC's D-400; another state
 gets the engine's estimate and a **Not handled** line saying to have a preparer draft it.
 A document no template reads is named the same way. Each panel and drafted form is tagged
 verified, estimated or not handled, and the tax pack's `coverage.csv` lists why.

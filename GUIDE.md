@@ -1170,22 +1170,35 @@ checks its own folder first with `findstr` and prints the same warning before
 it downloads or runs anything, so a double-click in a synced folder explains
 itself in the window it keeps open.
 
-## Scope guard: one person (Phase 10, unit 0b)
+## Scope guard and the household's people (Phase 10, units 0b and 3a-2)
 
-The household the engine prices has one member: no spouse and no dependents. For the
-filing statuses whose answer turns on a second person, `planner.coverage.HOUSEHOLD`
-holds one line each, and `inputs.build` puts it in `Inputs.scope` and the notes:
+The profile names the household's people: `spouse_birth_date` (asked when the filing
+status is married_joint) and `dependents` (asked for married_joint and
+head_of_household), typed as birth dates with `student` (full-time this year) or
+`disabled` after one, or `none`:
+
+    planner enter spouse_birth_date 1974-05-02
+    planner enter dependents "2018-03-02, 2006-07-01 student"
+
+`inputs.build` puts them on the household (a spouse only on a joint return; an old
+answer under another status is kept but not priced) and the engine prices the tax unit.
+The spouse's age for the draft counts the day before the birthday, as the filer's does.
+Until they are named, `planner.coverage.HOUSEHOLD` holds one line per status:
 
 - Married filing jointly: the spouse's income, age, deductions and credits are left out,
   so every figure is this person's share, not the joint return.
 - Married filing separately: the spouse's choice to itemize (which binds this return), a
-  community-property split and the spouse's figures are left out.
+  community-property split and the spouse's figures are left out. This stays until
+  separate returns arrive (unit 3b).
 - Head of household: no qualifying person is entered, so dependents' credits and the
   larger household for the ACA credit and benefits are left out.
 
 The line leads the dashboard's alerts (kind `scope`), reaches the draft return's notes,
-`planner magi` and the tax pack's notes. A single filer has none. The tag stays until the
-household model (unit 3a) adds the spouse and dependents.
+`planner magi` and the tax pack's notes. Once the people are named it is replaced by
+`coverage.PEOPLE`, which touches only the draft and the estimated tax: income is priced
+as the first person's until each document names its owner (unit 2c), so Schedule SE's
+wage base and the IRA and HSA limits are that person's, and the draft does not yet lay
+out the spouse or the dependents table (unit 3a-3). A single filer has none.
 
 ## Coverage gate (Phase 10, unit 2a)
 
@@ -1193,7 +1206,8 @@ household model (unit 3a) adds the spouse and dependents.
 every fact the planner cannot answer correctly. Each gap has a reason (starting
 `Not handled:`), a Needed line saying what to do, and the sections it touches:
 
-- **Household**: the one-person lines above. Touches every priced panel and the draft.
+- **Household**: the lines above. An unnamed spouse or qualifying person touches every
+  priced panel and the draft; once named, only the draft and the estimated tax.
 - **State**: a state other than NC. The plan's state income tax is the engine's
   estimate; the state return is not drafted (have a preparer draft it). Touches only
   the state return, so the federal draft stays ready.
