@@ -213,8 +213,8 @@ pdf_mixed_text_and_scanned_pages:
 ocr_real_form_scans:
   status: verified
   evidence: implemented
-  tests: ["tests/test_scans.py"]
-  note: "each official real-layout form, scanned crooked and speckled, reads back its synthetic values: ruled boxes and check squares from the image, misread labels repaired from the template, an upside-down page turned"
+  tests: ["tests/test_scans.py", "tests/test_real_returns.py"]
+  note: "each official real-layout form, scanned crooked and speckled, reads back its synthetic values: ruled boxes and check squares from the image, misread labels repaired from the template, an upside-down page turned; a filed 1040 and its schedules, every page scanned, read from the plain text first with each line's number kept apart from its amount"
 zip_subfolders_nested_corrupt:
   status: verified
   evidence: implemented
@@ -530,6 +530,11 @@ real_form_layouts:
   evidence: implemented
   tests: ["tests/test_real_forms.py"]
   note: "unit 7h: 18 official blank IRS forms (1099-INT/DIV/B/C/DA/G/K/MISC/NEC/R/SA, 1098, 1098-T, 3921, 3922, 5498, 5498-SA, W-2) carry synthetic values (scripts/real_forms.py, blanks pinned by irs.gov URL and SHA-256) and read back exactly through the ruled-cell reader; one-sale 1099-B files by box 2 term; 2026 1099-G box 12; renamed 2026 boxes read"
+real_filed_returns:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_real_forms.py", "tests/test_real_returns.py"]
+  note: "unit 7h2a: the official 2025 Form 1040 and Schedules 1, 2, 3, C, D and SE, every page filled with a synthetic taxpayer, read back box for box as issuer self; a return template owns its page against the forms it names; page-2 totals have their own required templates; ruled cells with no box fall back to the plain text"
 browser_checks:
   status: verified
   evidence: implemented

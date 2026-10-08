@@ -1,0 +1,9 @@
+# Schedule 2 (Form 1040) page 2 (Part II continued). Merges with page 1.
+form: 1040-SCH2
+years: [2024, 2025, 2026]
+match: ["Schedule 2 (Form 1040)", "Other Taxes (continued)"]
+year_pattern: 'Schedule 2 \(Form 1040\)\s*(20\d\d)'
+issuer: self
+return: true
+boxes:
+  "21": {label: "Total other taxes", pattern: 'These are your total other taxes[^\n]*\n?[^\n]*?\b21\s+AMOUNT', required: true}

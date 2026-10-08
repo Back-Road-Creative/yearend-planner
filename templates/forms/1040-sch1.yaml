@@ -1,14 +1,17 @@
-# Schedule 1 (Form 1040): additional income and adjustments.
+# Schedule 1 (Form 1040): additional income and adjustments. The official form
+# puts Part II on page 2, whose template (1040-sch1-p2) requires line 26; this
+# one reads either page, or a copy on one page, and requires nothing.
 form: 1040-SCH1
 years: [2024, 2025, 2026]
-match: ["Schedule 1 (Form 1040)"]
+match: ["Schedule 1 (Form 1040)", "Additional Income and Adjustments to Income"]
 year_pattern: 'Schedule 1 \(Form 1040\)\s*(20\d\d)'
 issuer: self
+return: true
 boxes:
   "3": {label: "Business income or loss", pattern: 'Business income or \(loss\)[^\n]*?\b3\s+AMOUNT'}
-  "10": {label: "Additional income", pattern: 'Combine lines 1 through 7 and 9[^\n]*?\b10\s+AMOUNT'}
+  "10": {label: "Additional income", pattern: 'Combine lines 1 through 7 and 9[^\n]*\n?[^\n]*?\b10\s+AMOUNT'}
   "15": {label: "Deductible part of SE tax", pattern: 'Deductible part of self-employment tax[^\n]*?\b15\s+AMOUNT'}
   "16": {label: "SEP, SIMPLE, qualified plans", pattern: 'Self-employed SEP, SIMPLE, and qualified plans[\s.]*16\s+AMOUNT'}
   "17": {label: "SE health insurance deduction", pattern: 'Self-employed health insurance deduction[\s.]*17\s+AMOUNT'}
   "20": {label: "IRA deduction", pattern: 'IRA deduction[\s.]*20\s+AMOUNT'}
-  "26": {label: "Adjustments to income", pattern: 'These are your adjustments to income[\s.]*26\s+AMOUNT', required: true}
+  "26": {label: "Adjustments to income", pattern: 'These are your adjustments to income[^\n]*\n?[^\n]*?\b26\s+AMOUNT'}
