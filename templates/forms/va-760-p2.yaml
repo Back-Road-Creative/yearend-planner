@@ -1,26 +1,28 @@
 # Virginia Form 760, page 2 (the tax, the Spouse Tax Adjustment, payments and
 # credits, the amount owed or the refund). Merges with page 1 (va-760.yaml) as
-# form VA-760.
+# form VA-760. A scan may read the refund before its line number ("YOUR
+# REFUND .. 207 00", then "36" below), or at the end of the card oval's line above.
 form: VA-760
 years: [2025]
 match: ["Form 760", "Net Amount of Tax", "Spouse Tax Adjustment (STA)"]
 year_pattern: '(20\d\d) Form 760(?![A-Z])'
 issuer: VA
+return: true
 boxes:
-  "16": {label: "Amount of Tax from Tax Table or Tax Rate Schedule", pattern: 'round to whole dollars\)[\s.]*16\s+AMOUNT', required: true}
-  "17": {label: "Spouse Tax Adjustment (STA)", pattern: 'STA amount on Line 17\.\s*17\s+AMOUNT'}
-  "18": {label: "Net Amount of Tax", pattern: 'Subtract Line 17 from Line 16[\s.]*18\s+AMOUNT', required: true}
-  "19a": {label: "Your Virginia withholding", pattern: 'Your Virginia withholding[\s.]*19a\s+AMOUNT'}
-  "19b": {label: "Spouse's Virginia withholding", pattern: 'Filing Status 2 only\)[\s.]*19b\s+AMOUNT'}
-  "20": {label: "Estimated tax payments", pattern: 'from Form 760ES\)[\s.]*20\s+AMOUNT'}
-  "21": {label: "Overpayment applied toward estimated tax", pattern: 'overpayment applied toward \d{4} estimated tax[\s.]*21\s+AMOUNT'}
-  "22": {label: "Extension Payments", pattern: 'from Form 760IP\)[\s.]*22\s+AMOUNT'}
-  "23": {label: "Tax Credit for Low-Income Individuals or Earned Income Credit", pattern: 'from Sch\. ADJ, Line 17[\s.]*23\s+AMOUNT'}
-  "24": {label: "Credit for Tax Paid to Another State", pattern: 'copy of all other state returns\.[\s.]*24\s+AMOUNT'}
-  "25": {label: "Credits from Schedule CR", pattern: 'Section 5, Part 1, Line 1A[\s.]*25\s+AMOUNT'}
-  "26": {label: "Add Lines 19a through 25", pattern: 'Add Lines 19a through 25[\s.]*26\s+AMOUNT'}
-  "27": {label: "Tax You Owe", pattern: 'This is the Tax You Owe[\s.]*27\s+AMOUNT'}
-  "28": {label: "Tax Overpayment", pattern: 'This is Your Tax Overpayment[\s.]*28\s+AMOUNT'}
-  "33": {label: "Consumer's Use Tax", pattern: 'no sales and use tax is due[\s.]*33\s+AMOUNT'}
-  "35": {label: "Amount You Owe", pattern: 'AMOUNT YOU OWE[\s.]*35\s+AMOUNT'}
-  "36": {label: "Your Refund", pattern: 'YOUR REFUND[\s.]*36\s+AMOUNT'}
+  "16": {label: "Amount of Tax from Tax Table or Tax Rate Schedule", pattern: '(?:round to whole dollars\)[\s.]*16[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?16\. Amount of Tax from Tax Table)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n16\. Amount of Tax from Tax Table)))AMOUNT', required: true}
+  "17": {label: "Spouse Tax Adjustment (STA)", pattern: '(?:STA amount on Line 17\.\s*17[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?17\. Spouse Tax Adjustment)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n17\. Spouse Tax Adjustment)))AMOUNT'}
+  "18": {label: "Net Amount of Tax", pattern: '(?:Subtract Line 17 from Line 16[\s.]*18[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?18\. Net Amount of Tax)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n18\. Net Amount of Tax)))AMOUNT', required: true}
+  "19a": {label: "Your Virginia withholding", pattern: '(?:Your Virginia withholding[\s.]*19a[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?19a\. Your Virginia withholding)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n19a\. Your Virginia withholding)))AMOUNT'}
+  "19b": {label: "Spouse's Virginia withholding", pattern: '(?:Filing Status 2 only\)[\s.]*19b[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?19b\. Spouse.?s Virginia withholding)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n19b\. Spouse.?s Virginia withholding)))AMOUNT'}
+  "20": {label: "Estimated tax payments", pattern: '(?:from Form 760ES\)[\s.]*20[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?20\. Estimated tax payments)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n20\. Estimated tax payments)))AMOUNT'}
+  "21": {label: "Overpayment applied toward estimated tax", pattern: '(?:overpayment applied toward \d{4} estimated tax[\s.]*21[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?21\. Amount of \d{4} overpayment)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n21\. Amount of \d{4} overpayment)))AMOUNT'}
+  "22": {label: "Extension Payments", pattern: '(?:from Form 760IP\)[\s.]*22[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?22\. Extension Payments)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n22\. Extension Payments)))AMOUNT'}
+  "23": {label: "Tax Credit for Low-Income Individuals or Earned Income Credit", pattern: '(?:from Sch\. ADJ, Line 17[\s.]*23[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?23\. Tax Credit for Low-Income)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n23\. Tax Credit for Low-Income)))AMOUNT'}
+  "24": {label: "Credit for Tax Paid to Another State", pattern: '(?:copy of all other state returns\.[\s.]*24[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?24\. Credit for Tax Paid to Another State)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n24\. Credit for Tax Paid to Another State)))AMOUNT'}
+  "25": {label: "Credits from Schedule CR", pattern: '(?:Section 5, Part 1, Line 1A[\s.]*25[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?25\. Credits from enclosed Schedule CR)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n25\. Credits from enclosed Schedule CR)))AMOUNT'}
+  "26": {label: "Add Lines 19a through 25", pattern: '(?:Add Lines 19a through 25[\s.]*26[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?26\. Add Lines 19a through 25)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n26\. Add Lines 19a through 25)))AMOUNT'}
+  "27": {label: "Tax You Owe", pattern: '(?:This is the Tax You Owe[\s.]*27[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?27\. If Line 26 is less than Line 18)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n27\. If Line 26 is less than Line 18)))AMOUNT'}
+  "28": {label: "Tax Overpayment", pattern: '(?:This is Your Tax Overpayment[\s.]*28[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?28\. If Line 18 is less than Line 26)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n28\. If Line 18 is less than Line 26)))AMOUNT'}
+  "33": {label: "Consumer's Use Tax", pattern: '(?:no sales and use tax is due[\s.]*33[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?33\. Sales and Use Tax)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n33\. Sales and Use Tax)))AMOUNT'}
+  "35": {label: "Amount You Owe", pattern: '(?:Amount You Owe[\s.]*35[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?35\. If you owe tax on Line 27)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n35\. If you owe tax on Line 27)))AMOUNT'}
+  "36": {label: "Your Refund", pattern: '(?:YOUR REFUND[\s.]*(?:36[ \t]+)?(?!36\b)|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?36\. If Line 28 is greater than Line 34)|(?<=[.a-z]\x20)(?=[\d,]{3,}[ \t.]*00\n36\. If Line 28 is greater than Line 34)))AMOUNT'}

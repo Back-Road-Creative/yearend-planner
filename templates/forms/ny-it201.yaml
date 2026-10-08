@@ -9,6 +9,7 @@ years: [2025]
 match: ["IT-201 (20", "New York adjusted gross income (subtract line 32"]
 year_pattern: 'IT-201 \((20\d\d)\)'
 issuer: NY
+return: true
 boxes:
   "19": {label: "Federal adjusted gross income", pattern: 'Federal adjusted gross income \(subtract line 18 from line 17\)[\s.•]*19\s+AMOUNT'}
   "24": {label: "Federal AGI with the NY additions", pattern: 'Add lines 19 through 23[\s.•]*24\s+AMOUNT'}

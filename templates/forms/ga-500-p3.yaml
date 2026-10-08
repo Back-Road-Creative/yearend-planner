@@ -5,8 +5,9 @@
 form: GA-500
 years: [2025]
 match: ["Individual Income Tax Return", "Income before GA NOL"]
-year_pattern: 'Georgia Department of Revenue\s*(?:YOUR SOCIAL SECURITY NUMBER)?\s*(20\d\d)'
+year_pattern: 'Georgia\s+Department\s+of\s+Revenue\s*(?:\d{8,}\s*)?(?:YOUR\s+SOCIAL\s+SECURITY\s+NUMBER)?\s*(20\d\d)'
 issuer: GA
+return: true
 boxes:
   "14": {label: "Dependent exemption", pattern: 'ultiply by \$4,000[\s.]*14 ?\.\s+AMOUNT'}
   "15a": {label: "Income before GA NOL", pattern: 'Schedule 3, Line 14\)[\s.]*15a\.\s+AMOUNT'}
@@ -16,4 +17,4 @@ boxes:
   "19": {label: "Georgia eligible itemizer tax credit", pattern: 'Itemizer Tax Credit \(See IT-511 Tax Booklet\)[\s.]*19\.\s+AMOUNT'}
   "20": {label: "Credits used from IND-CR Summary Worksheet", pattern: 'IND-CR Summary Worksheet[\s.]*20\.\s+AMOUNT'}
   "22": {label: "Total credits used", pattern: 'cannot ex ?ceed Line 16[\s.]*22\.\s+AMOUNT'}
-  "23": {label: "Balance", pattern: 'less than zero, enter ze ?ro[\s.]*23\.\s+AMOUNT', required: true}
+  "23": {label: "Balance", pattern: 'l?ess than zero, enter ze ?ro[\s.]*23\.\s+AMOUNT', required: true}

@@ -1,24 +1,29 @@
 # Virginia Form 760, page 1 (income, VAGI, the deductions and exemptions,
 # taxable income). Merges with page 2 (va-760-p2.yaml) as form VA-760. The
-# year pattern refuses Form 760PY, the part-year return.
+# year pattern refuses Form 760PY, the part-year return. A scan reads "(VAGI)" as
+# "(VAGl)", so the match leaves it out. A filled amount sits above its line; a scan may
+# set it at the end of the line before, after its dot leader (". 60,735 00"),
+# when its line is the very next one and it is not a line number ("13 00"), or
+# after the line's LOSS box, which a scan may read as "0SS".
 form: VA-760
 years: [2025]
-match: ["Virginia Form 760", "Resident Income Tax Return", "Virginia Adjusted Gross Income (VAGI)"]
+match: ["Virginia Form 760", "Resident Income Tax Return", "Virginia Adjusted Gross Income"]
 year_pattern: '(20\d\d)\s+Virginia Form 760(?![A-Z])'
 issuer: VA
+return: true
 boxes:
-  "1": {label: "Adjusted Gross Income from federal return", pattern: 'Not federal taxable income[\s.]*1\s+AMOUNT', required: true}
-  "2": {label: "Additions from Schedule ADJ, Line 3", pattern: 'Additions from enclosed Schedule ADJ, Line 3\.[\s.]*2\s+AMOUNT'}
-  "3": {label: "Add Lines 1 and 2", pattern: '3\. Add Lines 1 and 2[\s.]*3\s+AMOUNT'}
-  "4": {label: "Age Deduction", pattern: '=\s*4\s+AMOUNT'}
-  "5": {label: "Social Security and equivalent Tier 1 Railroad Retirement benefits", pattern: 'if taxable on federal return[\s.]*5\s+AMOUNT'}
-  "6": {label: "State Income Tax refund or overpayment credit", pattern: 'reported as income on federal return\)[\s.]*6\s+AMOUNT'}
-  "7": {label: "Subtractions from Schedule ADJ, Line 7", pattern: 'Subtractions from enclosed Schedule ADJ, Line 7[\s.]*7\s+AMOUNT'}
-  "8": {label: "Add Lines 4, 5, 6, and 7", pattern: 'Add Lines 4, 5, 6, and 7[\s.]*8\s+AMOUNT'}
-  "9": {label: "Virginia Adjusted Gross Income (VAGI)", pattern: 'your tax is \$0\.00[\s.]*9\s+AMOUNT', required: true}
-  "10": {label: "Itemized Deductions from Virginia Schedule A", pattern: 'from Virginia Schedule A\. See instructions\.[\s.]*10\s+AMOUNT'}
-  "11": {label: "Standard deduction", pattern: 'enter standard deduction\. See instructions\.[\s.]*11\s+AMOUNT'}
-  "12": {label: "Exemptions", pattern: 'Exemption Section A plus Exemption Section B[\s.]*12\s+AMOUNT'}
-  "13": {label: "Deductions from Schedule ADJ, Line 9", pattern: 'Deductions from Schedule ADJ, Line 9[\s.]*13\s+AMOUNT'}
-  "14": {label: "Add Lines 10, 11, 12, and 13", pattern: 'Add Lines 10, 11, 12, and 13[\s.]*14\s+AMOUNT'}
-  "15": {label: "Virginia Taxable Income", pattern: 'Subtract Line 14 from Line 9[\s.]*15\s+AMOUNT', required: true}
+  "1": {label: "Adjusted Gross Income from federal return", pattern: '(?:Not federal taxable income[\s.]*1[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?1\. Adjusted Gross Income from federal return)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n1\. Adjusted Gross Income from federal return)))AMOUNT', required: true}
+  "2": {label: "Additions from Schedule ADJ, Line 3", pattern: '(?:Additions from enclosed Schedule ADJ, Line 3\.[\s.]*2[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?2\. Additions from enclosed Schedule ADJ)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n2\. Additions from enclosed Schedule ADJ)))AMOUNT'}
+  "3": {label: "Add Lines 1 and 2", pattern: '(?:3\. Add Lines 1 and 2[\s.]*3[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?3\. Add Lines 1 and 2)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n3\. Add Lines 1 and 2)))AMOUNT'}
+  "4": {label: "Age Deduction", pattern: '(?:=\s*4[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?4\. Age Deduction)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n4\. Age Deduction)))AMOUNT'}
+  "5": {label: "Social Security and equivalent Tier 1 Railroad Retirement benefits", pattern: '(?:if taxable on federal return[\s.]*5[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?5\. Social Security and equivalent)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n5\. Social Security and equivalent)))AMOUNT'}
+  "6": {label: "State Income Tax refund or overpayment credit", pattern: '(?:reported as income on federal return\)[\s.]*6[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?6\. State Income Tax refund)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n6\. State Income Tax refund)))AMOUNT'}
+  "7": {label: "Subtractions from Schedule ADJ, Line 7", pattern: '(?:Subtractions from enclosed Schedule ADJ, Line 7[\s.]*7[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?7\. Subtractions from enclosed Schedule ADJ)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n7\. Subtractions from enclosed Schedule ADJ)))AMOUNT'}
+  "8": {label: "Add Lines 4, 5, 6, and 7", pattern: '(?:Add Lines 4, 5, 6, and 7[\s.]*8[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?8\. Add Lines 4, 5, 6, and 7)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n8\. Add Lines 4, 5, 6, and 7)))AMOUNT'}
+  "9": {label: "Virginia Adjusted Gross Income (VAGI)", pattern: '(?:your tax is \$0\.00[\s.]*9[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?[^\n]*your tax is \$0\.00)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n[^\n]*your tax is \$0\.00)))AMOUNT', required: true}
+  "10": {label: "Itemized Deductions from Virginia Schedule A", pattern: '(?:from Virginia Schedule A\. See instructions\.[\s.]*10[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?10\. Itemized Deductions)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n10\. Itemized Deductions)))AMOUNT'}
+  "11": {label: "Standard deduction", pattern: '(?:enter standard deduction\. See instructions\.[\s.]*1?1[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?11\. If you do not claim itemized)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n11\. If you do not claim itemized)))AMOUNT'}
+  "12": {label: "Exemptions", pattern: '(?:Exemption Section A plus Exemption Section B[\s.]*12[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?12\. Exemptions\.)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n12\. Exemptions\.)))AMOUNT'}
+  "13": {label: "Deductions from Schedule ADJ, Line 9", pattern: '(?:Deductions from Schedule ADJ, Line 9[\s.]*13[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?13\. Deductions from Schedule ADJ)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n13\. Deductions from Schedule ADJ)))AMOUNT'}
+  "14": {label: "Add Lines 10, 11, 12, and 13", pattern: '(?:Add Lines 10, 11, 12, and 13[\s.]*14[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?14\. Add Lines 10, 11, 12, and 13)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n14\. Add Lines 10, 11, 12, and 13)))AMOUNT'}
+  "15": {label: "Virginia Taxable Income", pattern: '(?:Subtract Line 14 from Line 9[\s.]*15[ \t]+|(?:(?:(?<=\n)|(?<=[o0]ss\x20))(?=[\d,]+[ \t.]*00\n(?:(?!\d+[a-z]?\. )[^\n]*\n){0,2}?15\. Virginia Taxable Income)|(?<=\.\x20)(?=[\d,]{3,}[ \t.]*00\n15\. Virginia Taxable Income)))AMOUNT', required: true}

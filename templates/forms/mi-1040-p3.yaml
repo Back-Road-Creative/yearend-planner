@@ -6,7 +6,8 @@ years: [2025]
 match: ["MI-1040, Page 3 of 3", "REFUND OR TAX DUE"]
 year_pattern: '(20\d\d) (?:MICHIGAN Individual Income Tax Return MI-1040|MI-1040, Page)'
 issuer: MI
+return: true
 boxes:
-  "36": {label: "You owe", pattern: 'YOU OWE\s+36\.\s+AMOUNT'}
-  "37": {label: "Overpayment", pattern: 'subtract line 25 from line 34[\s.]*37\.\s+AMOUNT'}
-  "39": {label: "Refund", pattern: 'REFUND\s+39\.\s+AMOUNT'}
+  "36": {label: "You owe", pattern: '(?:YOU OWE\s+36\.?\s+|(?<=\s)(?=[\d,]+(?:\.\d\d)?\n[^\n]*\b36\.?[ \t]*00[ \t]*(?:\n|$)))AMOUNT'}
+  "37": {label: "Overpayment", pattern: '(?:subtract line 25 from line 34[\s.]*37\.?\s+|(?<=\s)(?=[\d,]+(?:\.\d\d)?\n[^\n]*\b37\.?[ \t]*00[ \t]*(?:\n|$)))AMOUNT'}
+  "39": {label: "Refund", pattern: '(?:REFUND\s+39\.?\s+|(?<=\s)(?=[\d,]+(?:\.\d\d)?\n[^\n]*\b39\.?[ \t]*00[ \t]*(?:\n|$)))AMOUNT'}

@@ -535,6 +535,11 @@ real_filed_returns:
   evidence: implemented
   tests: ["tests/test_real_forms.py", "tests/test_real_returns.py"]
   note: "unit 7h2a: the official 2025 Form 1040 and Schedules 1, 2, 3, C, D and SE, every page filled with a synthetic taxpayer, read back box for box as issuer self; a return template owns its page against the forms it names; page-2 totals have their own required templates; ruled cells with no box fall back to the plain text"
+real_state_returns:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_real_forms.py", "tests/test_real_states.py", "tests/test_scans.py"]
+  note: "unit 7h2b: the official 2025 returns of NC, IL, PA, VA, MI, CA, NJ, NY, GA and OH, every page filled with the same synthetic taxpayer from the revenue department's own blank (scripts/real_forms.py, https from the IRS or that department only, pinned by SHA-256), read back box for box with the state as issuer, text and scanned; values set as each field aligns, digit-box rows one digit a box"
 state_return_layouts:
   status: verified
   evidence: implemented

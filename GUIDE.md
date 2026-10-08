@@ -1572,6 +1572,19 @@ To rebuild the fixtures: `uv run --extra dev python scripts/real_forms.py`.
 It downloads each blank from irs.gov once, and refuses a blank whose SHA-256
 has changed, because a new revision may move its boxes.
 
+
+#### State returns (unit 7h2b)
+
+The 2025 returns of ten states are tested the same way: NC D-400, IL-1040,
+PA-40, VA 760, MI-1040, CA 540, NJ-1040, NY IT-201, GA 500 and OH IT 1040, each
+the state revenue department's own blank, every page printed, with the same
+synthetic taxpayer. `scripts/real_forms.py` takes a blank only from the IRS or
+one of those departments, over https, and names itself when it downloads one,
+since some departments turn away a request that does not. A link that does not
+end in the file's name (the NC D-400's ends ".../open") is cached under the
+fixture's name. Each value is set as its field asks (left, centred or right),
+and a field drawn as a row of boxes takes one digit a box.
+
 #### Reading state returns (unit 7h2b)
 
 A state return prints its figures in ways the federal forms do not. On the text
@@ -1587,6 +1600,7 @@ layer:
 - **A line number or printed cents is never an amount** ("13 12.Unpaid tax",
   "13 00"), and an empty line's amount is not the next line's figure, unless a
   "$" ends the line.
+- A state return never passes for a 1040's page 2, though it names the 1040.
 
 And on a scan:
 
@@ -1606,6 +1620,7 @@ And on a scan:
 - **Labels.** A misread label is put back from the template's own wording, and
   the line number read before it ("14.", "19a.") is kept. A comma read as a
   point counts as a comma.
+- **The year** reads wherever the scan puts it ("2025 Ohio IT 1040").
 
 #### Scans of the real forms
 

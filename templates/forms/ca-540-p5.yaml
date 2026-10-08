@@ -5,6 +5,7 @@ years: [2024, 2025, 2026]
 match: ["Form 540 20", "Refund or no amount due"]
 year_pattern: 'Form 540\s+(20\d\d)'
 issuer: CA
+return: true
 boxes:
   "111": {label: "Amount you owe", pattern: 'line 100, and line 110\. See instructions\. Do not send cash\.[^•]*?•?\s*111\s+AMOUNT'}
   "115": {label: "Refund or no amount due", pattern: 'line 113 from line 99\. See instructions\.[^•]*?•?\s*115\s+AMOUNT'}

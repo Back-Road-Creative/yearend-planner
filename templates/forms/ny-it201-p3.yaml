@@ -5,6 +5,7 @@ years: [2025]
 match: ["IT-201 (20", "NYS tax on line 38 amount"]
 year_pattern: 'IT-201 \((20\d\d)\)'
 issuer: NY
+return: true
 boxes:
   "38": {label: "Taxable income", pattern: 'Taxable income \(from line 37 on page 2\)[\s.•]*38\s+AMOUNT'}
   "39": {label: "NYS tax", pattern: 'NYS tax on line 38 amount[\s.•]*39\s+AMOUNT'}
@@ -12,4 +13,4 @@ boxes:
   "46": {label: "Total New York State taxes", pattern: 'Total New York State taxes \(add lines 44 and 45\)[\s.•]*46\s+AMOUNT', required: true}
   "58": {label: "Total New York City and Yonkers taxes and MCTMT", pattern: 'add lines 54 and 54e through 57\)[\s.•]*58\s+AMOUNT'}
   "59": {label: "Sales or use tax", pattern: 'Sales or use tax \(do not leave blank\)[\s.•]*59\s+AMOUNT'}
-  "61": {label: "Total taxes and voluntary contributions", pattern: 'add lines 46, 58, 59, and 60\)[\s.•]*61\s+AMOUNT'}
+  "61": {label: "Total taxes and voluntary contributions", pattern: 'add lines 46[,.] 58[,.] 59[,.] and 60\)[\s.•]*61\s+AMOUNT'}

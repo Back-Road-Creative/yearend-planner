@@ -1,5 +1,6 @@
-"""Unit 7h2b: what reading the official 2025 returns of the states took (the
-returns themselves are fixtures of tests/fixtures/real/forms.yaml). A state
+"""Unit 7h2b: what reading the official 2025 returns of ten states took (the
+returns themselves are fixtures of tests/fixtures/real/forms.yaml, read back by
+test_real_forms and test_scans). A state
 form may print a row of spaces under a field, draw its amounts one digit to a
 box, set a filled figure a little above its line, or turn a word sideways
 partway down the page; a scan may read a capital I as "l", a line's number
@@ -15,13 +16,7 @@ import pytest
 
 from planner.ingest import ocr, pdf
 from tests.pdfgen import make_pdf
-
-
-def width(s: str, size: float) -> float:
-    """The width of ``s`` set in Helvetica at ``size`` points."""
-    from pdfminer.fontmetrics import FONT_METRICS
-
-    return sum(FONT_METRICS["Helvetica"][1].get(c, 556) for c in s) * size / 1000
+from tests.test_real_forms import TEMPLATES, real_forms
 
 
 def page(tmp_path: Path, *ops: str) -> str:
@@ -88,7 +83,7 @@ def test_a_comb_of_boxes_reads_as_one_figure_on_its_labels_line(
 def test_a_figure_set_above_its_line_moves_down_onto_it(
     tmp_path: Path, label: str, gap: float, joined: bool
 ) -> None:
-    end = 50 + width(label, 10)
+    end = 50 + real_forms._width(label, 10)
     got = page(tmp_path, text(50, 600, label), text(end + gap, 605, "5,000.00"))
     assert (f"{label} 5,000.00" in got) is joined, got
 
@@ -169,3 +164,86 @@ def test_an_empty_lines_amount_is_not_the_next_lines_figure() -> None:
 
 def test_a_private_use_glyph_is_dropped() -> None:
     assert pdf.normalize("12,500.00") == "12,500.00"
+
+
+@pytest.mark.parametrize(
+    ("form", "page_text"),
+    [
+        ("OH-IT1040", "Ohio IT 1040 2025 Individual Income Tax Return"),
+        ("OH-IT1040", "2025 Ohio IT 1040 Individual Income Tax Return"),
+        ("GA-500", "Georgia Department of Revenue YOUR SOCIAL SECURITY NUMBER 2025"),
+    ],
+)
+def test_a_year_reads_wherever_a_scan_puts_it(form: str, page_text: str) -> None:
+    (tpl, *_) = [t for t in TEMPLATES if t.form == form and t.filed]
+    assert tpl.find_year(page_text) == 2025
+
+
+def test_a_state_return_does_not_pass_for_a_1040_page_2() -> None:
+    state = (
+        "Line 1 Federal adjusted gross income, U.S. Form 1040 (see instructions) Page 2"
+    )
+    assert not [t for t in TEMPLATES if t.form == "1040" and t.matches(state)]
+
+
+def test_a_value_is_set_as_its_field_asks() -> None:
+    rect = [100.0, 600.0, 300.0, 620.0]
+    size = real_forms.SIZE
+
+    def x(quad: int) -> float:
+        (op,) = real_forms._ops(rect, "1.00", quad)
+        return float(op.split()[8])
+
+    width = real_forms._width("1.00", size)
+    assert x(0) == pytest.approx(102, abs=0.06)
+    assert x(1) + width / 2 == pytest.approx(200, abs=0.06)
+    assert x(2) + width == pytest.approx(298, abs=0.06)
+
+
+def test_a_widget_takes_its_alignment_and_box_from_its_field() -> None:
+    from pypdf.generic import ArrayObject, DictionaryObject, FloatObject, NameObject
+    from pypdf.generic import NumberObject as Num
+
+    field = DictionaryObject({NameObject("/Q"): Num(2)})
+    widget = DictionaryObject({NameObject("/Parent"): field})
+    assert real_forms._quad(widget) == 2
+    assert real_forms._quad(DictionaryObject()) == 0
+    widget[NameObject("/Rect")] = ArrayObject(
+        FloatObject(v) for v in (300, 640, 100, 600)
+    )
+    assert real_forms._rect(widget) == [100, 600, 300, 640]
+
+
+def test_a_comb_takes_one_digit_a_box_and_no_more() -> None:
+    assert real_forms._digits("60,735.00", 8, "15") == ["", *"6073500"]
+    with pytest.raises(ValueError, match="more digits than its 6 boxes"):
+        real_forms._digits("60,735.00", 6, "15")
+
+
+def test_a_key_naming_a_field_exactly_wins_over_one_it_ends(tmp_path: Path) -> None:
+    from pypdf import PdfReader, PdfWriter
+    from pypdf.generic import ArrayObject, DictionaryObject, FloatObject, NameObject
+    from pypdf.generic import TextStringObject as Text
+
+    base = make_pdf(tmp_path / "base.pdf", [["Form T-2"]])
+    writer = PdfWriter(clone_from=base)
+    annots = ArrayObject()
+    for n, name in enumerate(("f1_1[0]", "Line.f1_1[0]")):
+        widget = DictionaryObject()
+        widget[NameObject("/Subtype")] = NameObject("/Widget")
+        widget[NameObject("/T")] = Text(name)
+        widget[NameObject("/Rect")] = ArrayObject(
+            FloatObject(v) for v in (100, 600 - 40 * n, 300, 620 - 40 * n)
+        )
+        annots.append(writer._add_object(widget))
+    writer.pages[0][NameObject("/Annots")] = annots
+    blank = tmp_path / "blank.pdf"
+    with blank.open("wb") as fh:
+        writer.write(fh)
+    out = real_forms.fill(blank, 0, {"f1_1[0]": "7.00"}, tmp_path / "out.pdf")
+    assert "7.00" in PdfReader(out).pages[0].extract_text()
+    import pdfplumber
+
+    with pdfplumber.open(out) as doc:
+        (word,) = [w for w in doc.pages[0].extract_words() if w["text"] == "7.00"]
+    assert 792 - 620 < word["top"] < 792 - 600  # in f1_1[0], not Line.f1_1[0]

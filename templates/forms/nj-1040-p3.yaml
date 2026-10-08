@@ -8,16 +8,17 @@ years: [2025]
 match: ["Name(s) as shown on Form NJ-1040", "Total Tax Due"]
 year_pattern: 'younger on 12/31/(\d\d)'
 issuer: NJ
+return: true
 boxes:
   "42": {label: "New Jersey Taxable Income", pattern: 'Subtract line 41 from line 39\)[\s.]*42\.\s+AMOUNT'}
   "43": {label: "Tax on amount on line 42", pattern: 'Tax Table page \d+\)[\s.]*43\.\s+AMOUNT'}
-  "50": {label: "Balance of Tax After Credits", pattern: 'If zero or less, make no entry[\s.]*50\.\s+AMOUNT', required: true}
+  "50": {label: "Balance of Tax After Credits", pattern: 'zero or less, make no entry[\s.]*50\.?\s+AMOUNT', required: true}
   "54": {label: "Total Tax Due", pattern: 'Add lines 50 through 53c\)[\s.]*54\.\s+AMOUNT'}
-  "55": {label: "Total NJ Income Tax Withheld", pattern: 'Part-year residents, see instr\.\)[\s.]*55\.\s+AMOUNT'}
+  "55": {label: "Total NJ Income Tax Withheld", pattern: '\b55\.\s+Total NJ Income Tax Withheld\s+(?:\(Enclose[^\n]*?instr\.\))?[\s.]*55\.\s+AMOUNT'}
   "56": {label: "Property Tax Credit", pattern: 'Property Tax Credit \(See instructions page \d+\)[\s.]*56\.\s+AMOUNT'}
   "57": {label: "New Jersey Estimated Tax Payments", pattern: 'Credit from 20\d\d tax return[\s.]*57\.\s+AMOUNT'}
   "58": {label: "New Jersey Earned Income Tax Credit", pattern: 'Earned Income Tax Credit \(See instructions\)[\s.]*58\.\s+AMOUNT'}
   "64": {label: "Child and Dependent Care Credit", pattern: 'Dependent Care Credit \(See instructions\)[\s.]*64\.\s+AMOUNT'}
   "65": {label: "New Jersey Child Tax Credit", pattern: 'younger on 12/31/\d\d[\s.]*65\.\s+AMOUNT'}
-  "66": {label: "Total Withholdings, Credits, and Payments", pattern: 'Add lines 55 through 65\)[\s.]*66\.\s+AMOUNT'}
+  "66": {label: "Total Withholdings, Credits, and Payments", pattern: '\b66\.\s+Total Withholdings, Credits, and Payments \(Add lines 55 through 65\)[\s.]*66\.\s+AMOUNT'}
   "67": {label: "Amount you owe", pattern: 'enter the amount you owe[\s.]*67\.\s+AMOUNT'}

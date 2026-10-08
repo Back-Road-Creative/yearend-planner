@@ -5,8 +5,9 @@
 form: GA-500
 years: [2025]
 match: ["Individual Income Tax Return", "Adjustments from Form 500 Schedule 1"]
-year_pattern: 'Georgia Department of Revenue\s*(?:YOUR SOCIAL SECURITY NUMBER)?\s*(20\d\d)'
+year_pattern: 'Georgia\s+Department\s+of\s+Revenue\s*(?:\d{8,}\s*)?(?:YOUR\s+SOCIAL\s+SECURITY\s+NUMBER)?\s*(20\d\d)'
 issuer: GA
+return: true
 boxes:
   "8": {label: "Federal adjusted gross income", pattern: 'From Federal Form 1040\)[\s.]*8\.\s+AMOUNT', required: true}
   "9": {label: "Adjustments from Schedule 1", pattern: 'See IT-511 Tax Booklet\)[\s.]*9\.\s+AMOUNT'}

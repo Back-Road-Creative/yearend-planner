@@ -7,17 +7,18 @@ years: [2025]
 match: ["Name(s) as shown on Form NJ-1040", "New Jersey Gross Income"]
 year_pattern: 'residency status during (20\d\d)'
 issuer: NJ
+return: true
 boxes:
-  "15": {label: "Wages, salaries, tips, and other employee compensation", pattern: 'Box 16 of enclosed W-2\(s\)\) \(See instructions\)[\s.]*15\.\s+AMOUNT', required: true}
+  "15": {label: "Wages, salaries, tips, and other employee compensation", pattern: '(?:Box 16 of enclosed W-2\(s\)\) \(See instructions\)[\s.]*15\.\s+|\(State wages from[ \t]+)AMOUNT', required: true}
   "16a": {label: "Taxable interest income", pattern: 'Schedule B if over \$1,500\)\s*\(See instructions\)[\s.]*16a\.\s+AMOUNT'}
   "17": {label: "Dividends", pattern: '17\. Dividends[\s.]*17\.\s+AMOUNT'}
   "19": {label: "Net gains or income from disposition of property", pattern: 'Schedule NJ-DOP, line 4\)[\s.]*19\.\s+AMOUNT'}
   "20a": {label: "Taxable pension, annuity, and IRA distributions/withdrawals", pattern: 'distributions/withdrawals \(See instructions\)[\s.]*20a\.\s+AMOUNT'}
   "27": {label: "Total Income", pattern: '17 through 20a, and 21 through 26\)[\s.]*27\.\s+AMOUNT', required: true}
   "28c": {label: "Total Exclusion Amount", pattern: 'Add lines 28a and 28b\)[\s.]*28c\.\s+AMOUNT'}
-  "29": {label: "New Jersey Gross Income", pattern: 'Subtract line 28c from line 27\)\s*\(See instructions\)[\s.]*29\.\s+AMOUNT'}
+  "29": {label: "New Jersey Gross Income", pattern: '\b29\.\s+New Jersey Gross Income \(Subtract line 28c from line 27\)(?:\s*\(See instructions\))?[\s.]*29\.\s+AMOUNT'}
   "30": {label: "Exemption Amount", pattern: 'Part-year residents see instr\.\)[\s.]*30\.\s+AMOUNT'}
   "38": {label: "Total Exemptions and Deductions", pattern: 'Add lines 30 through 37c\)[\s.]*38\.\s+AMOUNT'}
-  "39": {label: "Taxable Income", pattern: 'Subtract line 38 from line 29\)[\s.]*39\.\s+AMOUNT'}
+  "39": {label: "Taxable Income", pattern: '\b39\.\s+Taxable Income \(Subtract line 38 from line 29\)[\s.]*39\.\s+AMOUNT'}
   "40a": {label: "Total Property Taxes (18% of Rent) Paid", pattern: 'Paid \(See instructions page \d+\)[\s.]*40a\.\s+AMOUNT'}
   "41": {label: "Property Tax Deduction", pattern: 'From Worksheet H\) \(See instructions\)[\s.]*41\.\s+AMOUNT'}

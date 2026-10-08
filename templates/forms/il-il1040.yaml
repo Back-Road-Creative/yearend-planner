@@ -5,22 +5,23 @@
 # reads lines 14 and 22 less the credits on 15, 16, 17, 28, 29 and 30.
 form: IL-IL1040
 years: [2025]
-match: ["Form IL-1040", "Illinois base income"]
+match: ["Form IL-1040", "Step 2: Income"]
 year_pattern: '(20\d\d) Form IL-1040'
 issuer: IL
+return: true
 boxes:
   "1": {label: "Federal adjusted gross income", pattern: 'Form 1040 or 1040-SR, Line 11a\.[\s.]*1\s+AMOUNT'}
   "2": {label: "Federally tax-exempt interest and dividend income", pattern: 'Form 1040 or 1040-SR, Line 2a\.[\s.]*2\s+AMOUNT'}
   "3": {label: "Other additions", pattern: 'Other additions\. Attach Sch\. M\.[\s.]*3\s+AMOUNT'}
   "4": {label: "Total income", pattern: 'Total income\. Add Lines 1 through 3\.[\s.]*4\s+AMOUNT'}
-  "5": {label: "Social Security benefits and certain retirement plan income", pattern: 'Lines 4b, 5b, and 6b\)\. Attach fed\. Form 1040/1040-SR\.[\s.]*5\s+AMOUNT'}
+  "5": {label: "Social Security benefits and certain retirement plan income", pattern: 'Lines 4b, 5b, and 6b\)\.[^\n]*?1040-SR\.[\s.]*5\s+AMOUNT'}
   "6": {label: "Illinois Income Tax overpayment", pattern: 'Schedule 1, Ln\. 1\.[\s.]*6\s+AMOUNT'}
   "7": {label: "Other subtractions", pattern: 'Other subtractions\. Attach Sch\. M\.[\s.]*7\s+AMOUNT'}
   "8": {label: "Total subtractions", pattern: 'This is the total of your subtractions\.[\s.]*8\s+AMOUNT'}
   "9": {label: "Illinois base income", pattern: 'Illinois base income\. Subtract Line 8 from Line 4\.[\s.]*9\s+AMOUNT'}
   "10": {label: "Exemption allowance", pattern: 'Exemption allowance\. Add Lines 10a through 10d\.[\s.]*10\s+AMOUNT'}
-  "11": {label: "Net income", pattern: 'Enter the Illinois net income from Schedule NR\. Attach Sch\. NR\.[\s.]*11\s+AMOUNT'}
-  "12": {label: "Tax", pattern: 'Enter the tax from Schedule NR\.[\s.]*12\s+AMOUNT'}
+  "11": {label: "Net income", pattern: 'net income from Schedule NR\. Attach Sch\. NR\.[\s.]*11\s+AMOUNT'}
+  "12": {label: "Tax", pattern: 'Enter the tax from Schedule NR\.[\s.]*1 ?2\s+AMOUNT'}
   "13": {label: "Recapture of investment tax credits", pattern: 'Recapture of investment tax credits\. Attach Sch\. 4255\.[\s.]*13\s+AMOUNT'}
   "14": {label: "Income tax", pattern: 'Income tax\. Add Lines 12 and 13\. Cannot be less than zero\.[\s.]*14\s+AMOUNT', required: true}
   "15": {label: "Income tax paid to another state", pattern: 'while an Illinois resident\. Attach Sch\. CR\.[\s.]*15\s+AMOUNT'}

@@ -1,4 +1,4 @@
-"""Unit 7h: official blank IRS forms carrying synthetic values (written by
+"""Unit 7h: official blank IRS and state forms carrying synthetic values (written by
 scripts/real_forms.py, listed in tests/fixtures/real/forms.yaml) read back
 through the ruled-cell reader, and the pattern pieces that reading needs."""
 
@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 import yaml
@@ -60,7 +62,10 @@ SALE = [
 @pytest.mark.parametrize("entry", FORMS, ids=[e["name"] for e in FORMS])
 def test_a_real_form_reads_back_its_synthetic_values(entry: dict[str, Any]) -> None:
     path = REAL / f"{entry['name']}.pdf"
-    assert isinstance(pdf.page_texts(path)[0], Ruled)
+    # an IRS form is ruled into boxes; a state return may print its lines bare
+    assert entry["url"].startswith("https://www.irs.gov/") <= isinstance(
+        pdf.page_texts(path)[0], Ruled
+    )
     (got,) = parse_pdf(path, TEMPLATES)
     want = entry["expect"]
     assert (got.form, got.tax_year, got.issuer) == (
@@ -71,15 +76,20 @@ def test_a_real_form_reads_back_its_synthetic_values(entry: dict[str, Any]) -> N
     assert {k: v[1] for k, v in got.boxes.items()} == want["boxes"]
 
 
-def test_the_fixtures_are_irs_blanks_with_synthetic_values_only() -> None:
+def test_the_fixtures_are_official_blanks_with_synthetic_values_only() -> None:
     assert sorted(p.stem for p in REAL.glob("*.pdf")) == sorted(
         e["name"] for e in FORMS
     )
     for e in FORMS:
-        assert e["url"].startswith("https://www.irs.gov/"), e["name"]
-        named = [e["expect"]["issuer"], *e["fields"].values()]
-        assert e["expect"]["issuer"] == "self" or "(synthetic)" in named[0], e["name"]
-        assert any("(synthetic)" in v for v in named), e["name"]
+        parts = urlsplit(e["url"])
+        assert parts.scheme == "https", e["name"]
+        assert parts.hostname in real_forms.BLANK_HOSTS, e["name"]
+        # a return's issuer is its filer ("self") or its state; PA prints in capitals
+        issuer = e["expect"]["issuer"]
+        named = [issuer, *e["fields"].values()]
+        filed = issuer == "self" or re.fullmatch("[A-Z]{2}", issuer)
+        assert filed or "(synthetic)" in named[0], e["name"]
+        assert any("(synthetic)" in v.lower() for v in named), e["name"]
         for value in e["fields"].values():
             assert not TIN.search(value), (e["name"], value)
 
@@ -188,9 +198,45 @@ def test_the_maker_prints_into_named_fields_and_pins_the_blank(tmp_path: Path) -
         real_forms.fill(blank, 0, {"1[0]": "1"}, tmp_path / "x.pdf")
     url = "https://www.irs.gov/pub/blank.pdf"
     entry = {"name": "t", "url": url, "sha256": "0" * 64}
-    with pytest.raises(ValueError, match="the IRS changed the form"):
+    with pytest.raises(ValueError, match="the issuer changed the form"):
         real_forms.blank(entry, tmp_path)
     pinned = hashlib.sha256(blank.read_bytes()).hexdigest()
     assert real_forms.blank(dict(entry, sha256=pinned), tmp_path) == blank
-    with pytest.raises(ValueError, match="irs.gov only"):
+    with pytest.raises(ValueError, match="a state revenue department, over https"):
         real_forms.blank(dict(entry, url="https://example.com/blank.pdf"), tmp_path)
+    with pytest.raises(ValueError, match="only: not http://www.irs.gov"):
+        real_forms.blank(dict(entry, url="http://www.irs.gov/blank.pdf"), tmp_path)
+    # a link not ending in the file's name is cached under the entry's
+    (tmp_path / "t.pdf").write_bytes(blank.read_bytes())
+    opened = dict(entry, url="https://www.ncdor.gov/d-400/open", sha256=pinned)
+    assert real_forms.blank(opened, tmp_path) == tmp_path / "t.pdf"
+
+
+def test_a_blank_is_fetched_once_and_names_its_fetcher(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # some revenue departments turn away a request that gives no User-Agent
+    body = make_pdf(tmp_path / "src.pdf", [["Form T-1"]]).read_bytes()
+    sent: list[Any] = []
+
+    class Response(io.BytesIO):
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            return None
+
+    def urlopen(request: Any, timeout: float) -> Response:
+        sent.append((request.full_url, request.get_header("User-agent"), timeout))
+        return Response(body)
+
+    monkeypatch.setattr(real_forms.urllib.request, "urlopen", urlopen)
+    entry = {
+        "name": "t",
+        "url": "https://www.irs.gov/pub/irs-pdf/t1.pdf",
+        "sha256": hashlib.sha256(body).hexdigest(),
+    }
+    cache = tmp_path / "cache"
+    assert real_forms.blank(entry, cache) == cache / "t1.pdf"
+    assert real_forms.blank(entry, cache) == cache / "t1.pdf"
+    assert sent == [(entry["url"], real_forms.AGENT, 60)]

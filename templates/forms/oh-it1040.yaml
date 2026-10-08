@@ -6,14 +6,16 @@
 form: OH-IT1040
 years: [2025]
 match: ["Individual Income Tax Return", "Ohio adjusted gross income (line 1 plus line 2a"]
-year_pattern: 'Ohio IT 1040\s+(20\d\d)\s+Individual Income Tax Return'
+# A scan reads the header's department name between the form and its title.
+year_pattern: '(?:Ohio\s+IT\s+1040\s+(20\d\d)|(20\d\d)\s+Ohio\s+IT\s+1040)\s+(?:\S+\s+){0,2}?Individual\s+Income\s+Tax\s+Retur[nm]'
 issuer: OH
+return: true
 boxes:
-  "1": {label: "Federal adjusted gross income", pattern: 'line 11a\)\. Place a .-. in the box\s+if negative[\s.]*1\.\s+AMOUNT'}
+  "1": {label: "Federal adjusted gross income", pattern: '\b1\.\s+Federal adjusted gross income \(federal 1040 or 1040-SR, line 11a\)\.? Place a .?-?.? ?in the box(?:\s+if negative)?[\s.]*1\.\s+AMOUNT'}
   "2a": {label: "Additions", pattern: 'Schedule of Adjustments, line 12 \(include schedule\)[\s.]*2a\.\s+AMOUNT'}
   "2b": {label: "Deductions", pattern: 'Schedule of Adjustments, line 47 \(include schedule\)[\s.]*2b\.\s+AMOUNT'}
-  "3": {label: "Ohio adjusted gross income", pattern: 'minus line 2b\)\. Place a .-. in the box if negative[\s.]*3\.\s+AMOUNT'}
-  "4": {label: "Exemption amount", pattern: 'Schedule of Dependents if applicable\)[\s.]*4\.\s+AMOUNT'}
-  "5": {label: "Ohio income tax base", pattern: 'Ohio income tax base \(line 3 minus line 4; if negative, enter zero\)[\s.]*5\.\s+AMOUNT'}
+  "3": {label: "Ohio adjusted gross income", pattern: '\b3\.\s+Ohio adjusted gross income \(line 1 plus line 2a minus line 2b\)\.? Place a .?-.? in the box if negative[\s.]*3\.\s+AMOUNT'}
+  "4": {label: "Exemption amount", pattern: '\b4\.\s+Exemption amount \(include Schedule of Dependents if applicable\)[\s.]*4\.\s+AMOUNT'}
+  "5": {label: "Ohio income tax base", pattern: '\b5\.\s+Ohio income tax base \(line 3 minus line 4[;:] if negative, enter zero\)[\s.]*5\.\s+AMOUNT'}
   "6": {label: "Taxable business income", pattern: 'Schedule of Business Income, line 15 \(include schedule\)[\s.]*6\.\s+AMOUNT'}
-  "7": {label: "Taxable nonbusiness income", pattern: 'Taxable nonbusiness income \(line 5 minus line 6; if negative, enter zero\)[\s.]*7\.\s+AMOUNT'}
+  "7": {label: "Taxable nonbusiness income", pattern: '\b7\.\s+Taxable nonbusiness income \(line 5 minus line 6[;:] if negative, enter zero\)[\s.]*7\.\s+AMOUNT'}
