@@ -374,6 +374,35 @@ def poverty_percent(fraction: float) -> int:
     return math.floor(round(100 * fraction, 3))
 
 
+def poverty_line(year: int, size: int, state: str) -> float:
+    """Form 8962 line 4 for a family of ``size``: the year before's HHS
+    guideline (i8962 Table 1-1), with Alaska's and Hawaii's own. Pub. 974's
+    year-of-marriage Worksheets I and III read it for each spouse's family."""
+    fpg = _system().parameters(f"{year - 1}-01-01").gov.hhs.fpg
+    group = state if state in ("AK", "HI") else "CONTIGUOUS_US"
+    first, more = fpg.first_person[group], fpg.additional_person[group]
+    return float(first + more * (size - 1))
+
+
+def applicable_figure(year: int, pct: int) -> float | None:
+    """Form 8962 line 7 at a whole-percent line 5 (i8962 Table 2): the IRC
+    36B(b)(3)(A) table, run straight between the band ends and shown to four
+    places (375% in 2025 is 0.0788). None when the year allows no credit over
+    400% and ``pct`` is 401."""
+    if pct > 100 * ACA_PTC_LINE and _ptc_capped(year):
+        return None
+    p = _system().parameters(f"{year}-01-01").gov.aca.required_contribution_percentage
+    ends, start, end = list(p.threshold), list(p.initial), list(p.final)
+    x = pct / 100
+    band = max(i for i in range(len(start)) if ends[i] <= x)
+    top = ends[band + 1] if band + 1 < len(ends) else ends[band]
+    where = min((x - ends[band]) / (top - ends[band]), 1.0) if top > ends[band] else 0
+    exact = Decimal(str(start[band])) + Decimal(str(where)) * (
+        Decimal(str(end[band])) - Decimal(str(start[band]))
+    )
+    return float(exact.quantize(Decimal("0.0001"), ROUND_HALF_UP))
+
+
 # Pub. 974 (Iterative Calculation Method, step 6): stop when neither the
 # deduction nor the credit moved by a dollar. The loop is a contraction: a round
 # shrinks the error by the credit's slope in MAGI, the applicable percentage

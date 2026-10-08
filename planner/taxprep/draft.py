@@ -229,15 +229,84 @@ class _Sheet:
         return value
 
 
+@dataclass(frozen=True)
+class Marriage:
+    """A joint return's marriage in the year, for Form 8962's alternative
+    calculation (Pub. 974, Alternative Calculation for Year of Marriage)."""
+
+    day: date
+    spouse_kids: int  # dependents in the spouse's alternative family size
+    kids: int  # every dependent on the return
+    state: str  # the poverty table: Alaska and Hawaii have their own
+
+
+@dataclass
+class _Alternative:
+    """Pub. 974 Worksheets I-V: per pre-marriage month the column (c) and (e)
+    the election puts on Form 8962, and each spouse's Part V line."""
+
+    months: dict[str, tuple[float, float]]  # month -> (column c, column e)
+    part_v: list[tuple[str, int, float, int, int]]  # line, size, 7, start, stop
+
+
+def _alternative(
+    year: int,
+    rows: dict[str, list[float]],
+    own: dict[str, dict[str, float]],
+    married: Marriage,
+    income: float,
+) -> _Alternative | None:
+    """Worksheets I-IV for each spouse's family before the marriage (Pub. 974):
+    half the household income over the poverty line for that family's size,
+    its own applicable figure and monthly contribution, and its own 1095-A from
+    the first month of coverage to the month of marriage. None when neither
+    spouse had coverage then."""
+    half = math.floor(income / 2 + 0.5)  # Worksheet I line 2
+    wed = married.day.month
+    out = _Alternative({}, [])
+    sides = (
+        ("35", "you", 1 + married.kids - married.spouse_kids),
+        ("36", "spouse", 1 + married.spouse_kids),
+    )
+    for line, owner, size in sides:
+        box = own.get(owner, {})
+        covered = [int(m) for m in MONTHS if box.get(f"premium_{m}")]
+        if not covered or covered[0] > wed:
+            continue
+        start, stop = covered[0], min(covered[-1], wed)
+        fpl = tax.poverty_line(year, size, married.state)  # line 3
+        pct = 401 if half > 4 * fpl else math.floor(100 * half / fpl)  # Step 1
+        figure = tax.applicable_figure(year, pct)  # line 5
+        contribution = None if figure is None else round(round(half * figure) / 12)
+        for n in range(start, stop + 1):  # Worksheet II or IV
+            m = f"{n:02d}"
+            a, b = box.get(f"premium_{m}", 0.0), box.get(f"slcsp_{m}", 0.0)
+            c = b if contribution is None else float(contribution)
+            c0, e0 = out.months.get(m, (0.0, 0.0))
+            out.months[m] = (c0 + c, e0 + min(a, max(b - c, 0.0)))
+        out.part_v.append((line, size, float(contribution or 0), start, stop))
+    return out if out.part_v else None
+
+
 def _form_8962(
-    sheet: _Sheet, d: Draft, v: dict[str, float], facts: list[db.FactRow], fs: str
+    sheet: _Sheet,
+    d: Draft,
+    v: dict[str, float],
+    facts: list[db.FactRow],
+    fs: str,
+    married: Marriage | None = None,
 ) -> tuple[float, float]:
     """Lay out Form 8962 from the 1095-A boxes summed across policies; returns
-    (net credit for Schedule 3 line 9, excess repayment for Schedule 2 line 1a)."""
+    (net credit for Schedule 3 line 9, excess repayment for Schedule 2 line 1a).
+    A joint return married during the year elects the alternative calculation
+    for the year of marriage when it lowers the repayment (Pub. 974)."""
     box: dict[str, float] = {}
+    own: dict[str, dict[str, float]] = {}  # each spouse's own 1095-As
     for f in facts:
         if f.form == "1095-A":
             box[f.box] = box.get(f.box, 0.0) + f.value
+            mine = own.setdefault(f.owner, {})
+            mine[f.box] = mine.get(f.box, 0.0) + f.value
     src = "1095-A " + ", ".join(sorted({f.issuer for f in facts if f.form == "1095-A"}))
     fpl = v["tax_unit_fpg@prior"]
     over = tax.over_ptc_line(d.year, v["aca_magi"], fpl)
@@ -271,27 +340,89 @@ def _form_8962(
             "(income under the poverty line or in the Medicaid band, or Medicare "
             "age); every month's credit is 0 and the advance is repaid"
         )
-    total_e = total_f = 0.0
+    rows: dict[str, list[float]] = {}  # month -> columns a, b, c, d, e, f
     for m in MONTHS:
         a, b, f_ = (box.get(f"{k}_{m}", 0.0) for k in ("premium", "slcsp", "aptc"))
         if not (a or b or f_):
             continue
         most = max(b - monthly, 0.0)
-        e = min(a, most) if eligible else 0.0
+        rows[m] = [a, b, float(monthly), most, min(a, most) if eligible else 0.0, f_]
+    total_f = sum(r[5] for r in rows.values())
+    regular = sum(r[4] for r in rows.values())
+    cap = repayment_cap(d.year, fs, pct)
+
+    def repaid(e24: float) -> float:
+        excess = max(total_f - e24, 0.0)
+        return excess if cap is None else min(excess, cap)
+
+    alt = None
+    if (
+        married is not None
+        and eligible
+        and fs == "JOINT"
+        and married.day.year == d.year
+        and married.day > date(d.year, 1, 1)  # Table 4: unmarried on January 1
+        and regular < total_f  # Worksheet 3 line 14: excess advance paid
+        # Table 4 question 4: coverage before the first full month of marriage
+        and min(int(m) for m in rows) < married.day.month + (married.day.day > 1)
+    ):
+        alt = _alternative(d.year, rows, own, married, magi)
+        wed = married.day.isoformat()
+        if alt is not None and sum(e for _, e in alt.months.values()) <= sum(
+            rows[m][4] for m in alt.months if m in rows
+        ):  # Worksheet V line 14
+            alt = None
+            d.notes.append(
+                f"Form 8962: married {wed}; the alternative calculation for the "
+                "year of marriage (Pub. 974 Worksheet V) does not lower the "
+                "excess advance credit, so line 9 is No and Part V is blank"
+            )
+    if alt is not None:
+        for m, (c, e) in alt.months.items():
+            if m in rows:
+                b = rows[m][1]
+                rows[m][2:5] = [c, max(b - c, 0.0), e]
+        alt_e = sum(r[4] for r in rows.values())
+        d.notes.append(
+            f"Form 8962: married {wed}; the alternative calculation for the year "
+            "of marriage (Pub. 974, Worksheets I-V) lowers the excess advance "
+            f"credit repaid from {repaid(regular):,.0f} to {repaid(alt_e):,.0f}: "
+            "check Yes on line 9 and No on line 10; Part V lines 35-36 hold each "
+            "spouse's family before the marriage"
+        )
+    for m, (a, b, c, most, e, f_) in rows.items():
         ln = MONTH_LINE[m]
         sheet.add("8962", f"{ln}a", f"Month {m} enrollment premium", a, src)
         sheet.add("8962", f"{ln}b", f"Month {m} SLCSP premium", b, src)
-        sheet.add("8962", f"{ln}d", f"Month {m} maximum assistance", most, "b - 8b")
-        sheet.add("8962", f"{ln}e", f"Month {m} PTC allowed", e, "smaller of a, d")
+        if alt is not None and m in alt.months:
+            how = "Pub. 974 Worksheets II + IV column C"
+            sheet.add("8962", f"{ln}c", f"Month {m} contribution amount", c, how)
+            sheet.add("8962", f"{ln}d", f"Month {m} maximum assistance", most, "b - c")
+            how = "Pub. 974 Worksheet V column A"
+            sheet.add("8962", f"{ln}e", f"Month {m} PTC allowed", e, how)
+        else:
+            sheet.add("8962", f"{ln}d", f"Month {m} maximum assistance", most, "b - 8b")
+            sheet.add("8962", f"{ln}e", f"Month {m} PTC allowed", e, "smaller of a, d")
         sheet.add("8962", f"{ln}f", f"Month {m} advance PTC", f_, src)
-        total_e += e
-        total_f += f_
-    e24 = sheet.add("8962", "24", "Total PTC", total_e, "sum of column e")
+    for line, size, contribution, start, stop in alt.part_v if alt else ():
+        how = "Pub. 974 Worksheet " + ("I" if line == "35" else "III")
+        sheet.add("8962", f"{line}a", "Alternative family size", size, how)
+        sheet.add(
+            "8962", f"{line}b", "Alternative monthly contribution", contribution, how
+        )
+        sheet.add("8962", f"{line}c", "Alternative start month", start, how)
+        sheet.add("8962", f"{line}d", "Alternative stop month", stop, how)
+    e24 = sheet.add(
+        "8962", "24", "Total PTC", sum(r[4] for r in rows.values()), "sum of column e"
+    )
     f25 = sheet.add("8962", "25", "Advance payment of PTC", total_f, "sum of column f")
-    if e24 >= f25:
+    if alt is not None:  # Pub. 974 Step 8: line 26 is zero under the election
+        sheet.add("8962", "26", "Net PTC", 0.0, "Pub. 974 Step 8")
+        if e24 >= f25:
+            return 0.0, 0.0
+    elif e24 >= f25:
         return sheet.add("8962", "26", "Net PTC", e24 - f25, "24 - 25"), 0.0
     excess = sheet.add("8962", "27", "Excess advance PTC", f25 - e24, "25 - 24")
-    cap = repayment_cap(d.year, fs, pct)
     if cap is None:
         why = (
             "no cap at 400% and over"
@@ -406,8 +537,20 @@ def build(lay: Layout, year: int) -> Draft:
         return inp.origins.get(key, f"{key}: none")
 
     has_8962 = any(f.form == "1095-A" for f in facts)
+    wedding = (
+        Marriage(
+            date.fromisoformat(inp.married),
+            inp.spouse_kids,
+            len(hh.dependents),
+            hh.state,
+        )
+        if inp.married
+        else None
+    )
     net_ptc, excess_aptc = (
-        _form_8962(sheet, d, v, facts, hh.filing_status) if has_8962 else (0.0, 0.0)
+        _form_8962(sheet, d, v, facts, hh.filing_status, wedding)
+        if has_8962
+        else (0.0, 0.0)
     )
     if not has_8962 and v["aca_ptc"] > 0:
         d.notes.append(

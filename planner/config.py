@@ -16,6 +16,8 @@ ASSUMPTION_FIELDS = (
     "county",
     "spouse_birth_date",
     "spouse_death_date",  # a joint (3b-3) or qualifying surviving spouse's (3b-1)
+    "marriage_date",  # Form 8962's year-of-marriage calculation (3b-4)
+    "spouse_premarriage_dependents",
     "dependents",
     "spending_floor",
     "spending_ceiling",
