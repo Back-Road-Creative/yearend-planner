@@ -25,7 +25,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
 
-import yaml
+from planner.config import safe_load
 
 ROOT = Path(__file__).resolve().parent.parent
 REAL = ROOT / "tests" / "fixtures" / "real"
@@ -302,7 +302,7 @@ def blank(entry: dict[str, Any], cache: Path) -> Path:
 
 def manifest() -> list[dict[str, Any]]:
     with (REAL / "forms.yaml").open(encoding="utf-8") as fh:
-        forms: list[dict[str, Any]] = yaml.safe_load(fh)["forms"]
+        forms: list[dict[str, Any]] = safe_load(fh)["forms"]
     return forms
 
 
