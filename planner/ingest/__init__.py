@@ -94,6 +94,13 @@ def _label(path: Path, inbox: Path) -> str:
     return path.relative_to(inbox).as_posix()
 
 
+def owner_of(label: str) -> str:
+    """Whose a dropped file is: under ``inbox/spouse/`` (any case) the joint
+    spouse's, anywhere else the head's."""
+    parts = PurePosixPath(label).parts
+    return "spouse" if len(parts) > 1 and parts[0].lower() == "spouse" else "you"
+
+
 def _zip_members(zf: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
     """The files worth extracting; ``BadZipFile`` for an entry that must not be."""
     keep: list[zipfile.ZipInfo] = []
@@ -321,6 +328,7 @@ def ingest(
             batch=report.batch,
             facts=_facts(forms),
             rows=rows,
+            owner=owner_of(label),
         )
         years = [f.tax_year for f in forms] + [r.tax_year for r in rows if r.tax_year]
         year = min(years) if years else datetime.now(UTC).year

@@ -5,6 +5,8 @@ hash) and ``facts`` (one row per form box read from a page). Money is stored
 as integer cents. A box that holds words, not dollars (a filing status, a
 state, a distribution code) keeps them in ``value_text`` (schema 4) and
 ``value_cents`` is 0; ``facts_for`` returns only the money facts unless asked.
+Each document is one person's (``owner``, schema 5): the head's (``you``) or a
+joint return's spouse's, so a corrected W-2 replaces only its owner's copy.
 Phase 2b adds CSV rows; Phase 3 adds ``conversions`` (each Roth
 conversion with the date its money becomes penalty-free) and ``peak`` (the
 all-time high of the portfolio, persisted so a drawdown is measured from it).
@@ -19,7 +21,8 @@ from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
+OWNERS = ("you", "spouse")  # whose a document is: the head, or a joint spouse
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS documents (
@@ -30,7 +33,8 @@ CREATE TABLE IF NOT EXISTS documents (
     pages INTEGER NOT NULL DEFAULT 0,
     imported_at TEXT NOT NULL,
     batch TEXT NOT NULL,
-    archived_as TEXT
+    archived_as TEXT,
+    owner TEXT NOT NULL DEFAULT 'you' CHECK (owner IN ('you', 'spouse'))
 );
 CREATE TABLE IF NOT EXISTS facts (
     id INTEGER PRIMARY KEY,
@@ -113,6 +117,7 @@ class FactRow(Fact):
     document_id: int = 0
     file_name: str = ""
     id: int = 0
+    owner: str = "you"
 
 
 @dataclass(frozen=True)
@@ -160,10 +165,21 @@ def _to_4(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE facts ADD COLUMN value_text TEXT")
 
 
+def _to_5(conn: sqlite3.Connection) -> None:
+    if "owner" not in {r["name"] for r in conn.execute("PRAGMA table_info(documents)")}:
+        conn.execute(
+            "ALTER TABLE documents ADD COLUMN owner TEXT NOT NULL DEFAULT 'you' "
+            "CHECK (owner IN ('you', 'spouse'))"
+        )
+
+
 # Each step brings a ledger from schema n to n + 1, after the tables a later
 # schema adds are created. v0.1.0 shipped schema 4; a new schema adds its step
 # here and tests/test_upgrade.py opens the old release's data/ through it.
-MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {3: _to_4}
+MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
+    3: _to_4,
+    4: _to_5,
+}
 
 
 def _version(conn: sqlite3.Connection) -> int | None:
@@ -255,20 +271,24 @@ def add_document(
     batch: str,
     facts: list[Fact] | None = None,
     rows: list[Row] | None = None,
+    owner: str = "you",
 ) -> int:
     """Insert one document with its facts and rows in a single transaction.
 
-    A newer document for the same (form, issuer, year) supersedes the older
-    one's accepted facts: a corrected 1099 replaces the original. A row whose
+    A newer document for the same (form, issuer, year) and ``owner`` supersedes
+    the older one's accepted facts: a corrected 1099 replaces the original, but
+    a spouse's W-2 from the same employer stands beside the head's. A row whose
     key is already in the ledger (a broker transaction id seen in an earlier
     export) is skipped, so overlapping exports do not double-count.
     """
+    if owner not in OWNERS:
+        raise ValueError(f"a document is {' or '.join(OWNERS)}'s, not {owner!r}")
     facts = facts or []
     rows = rows or []
     with conn:
         cur = conn.execute(
             "INSERT INTO documents (fingerprint, file_name, kind, pages, "
-            "imported_at, batch) VALUES (?, ?, ?, ?, ?, ?)",
+            "imported_at, batch, owner) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 fingerprint,
                 file_name,
@@ -276,16 +296,13 @@ def add_document(
                 pages,
                 datetime.now(UTC).isoformat(timespec="seconds"),
                 batch,
+                owner,
             ),
         )
         doc_id = int(cur.lastrowid or 0)
         accepted = [f for f in facts if f.status == "accepted"]
         for key in {(f.form, f.tax_year, f.issuer) for f in accepted}:
-            conn.execute(
-                "UPDATE facts SET status = 'superseded' WHERE form = ? AND "
-                "tax_year = ? AND issuer = ? AND status = 'accepted'",
-                key,
-            )
+            supersede(conn, key, owner)
         conn.executemany(
             "INSERT INTO facts (document_id, form, tax_year, issuer, box, label, "
             "value_cents, page, status, value_text) "
@@ -375,6 +392,72 @@ def replace_derived(
     return True
 
 
+def supersede(
+    conn: sqlite3.Connection,
+    key: tuple[str, int, str],
+    owner: str,
+    keep: int | None = None,
+) -> None:
+    """Retire the accepted facts of one (form, tax year, issuer) that ``owner``'s
+    documents hold, except document ``keep``'s. The caller holds the transaction."""
+    conn.execute(
+        "UPDATE facts SET status = 'superseded' WHERE form = ? AND tax_year = ? "
+        "AND issuer = ? AND status = 'accepted' AND document_id != ? AND "
+        "document_id IN (SELECT id FROM documents WHERE owner = ?)",
+        (*key, -1 if keep is None else keep, owner),
+    )
+
+
+def set_owner(conn: sqlite3.Connection, name: str, owner: str) -> int:
+    """Make the document named ``name`` (its file name, or its archived path
+    when two share a name) ``owner``'s, and settle which copy of each of its
+    forms stands: per owner, the newest document's facts are accepted and the
+    older ones superseded. Pending facts wait for ``planner confirm`` as before.
+    Returns the document's id."""
+    if owner not in OWNERS:
+        raise ValueError(f"a document is {' or '.join(OWNERS)}'s, not {owner!r}")
+    found = conn.execute(
+        "SELECT id FROM documents WHERE file_name = ? OR archived_as = ?",
+        (name, name),
+    ).fetchall()
+    if not found:
+        raise KeyError(f"no document named {name!r} (planner facts lists them)")
+    if len(found) > 1:
+        raise KeyError(
+            f"more than one document is named {name!r}: give its archived path "
+            "(data/archive/...) instead"
+        )
+    doc_id = int(found[0]["id"])
+    with conn:
+        conn.execute("UPDATE documents SET owner = ? WHERE id = ?", (owner, doc_id))
+        keys = conn.execute(
+            "SELECT DISTINCT form, tax_year, issuer FROM facts WHERE document_id = ? "
+            "AND status IN ('accepted', 'superseded')",
+            (doc_id,),
+        ).fetchall()
+        for k in keys:
+            key = (k["form"], k["tax_year"], k["issuer"])
+            conn.execute(
+                "UPDATE facts SET status = 'accepted' WHERE form = ? AND tax_year = ? "
+                "AND issuer = ? AND status = 'superseded' AND document_id IN "
+                "(SELECT MAX(f.document_id) FROM facts f JOIN documents d ON "
+                "d.id = f.document_id WHERE f.form = ? AND f.tax_year = ? AND "
+                "f.issuer = ? AND f.status IN ('accepted', 'superseded') "
+                "GROUP BY d.owner)",
+                (*key, *key),
+            )
+            for who in OWNERS:
+                newest = conn.execute(
+                    "SELECT MAX(f.document_id) FROM facts f JOIN documents d ON "
+                    "d.id = f.document_id WHERE f.form = ? AND f.tax_year = ? AND "
+                    "f.issuer = ? AND f.status = 'accepted' AND d.owner = ?",
+                    (*key, who),
+                ).fetchone()[0]
+                if newest is not None:
+                    supersede(conn, key, who, keep=int(newest))
+    return doc_id
+
+
 def set_archived(conn: sqlite3.Connection, doc_id: int, archived_as: str) -> None:
     with conn:
         conn.execute(
@@ -392,7 +475,8 @@ def facts_for(
     """Facts of one status. ``text`` picks the kind: False (default) the money
     facts every total sums, True the text facts, None both."""
     sql = (
-        "SELECT f.*, d.file_name FROM facts f JOIN documents d ON d.id = f.document_id "
+        "SELECT f.*, d.file_name, d.owner FROM facts f "
+        "JOIN documents d ON d.id = f.document_id "
         "WHERE f.status = ?"
     )
     args: list[object] = [status]
@@ -419,6 +503,7 @@ def facts_for(
             document_id=r["document_id"],
             file_name=r["file_name"],
             id=r["id"],
+            owner=r["owner"],
         )
         for r in conn.execute(sql, args)
     ]

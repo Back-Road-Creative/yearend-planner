@@ -77,12 +77,7 @@ def accept(
                         ),
                     )
         for key in {(f.form, f.tax_year, f.issuer) for f in pend}:
-            conn.execute(
-                "UPDATE facts SET status = 'superseded' WHERE form = ? AND "
-                "tax_year = ? AND issuer = ? AND status = 'accepted' "
-                "AND document_id != ?",
-                (*key, doc_id),
-            )
+            db.supersede(conn, key, pend[0].owner, keep=doc_id)
         conn.execute(
             "UPDATE facts SET status = 'accepted' WHERE document_id = ? "
             "AND status = 'pending'",

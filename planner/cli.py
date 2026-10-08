@@ -479,6 +479,30 @@ def facts(
 
 
 @app.command()
+def owner(
+    document: str = typer.Argument(
+        ..., help="its file name from `planner facts` (or its archived path)"
+    ),
+    who: str = typer.Argument(..., help="you, or spouse on a joint return"),
+) -> None:
+    """Say whose a document is. A file dropped in data/inbox/spouse/ is already
+    the spouse's; this fixes one dropped elsewhere, and both W-2s from one
+    employer then count instead of the later one replacing the earlier."""
+    from planner.ledger import db
+
+    conn = db.connect(layout().data / "ledger" / "planner.db")
+    try:
+        db.set_owner(conn, document, who)
+    except (KeyError, ValueError) as exc:
+        typer.echo(f"refused: {exc.args[0]}", err=True)
+        raise typer.Exit(code=2) from exc
+    finally:
+        conn.close()
+    whose = "yours" if who == "you" else "the spouse's"
+    typer.echo(f"{document} is now {whose}")
+
+
+@app.command()
 def rows(
     year: int | None = typer.Option(None, help="tax year", min=1990, max=2100),
     source: str | None = typer.Option(None, help="e.g. vanguard_transactions, bank"),
