@@ -61,7 +61,8 @@ Roth IRA and ABLE contributions, W-2 box 12 elective deferrals and the testing p
 distributions are typed per spouse; the draft carries Form 8880, the saver's credit, on
 Schedule 3 line 4 (unit 3c-3).
 The draft works the earned income credit on 1040 line 27a by the EIC worksheet and the
-EIC Table, with Schedule EIC for each qualifying child (unit 3c-4).
+EIC Table, with Schedule EIC for each qualifying child (unit 3c-4), and Schedule 8812's
+additional child tax credit line by line, Part II-B included (unit 3c-5).
 `planner separate` prices a joint couple's two married-filing-separately returns, each
 on that spouse's own documents, against the joint return (unit 3b-2; not in a
 community property state). Filing as married filing separately stays

@@ -294,7 +294,7 @@ draft_return:
   status: verified
   evidence: implemented
   tests: ["tests/test_draft.py", "tests/test_draft_people.py"]
-  note: "planner draft; 1040 + Sch 1/1-A/2/3/8812/C/SE + 8962, the dependents listed for the preparer to type names and SSNs; Sch 8812 lines 1-17 by the form (line 13 = 1040 line 18 less Sch 3 line 8), line 27 the engine's checked against line 17; each line sourced to file and page, line 16 by the Tax Table, engine totals cross-checked; Sch SE Part I every line"
+  note: "planner draft; 1040 + Sch 1/1-A/2/3/8812/C/SE + 8962, the dependents listed for the preparer to type names and SSNs; Sch 8812 lines 1-27 by the form (line 13 = 1040 line 18 less Sch 3 line 8; line 18a by the Earned Income Chart; Part II-B with three or more children, line 21 from W-2 boxes 4 and 6, line 24 from 1040 line 27a), line 27 checked against the engine; each line sourced to file and page, line 16 by the Tax Table, engine totals cross-checked; Sch SE Part I every line"
 schedule_1a:
   status: verified
   evidence: implemented
