@@ -22,6 +22,7 @@ from typing import Any
 from planner import coverage
 from planner.engine.household import (
     PERSON_INPUTS,
+    PERSON_SAVERS,
     Dependent,
     Household,
     MissingInputError,
@@ -69,6 +70,9 @@ MONEY = {
     "dependent_care_benefits": "dependent_care_benefits",
     "dependent_care_grace": "dependent_care_grace",
     "dependent_care_forfeited": "dependent_care_forfeited",
+    "roth_ira_contribution": "roth_ira_contribution",
+    "elective_deferrals": "elective_deferrals",
+    "savers_distributions": "savers_distributions",
 }
 # The four states a value can be in. Known includes a known zero; unknown is
 # left out of the arithmetic (never priced as zero without saying so); not
@@ -115,7 +119,10 @@ TAX_KEYS = (
     "qualified_dividends",
     "education",
     "aotc_refundable_barred",
+    "savers_barred",
 )
+# A joint spouse's own Form 8880 column rests the credit on them as the head's does.
+TAX_KEYS = (*TAX_KEYS, *(f"spouse_{k}" for k in (*PERSON_SAVERS, "savers_barred")))
 OVERRIDES = (
     "q4_dividend_estimate",
     "planned_st_sales",
@@ -327,14 +334,12 @@ def build(
     out.tax_age = tax_age(str(value["birth_date"]), year)
     if fields["filing_status"] == "JOINT" and value.get("spouse_birth_date"):
         spouse = str(value["spouse_birth_date"])
-        fields["spouse"] = Person(
-            age=age_at_year_end(spouse, year),
-            **{
-                k: int(round(float(value[f"spouse_{k}"])))
-                for k in PERSON_INPUTS
-                if value.get(f"spouse_{k}") is not None
-            },
-        )
+        money: dict[str, Any] = {
+            k: int(round(float(value[f"spouse_{k}"])))
+            for k in (*PERSON_INPUTS, *PERSON_SAVERS)
+            if value.get(f"spouse_{k}") is not None
+        }
+        fields["spouse"] = Person(age=age_at_year_end(spouse, year), **money)
         out.spouse_tax_age = tax_age(spouse, year)
         died = value.get("spouse_death_date")
         if died and died != "none" and date.fromisoformat(str(died)).year == year:
@@ -360,6 +365,17 @@ def build(
         )
         for d in value.get("dependents") or ()
     )
+    # Form 8880: the credit needs 18 (born on or before January 1, 18 years
+    # back) and neither a dependent on another return nor a student.
+    fields["savers_eligible"] = (
+        out.tax_age >= 18 and value.get("savers_barred") != "yes"
+    )
+    if fields.get("spouse") is not None and out.spouse_tax_age is not None:
+        fields["spouse"] = replace(
+            fields["spouse"],
+            savers_eligible=out.spouse_tax_age >= 18
+            and value.get("spouse_savers_barred") != "yes",
+        )
     fields["students"] = _students(value, fields, out.notes)
     fields["aotc_refundable_barred"] = value.get("aotc_refundable_barred") == "yes"
     wed = value.get("marriage_date")

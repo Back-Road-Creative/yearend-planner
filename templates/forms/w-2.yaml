@@ -1,6 +1,7 @@
 # Form W-2, IRS box labels: wages, the withholding credited to the installments,
 # the Social Security wages and tips (boxes 3 and 7) Schedule SE line 8a takes,
-# and the dependent care benefits (box 10) Form 2441 line 12 takes.
+# the dependent care benefits (box 10) Form 2441 line 12 takes, and the box 12
+# elective deferrals Form 8880 line 2 takes.
 form: W-2
 years: [2024, 2025, 2026]
 match: ["W-2", "Wage and Tax Statement"]
@@ -12,6 +13,15 @@ boxes:
   "3": {label: "Social security wages", pattern: "\\b3 Social security wages\\s+AMOUNT"}
   "7": {label: "Social security tips", pattern: "\\b7 Social security tips\\s+AMOUNT"}
   "10": {label: "Dependent care benefits", pattern: "\\b10 Dependent care benefits\\s+AMOUNT"}
+  "12D": {label: "Box 12 code D: 401(k) elective deferrals", pattern: '\b12[a-d]?\s+(?:Code\s+)?D\s+AMOUNT'}
+  "12E": {label: "Box 12 code E: 403(b) elective deferrals", pattern: '\b12[a-d]?\s+(?:Code\s+)?E\s+AMOUNT'}
+  "12F": {label: "Box 12 code F: 408(k)(6) SARSEP deferrals", pattern: '\b12[a-d]?\s+(?:Code\s+)?F\s+AMOUNT'}
+  "12G": {label: "Box 12 code G: 457(b) deferrals", pattern: '\b12[a-d]?\s+(?:Code\s+)?G\s+AMOUNT'}
+  "12H": {label: "Box 12 code H: 501(c)(18)(D) contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?H\s+AMOUNT'}
+  "12S": {label: "Box 12 code S: SIMPLE 408(p) deferrals", pattern: '\b12[a-d]?\s+(?:Code\s+)?S\s+AMOUNT'}
+  "12AA": {label: "Box 12 code AA: Roth 401(k) contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?AA\s+AMOUNT'}
+  "12BB": {label: "Box 12 code BB: Roth 403(b) contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?BB\s+AMOUNT'}
+  "12EE": {label: "Box 12 code EE: Roth governmental 457(b) contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?EE\s+AMOUNT'}
   "12W": {label: "Box 12 code W: employer and payroll HSA contributions", pattern: '\b12[a-d]?\s+(?:Code\s+)?W\s+AMOUNT'}
   "16": {label: "State wages, tips, etc.", pattern: "\\b16 State wages, tips, etc\\.?\\s+AMOUNT"}
   "17": {label: "State income tax", pattern: "\\b17 State income tax\\s+AMOUNT"}
