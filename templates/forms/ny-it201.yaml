@@ -1,0 +1,18 @@
+# New York Form IT-201, page 2 (income, NY AGI, deductions, taxable income).
+# Pages 3 and 4 are ny-it201-p3/p4.yaml; every page merges as form NY-IT201.
+# Labels follow the 2025 Form IT-201 (NYS DTF, it201_fill_in.pdf); line 46
+# (page 3, required there) is the one planner close relies on; next year's
+# safe harbor reads lines 46 and 58 less the credits on lines 63-71
+# (IT-2105.9 line 16 worksheet).
+form: NY-IT201
+years: [2025]
+match: ["IT-201 (20", "New York adjusted gross income (subtract line 32"]
+year_pattern: 'IT-201 \((20\d\d)\)'
+issuer: NY
+boxes:
+  "19": {label: "Federal adjusted gross income", pattern: 'Federal adjusted gross income \(subtract line 18 from line 17\)[\s.•]*19\s+AMOUNT'}
+  "24": {label: "Federal AGI with the NY additions", pattern: 'Add lines 19 through 23[\s.•]*24\s+AMOUNT'}
+  "32": {label: "NY subtractions", pattern: 'Add lines 25 through 31[\s.•]*32\s+AMOUNT'}
+  "33": {label: "New York adjusted gross income", pattern: 'New York adjusted gross income \(subtract line 32 from line 24\)[\s.•]*33\s+AMOUNT'}
+  "34": {label: "Standard or itemized deduction", pattern: 'Itemized[\s.•]*34\s+AMOUNT'}
+  "37": {label: "Taxable income", pattern: 'Taxable income \(subtract line 36 from line 35\)[\s.•]*37\s+AMOUNT'}

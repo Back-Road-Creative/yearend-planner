@@ -743,6 +743,37 @@ NEEDS: tuple[Need, ...] = (
         asked=lambda s: s.get("state") == "CA",
     ),
     Need(
+        "ny_subtractions",
+        "Other NY subtractions (Form IT-225 subtractions)",
+        "subtracted from federal AGI on IT-201 line 31",
+        "Form IT-225, less what the planner fills itself (a state refund, NY and "
+        "federal pensions, taxable Social Security, US bond interest, the pension "
+        "exclusion and the 529 deduction); type 0 when none",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "NY",
+    ),
+    Need(
+        "ny_additions",
+        "NY additions to federal AGI (IT-201 lines 20-23, Form IT-225)",
+        "added to federal AGI on IT-201 line 23",
+        "IT-201 lines 20-23 and Form IT-225 (e.g. other states' municipal bond "
+        "interest, public employee 414(h) contributions); type 0 when none",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "NY",
+    ),
+    Need(
+        "ny_use_tax",
+        "NY sales or use tax owed (IT-201 line 59)",
+        "tax on purchases no sales tax was collected on",
+        "your purchase records, or the sales and use tax chart in IT-201-I (the "
+        "draft uses the chart until you type it)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "NY",
+    ),
+    Need(
         "nc_additions",
         "NC additions to federal AGI (D-400 Schedule S line 16)",
         "added to federal AGI on D-400 line 7",
