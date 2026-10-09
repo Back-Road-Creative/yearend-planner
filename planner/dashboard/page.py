@@ -388,6 +388,8 @@ def gather(
         dependents=len(answer.get("dependents") or ()),
         death_year=coverage.death_year(answer.get("spouse_death_date")),
         year=year,
+        residency=answer.get("state_residency"),
+        local=answer.get("local_income_tax"),
     )
     page.scope = [g.reason for g in page.coverage if g.area != "document"]
     rows = coverage.statuses(lay)

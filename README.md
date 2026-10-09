@@ -69,6 +69,8 @@ community property state). Filing as married filing separately stays
 **Not handled**. The state returns drafted are listed in one registry,
 `planner/taxprep/statereturn.py` (NC's D-400 today; unit 3d-4); another state
 gets the engine's estimate and a **Not handled** line saying to have a preparer draft it.
+A move into or out of the state, income from another state and a city, county or
+school district income tax are asked, and each is **Not handled** when it applies (unit 3d-5).
 A document no template reads is named the same way. Each panel and drafted form is tagged
 verified, estimated or not handled, and the tax pack's `coverage.csv` lists why.
 
