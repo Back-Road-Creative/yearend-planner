@@ -133,7 +133,8 @@ what differs).
 The same inbox reads last year's filed return and the rest of the year-end paperwork.
 Templates in `templates/forms/` now cover Form 1040 (both pages merge into one form,
 issuer `self`), Schedules 1, 2, 3, C, D and SE, NC Form D-400 (issuer `NC`), CA Form 540 (issuer
-`CA`; Sides 2-5 merge into one form), NY Form IT-201 (issuer `NY`; pages 2-4 merge), the Social
+`CA`; Sides 2-5 merge into one form), NY Form IT-201 (issuer `NY`; pages 2-4 merge), PA Form PA-40 (issuer `PA`; Sides 1-2
+merge as form `PA-PA40`), the Social
 Security Statement (monthly estimates at 62, 67 and 70, tax year = statement year),
 1099-NEC, 1099-K, 1098, 5498, 5498-SA and 1099-SA. A template may name a literal
 `issuer` for the taxpayer's own documents instead of a payer regex, and the line
@@ -937,6 +938,52 @@ IT-201 from the same engine run as the federal return.
   and the MCTMT (47-58), voluntary contributions (60), the noncustodial parent EIC
   (66), the New York City credits (69-70a), other refundable credits (71), NYC and
   Yonkers withholding (73-74), the 529 deposit (78a) and the penalties (81-82).
+
+## The PA return: Form PA-40 (unit 3d-8)
+
+For a Pennsylvania full-year resident (`state: PA`), `planner draft` adds Form PA-40
+and its Schedule SP from the same engine run as the federal return.
+
+- **Lines.** Line numbers, the eight classes of income, the 3.07% rate, the
+  Schedule SP eligibility income tables and the use tax table follow the 2025
+  PA-40 and its instructions (PA-40 IN). PA nets nothing across classes: a loss
+  on line 4, 5 or 6 is shown but never subtracted, and a capital loss has neither
+  the federal $3,000 limit nor a carryover.
+- **Compensation (line 1a).** W-2 box 16 for each W-2 (PA counts the elective
+  deferrals federal box 1 leaves out); where box 16 is missing, box 1 plus box 12
+  codes D-H and S. Retirement distributions PA taxes (before 59 1/2) are added at
+  their federal taxable amount; the draft says to check the 1099-R's cost.
+  Line 1b is `pa_ube` (unreimbursed employee business expenses) you type.
+- **Interest and dividends.** Line 2 leaves out US bond interest (1099-INT box 3)
+  and adds `pa_other_interest` (other states' bond interest) you type. Line 3 is
+  dividends plus capital gain distributions (1099-DIV box 2a), which line 5 then
+  leaves out.
+- **Deductions (line 10).** The HSA deduction from the federal return, the
+  engine's 529 deduction and `pa_deductions` you type, never more than line 9.
+- **Tax and forgiveness.** Line 12 is line 11 x 3.07%; line 21 is line 12 times
+  the Schedule SP forgiveness rate (100% at or below $6,500 eligibility income,
+  $13,000 married, plus $9,500 per dependent child, falling 10% per $250 over).
+  Eligibility income adds the nontaxable income the engine sees and
+  `pa_sp_income` you type. Both are rounded half up to the dollar, as the
+  instructions ask. Married filing separately needs the spouse's income on
+  Schedule SP, so forgiveness is not drafted for it, and the draft says so.
+- **Credits and payments.** Line 13 is PA withholding from W-2 box 17 and 1099-R
+  box 14 (`state_withheld`); line 15 the PA estimated payments from the bank
+  export or typed; line 23 the engine's Schedule DC credit. The engine also prices
+  a Working Pennsylvanians Tax Credit the 2025 instructions do not carry; the
+  draft leaves it out and says so.
+- **Use tax.** Line 25 is `pa_use_tax` when typed; until then the use tax table's
+  figure for your income, and the draft says so.
+- **The end.** The draft ends on line 29/30 (refund) or 26/28 (owed).
+- **Safe harbor.** Next year's PA safe harbor (REV-1630 Exception 1) is line 12
+  less the line 21 forgiveness, from the draft and from a filed PA-40 alike.
+  100% forgiveness this year means no estimated underpayment penalty next year.
+- **Check.** Line 9 is compared with the engine's PA taxable income, with the
+  class differences put back. A gap is printed as `CHECK:`.
+- **Not drafted, and named.** Part-year and nonresident returns, estate or trust
+  income (7), gambling winnings (8), the prior-year credit (14), lines 16-17, the
+  resident credit (22), Schedule OC, penalties and interest (27, REV-1630) and
+  donations; local earned income tax is a separate return.
 
 ## The tax pack: one folder for the preparer (Phase 4l)
 
