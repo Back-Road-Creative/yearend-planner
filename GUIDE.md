@@ -447,7 +447,8 @@ whose window it falls in, so a late payment never cures an earlier shortfall.
 Federal tax after withholding under 1,000 is de minimis (no payments required);
 withholding comes from `fed_withheld` and `nc_withheld`, or `state_withheld`
 for another state, on the Needed panel (W-2 box 17, 1099-R box 14); last
-year's state tax is `prior_nc_tax` or `prior_state_tax`. Each is asked only
+year's state tax is `prior_nc_tax` or `prior_state_tax` (each estimated from
+last year's draft when one was carried over). Each is asked only
 for the state it belongs to, and the state itself is typed as its two-letter
 code.
 Income with over half in one quarter, or a planned year-end lump, raises the
@@ -1484,7 +1485,8 @@ every fact the planner cannot answer correctly. Each gap has a reason (starting
 
 - **Household**: the lines above. An unnamed spouse or qualifying person touches every
   priced panel and the draft; once named, only the draft and the estimated tax.
-- **State**: a state other than NC that taxes income. The plan's state income tax is
+- **State**: a state that taxes income and has no drafted return (the registry in
+  `planner/taxprep/statereturn.py`: NC's D-400). The plan's state income tax is
   the engine's estimate; the state return is not drafted (have a preparer draft it).
   Touches only the state return, so the federal draft stays ready. A state with no
   income tax has no gap; a value that is not a state's code is one that touches every

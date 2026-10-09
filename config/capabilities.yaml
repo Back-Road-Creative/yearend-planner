@@ -328,8 +328,8 @@ form_8889:
 nc_d400_draft:
   status: verified
   evidence: implemented
-  tests: ["tests/test_d400.py"]
-  note: "planner draft; Schedule S 16/18/19/20-40/41, D-400 6-34 for a full-year resident (joint: 20a yours, 20b the spouse's by document owner, unit 3a-6, D-401 p. 15); Schedule PN, D-400TC, D-422 named, not drafted"
+  tests: ["tests/test_d400.py", "tests/test_state_returns.py"]
+  note: "planner draft; Schedule S 16/18/19/20-40/41, D-400 6-34 for a full-year resident (joint: 20a yours, 20b the spouse's by document owner, unit 3a-6, D-401 p. 15); drafted through the state-return registry (planner/taxprep/statereturn.py, unit 3d-4) that the draft, close, rollover and coverage read; Schedule PN, D-400TC, D-422 named, not drafted"
 taxpack:
   status: verified
   evidence: implemented
