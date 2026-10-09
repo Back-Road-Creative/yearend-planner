@@ -121,14 +121,15 @@ def _installments(
     """The estimated-tax lines from October through next September: the plan
     year's fourth installment and the next year's first three, for federal and
     the state (when it taxes income), one line per date. A state's dates are
-    its own (``states``) or, when the planner lacks them, the federal ones."""
+    its own (``states``) or, when the planner lacks them, the federal ones; an
+    installment with no share of its own (CA's September) has no line."""
     st = states.STATES.get(state.upper()) if state else None
     rules = {"fed": states.FEDERAL}
     if st is not None and st.income_tax:
         rules[st.agency] = states.rules(st.code)[0]
     days: dict[tuple[date, int], list[str]] = {}
     for agency, rule in rules.items():
-        for n, (off, month, day) in enumerate(rule.due, 1):
+        for n, (off, month, day), _share in rule.installments():
             for tax_year in (year, year + 1):
                 nominal = date(tax_year + off, month, day)
                 if date(year, 10, 1) <= nominal <= date(year + 1, 9, 30):

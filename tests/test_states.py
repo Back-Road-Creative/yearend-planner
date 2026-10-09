@@ -27,7 +27,7 @@ def test_registry_is_fifty_states_and_dc() -> None:
     assert states.get("nc").agency == "nc"
     assert states.rules("NC") == (states.STATES["NC"].est, True)
     # a state whose own rules are not in the planner: the federal ones stand in
-    assert states.rules("CA") == (states.FEDERAL, False)
+    assert states.rules("CO") == (states.FEDERAL, False)
     assert states.payee("NC").search("NCDOR TAX PYMT")  # type: ignore[union-attr]
     assert states.payee("CA") is None
     with pytest.raises(ValueError, match="not a state code"):
@@ -39,7 +39,7 @@ def test_agencies_follow_the_state() -> None:
     assert esttax.agencies("NC") == ("fed", "nc")
     assert esttax.agencies("CA") == ("fed", "ca")
     assert esttax.agencies("ZZ") == ("fed",)  # the coverage gate names it
-    assert esttax.due_dates(2026, "ca") == esttax.due_dates(2026)
+    assert esttax.due_dates(2026, "co") == esttax.due_dates(2026)
     assert [esttax.withheld_key(a) for a in ("fed", "nc", "ca")] == [
         "fed_withheld",
         "nc_withheld",
@@ -97,22 +97,22 @@ def test_coverage_state_gaps(lay: Layout) -> None:  # noqa: F811
 def test_a_state_without_its_own_rules_is_estimated_on_federal_ones(
     lay: Layout,  # noqa: F811
 ) -> None:
-    enter(lay, 2026, "state", "CA")
+    enter(lay, 2026, "state", "CO")
     enter(lay, 2026, "prior_agi", "70,000")
     enter(lay, 2026, "prior_total_tax", "8,000")
     enter(lay, 2026, "prior_state_tax", "2,000")
     enter(lay, 2026, "state_withheld", "0")
-    esttax.record(lay, 2026, "ca", "2026-04-12", 400.0)
+    esttax.record(lay, 2026, "co", "2026-04-12", 400.0)
     with pytest.raises(ValueError, match="agency must be"):
         esttax.record(lay, 2026, "tx", "2026-04-12", 1.0)
     et = esttax.estimate(lay, 2026, date(2026, 7, 10))
-    fed, ca = et.agencies
-    assert (fed.name, ca.name) == ("fed", "ca")
-    assert ca.prior_tax == 2_000.0 and ca.current_tax > 0
-    assert [p.amount for p in ca.payments] == [400.0]
-    assert [i.due for i in ca.installments] == [i.due for i in fed.installments]
+    fed, co = et.agencies
+    assert (fed.name, co.name) == ("fed", "co")
+    assert co.prior_tax == 2_000.0 and co.current_tax > 0
+    assert [p.amount for p in co.payments] == [400.0]
+    assert [i.due for i in co.installments] == [i.due for i in fed.installments]
     assert any(
-        "ca: Estimated: the state's own installment rules" in n for n in ca.notes
+        "co: Estimated: the state's own installment rules" in n for n in co.notes
     )
 
 

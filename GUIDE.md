@@ -415,18 +415,36 @@ IRS and the state you live in separately (no state line in the nine states
 without an income tax: AK, FL, NV, NH, SD, TN, TX, WA, WY): the projected tax, the safe harbor (the lesser of 90% of
 this year's tax and 100% of last year's — 110% federal when last year's AGI
 topped 150,000; 90% of this year's when the prior return is not in), the four
-installments (April 15, June 15, September 15, January 15) with what was paid
+installments (April 15, June 15, September 15, January 15 federal; each state's
+own, below) with what was paid
 by each due date, and the next payment. Payments come from bank rows whose
 description names the IRS (`USATAXPYMT`, `EFTPS`) or NCDOR, plus anything
 typed with `planner paid --year 2026 --agency fed --on 2026-04-10 --amount 1200`
 (`--agency` is `fed` or the state's code in lowercase, `nc`, `ca`; kept in the
-year's manual file; another state's payments are typed). NC's installment
-rules are its own (Form NC-40: the federal dates, 1,000 de minimis, 100% of
-last year with no 110% step). Every other state's are not in the planner yet:
-the federal dates, shares, de minimis and safe harbor stand in, and the state's
-line says `Estimated:` (unit 3d-1; each state's own rules follow in 3d-2). A payment counts toward the installment
+year's manual file; another state's payments are typed, and its line says so).
+The federal 110% step starts at 75,000 of last year's AGI when married filing
+separately. Ten states' rules are their own, from each state's 2026
+estimated-tax instructions and underpayment form:
+
+| State | Due | Shares | No payments when the tax after withholding is | Safe harbor |
+|---|---|---|---|---|
+| CA | federal dates, none in September | 30/70/70/100% | under 500 (250 separately) | 90%, or 100% / 110% over 150,000 of last year's AGI; this year's AGI at 1,000,000 (500,000 separately): 90% only |
+| NY | federal | 25% each | under 300 (NYC and Yonkers tax counts, not priced) | 90%, or 100% / 110% over 150,000 |
+| PA | federal | 25% each | under 430 | 90%, or 100% of last year's |
+| IL | federal | 25% each | not over 1,000 | 90%, or 100% |
+| OH | federal | 25% each | not over 500 | 90%, or 100% |
+| GA | federal | 25% each | not over 0 (the 500-ES test is income, not applied) | 70%, or 100% |
+| NC | federal | 25% each | under 1,000 | 90%, or 100% (no 110% step) |
+| MI | federal | 25% each | not over 500 | 90%, or 100% / 110% over 150,000 |
+| NJ | federal | 25% each | not over 400 | 80%, or 100% |
+| VA | May 1, then federal | 25% each | not over 1,000 | 90%, or 100% |
+
+A state's AGI is taken as the federal AGI, and the line says so. Every other
+taxing state's rules are not in the planner: the federal dates, shares, de
+minimis and safe harbor stand in, and the state's line says `Estimated:`. A
+payment counts toward the installment
 whose window it falls in, so a late payment never cures an earlier shortfall.
-Tax after withholding under 1,000 is de minimis (no payments required);
+Federal tax after withholding under 1,000 is de minimis (no payments required);
 withholding comes from `fed_withheld` and `nc_withheld`, or `state_withheld`
 for another state, on the Needed panel (W-2 box 17, 1099-R box 14); last
 year's state tax is `prior_nc_tax` or `prior_state_tax`. Each is asked only
