@@ -21,7 +21,7 @@ from datetime import date
 
 from planner import NOTICE, coverage
 from planner.engine import tax
-from planner.engine.household import Household, Person
+from planner.engine.household import Dependent, Household, Person
 from planner.ingest.needs import need_values, schedule_b_required
 from planner.ledger import db
 from planner.paths import Layout
@@ -71,6 +71,7 @@ ENGINE = (
     "additional_medicare_tax",
     "net_investment_income_tax",
     "eitc",
+    "eitc_child_count",
     "refundable_ctc",
     "ctc",
     "ctc_qualifying_children",
@@ -156,6 +157,12 @@ ODC_AMOUNT = 500.0  # line 7, IRC 24(h)(4)
 CTC_FROM = (200_000.0, 400_000.0)  # line 9: other, married filing jointly
 CTC_CUT_PER = 1_000.0  # line 10 rounds the excess up to whole $1,000s
 CTC_CUT_RATE = 0.05  # line 11
+SCH_EIC = "Sch EIC"
+EIC_CHILD_UNDER = 19  # Step 3: under 19 at the end of the year,
+EIC_STUDENT_UNDER = 24  # or under 24 and a full-time student
+# The EIC Table prices a $50 row at its midpoint and the engine the exact
+# amount: at the steepest rate (45%, three children) that is $22.50 apart.
+EIC_SLACK = 25.0
 # The Needed-panel keys behind Schedule 1-A Parts II to IV.
 PART_KEYS = ("qualified_tips", "qualified_overtime", "car_loan_interest")
 TAX_KEYS = inputs.TAX_KEYS  # the Needed-panel keys a return reads
@@ -613,14 +620,20 @@ def build(lay: Layout, year: int) -> Draft:
                 f"planner categorize --year {year})"
             )
     sp_profit, sp_src = v["self_employment_income@spouse"], origin("spouse_se_income")
-    ses = [
-        (form, *_schedule_se(sheet, d, v, who, form, gain, src, base))
+    owners = [
+        (who, form, gain, src, base)
         for who, form, gain, src, base in (
             ("you", "Sch SE", profit, profit_src, ss_wages),
             ("spouse", SCH_SE_SPOUSE, sp_profit, sp_src, ss_spouse),
         )
         if gain
     ]
+    ses = [
+        (form, *_schedule_se(sheet, d, v, who, form, gain, src, base))
+        for who, form, gain, src, base in owners
+    ]
+    # The EIC's Worksheet B: each Schedule SE's form, profit and line 13.
+    eic_se = [(s[0], o[2], s[2]) for s, o in zip(ses, owners, strict=True)]
     se = (sum(s[1] for s in ses), sum(s[2] for s in ses)) if ses else None
     if se and abs(se[1] - v["self_employment_tax_ald"]) > TOLERANCE:
         d.notes.append(
@@ -961,7 +974,8 @@ def build(lay: Layout, year: int) -> Draft:
         or "no federal payment recorded (planner paid)"
     )
     l26 = add(f, "26", "Estimated tax payments", sum(p.amount for p in paid), est_src)
-    l27 = add(f, "27a", "Earned income credit", v["eitc"], "engine eitc")
+    eic = _eic(sheet, d, v, hh, l1z, eic_se, l11, exempt + l2b + l3b + max(l7, 0.0))
+    l27 = add(f, "27a", "Earned income credit", eic, "EIC Worksheet")
     l28 = add(
         f,
         "28",
@@ -1019,6 +1033,9 @@ def build(lay: Layout, year: int) -> Draft:
     # The Tax Table's difference reaches line 22 only past the nonrefundable
     # credits: credits the tax limits (Form 8880 line 11, say) absorb it.
     passed = 0.0 if l22 <= 0 else min(l22, table_gap)
+    # Line 27a is the EIC Table's and the engine's eitc exact: their gap is
+    # checked at 27a, so the tie-out takes the table's.
+    eic_gap = l27 - v["eitc"]
     for got, want, what in (
         (
             l9,
@@ -1031,10 +1048,10 @@ def build(lay: Layout, year: int) -> Draft:
         (l15, v["taxable_income"], "line 15 against the engine's taxable income"),
         (
             l22 - s2_1a + s2_12 - (l27 + l28 + l29),
-            v["income_tax"] + passed,
+            v["income_tax"] + passed - eic_gap,
             "line 22 (less 1a, plus NIIT, less refundable credits) against the "
             "engine's income tax (plus any Tax Table difference left after the "
-            "credits)",
+            "credits, less the EIC Table's)",
         ),
     ):
         if got is not None and abs(got - want) > TOLERANCE:
@@ -1411,6 +1428,187 @@ def _form_8880(
             f"{l10:,.2f} vs {v['savers_credit_potential']:,.2f}"
         )
     return l12
+
+
+def _eic_children(hh: Household) -> list[tuple[int, Dependent]]:
+    """The dependents who are qualifying children for the EIC (2025 Form 1040
+    instructions, line 27a, Step 3): under 19 at the end of the year, or under
+    24 and a full-time student, and younger than the filer (or either spouse on
+    a joint return), or permanently and totally disabled at any age. Each is
+    taken to have a valid SSN and to have lived with the filer in the United
+    States for more than half the year, as the dependents list notes."""
+    oldest = hh.age
+    if hh.filing_status == "JOINT" and hh.spouse is not None:
+        oldest = max(oldest, hh.spouse.age)
+    return [
+        (n, dep)
+        for n, dep in enumerate(hh.dependents, 1)
+        if dep.disabled
+        or (
+            dep.age < (EIC_STUDENT_UNDER if dep.full_time_student else EIC_CHILD_UNDER)
+            and dep.age < oldest
+        )
+    ]
+
+
+def _schedule_eic(sheet: _Sheet, d: Draft, kids: list[tuple[int, Dependent]]) -> None:
+    """Schedule EIC lines 3-4b for the first three qualifying children (the
+    schedule lists three; more do not raise the credit); lines 1, 2, 5 and 6
+    (name, SSN, relationship, months lived with you) are the preparer's."""
+    add = sheet.add
+    for c, (n, dep) in enumerate(kids[:3], 1):
+        add(
+            SCH_EIC,
+            f"3-{c}",
+            f"Child {c} (dependent {n}): year of birth",
+            d.year - dep.age,
+            f"dependent {n} age {dep.age} at year end",
+            0,
+        )
+        if dep.age < EIC_CHILD_UNDER:
+            continue  # under 19 and younger than you: lines 4a and 4b are skipped
+        student = dep.full_time_student and dep.age < EIC_STUDENT_UNDER
+        add(
+            SCH_EIC,
+            f"4a-{c}",
+            f"Under 24, a student and younger than you: {'Yes' if student else 'No'}",
+            0.0,
+            f"dependent {n}",
+        )
+        if not student:
+            add(
+                SCH_EIC,
+                f"4b-{c}",
+                f"Permanently and totally disabled: {'Yes' if dep.disabled else 'No'}",
+                0.0,
+                f"dependent {n}",
+            )
+    d.notes.append(
+        "Schedule EIC: type each child's name and SSN (lines 1-2), the "
+        "relationship (line 5) and the months the child lived with you in the "
+        "United States (line 6; over half the year is the draft's assumption)"
+    )
+
+
+def _eic(
+    sheet: _Sheet,
+    d: Draft,
+    v: dict[str, float],
+    hh: Household,
+    wages: float,
+    se: list[tuple[str, float, float]],
+    agi: float,
+    investment: float,
+) -> float:
+    """1040 line 27a by the EIC worksheet (2025 Form 1040 instructions, line
+    27a): Worksheet A, or B when anyone on the return was self-employed (``se``
+    holds each Schedule SE's form, Schedule C profit and line 13), the EIC Table
+    looked up on earned income and, when they differ and AGI is past the
+    phase-out start, on AGI; the smaller is the credit. Steps 1-4's tests that
+    the draft knows (AGI and investment income limits, the separated-spouse and
+    age rules) are applied; the engine's eitc is checked against the result."""
+    add = sheet.add
+    f = "EIC"
+    p = tax.eic_parameters(d.year)
+    joint = hh.filing_status == "JOINT"
+    kids = _eic_children(hh)
+    n = min(len(kids), 3)
+    if len(kids) != round(v["eitc_child_count"]):
+        d.notes.append(
+            f"CHECK: the EIC counts {len(kids)} qualifying children; the engine "
+            f"counts {v['eitc_child_count']:.0f}"
+        )
+
+    def stop(why: str) -> float:
+        d.notes.append(f"EIC: {why}, so 1040 line 27a is 0 (check the box on 27c)")
+        _check(0.0)
+        return 0.0
+
+    def _check(credit: float) -> None:
+        if abs(credit - v["eitc"]) > EIC_SLACK:
+            d.notes.append(
+                f"CHECK: 1040 line 27a {credit:,.2f} (the EIC Table) vs engine "
+                f"eitc {v['eitc']:,.2f}"
+            )
+
+    if investment > p["investment_income"]:
+        return stop(
+            f"investment income {investment:,.2f} (1040 lines 2a + 2b + 3b + 7a) "
+            f"is over ${p['investment_income']:,.0f} (Step 2)"
+        )
+    if not kids:
+        if hh.filing_status == "SEPARATE":
+            return stop("married filing separately without a qualifying child (Step 4)")
+        ages = [hh.age] + ([hh.spouse.age] if joint and hh.spouse is not None else [])
+        if not any(p["min_age"] <= a <= p["max_age"] for a in ages):
+            return stop(
+                f"without a qualifying child the filer (or a joint spouse) must be "
+                f"{p['min_age']:.0f}-{p['max_age']:.0f} at the end of the year (Step 4)"
+            )
+    elif hh.filing_status == "SEPARATE":
+        d.notes.append(
+            "EIC on a separate return: you qualify only under the special rule for "
+            "separated spouses (Step 3 questions 3-5: apart for the last 6 months, "
+            "or legally separated); check its box in the Dependents section"
+        )
+    if se:
+        form = "B"
+        l1c = add(
+            f,
+            "B1c",
+            "Schedule C profit (Sch SE line 3, or Sch C line 31)",
+            sum(s[1] for s in se),
+            " + ".join(f"{s[0]} line 3" for s in se),
+        )
+        l1d = add(
+            f,
+            "B1d",
+            "Deduction for half of SE tax",
+            sum(s[2] for s in se),
+            " + ".join(f"{s[0]} line 13" for s in se),
+        )
+        l1e = add(f, "B1e", "Line 1c less line 1d", l1c - l1d, "1c - 1d")
+        l4a = add(f, "B4a", "Earned income from Step 5", wages, "1040 line 1z")
+        earned = add(f, "B4b", "Total earned income", l1e + l4a, "1e + 4a")
+    else:
+        form = "A"
+        earned = add(f, "A1", "Earned income from Step 5", wages, "1040 line 1z")
+    num = {"A": ("2", "3", "5", "6"), "B": ("7", "8", "10", "11")}[form]
+    if earned <= 0:
+        return stop("earned income is zero or less")
+    column = f"{'joint' if joint else 'single'} column, {n} children"
+    by_earned = add(
+        f,
+        form + num[0],
+        "EIC Table on earned income",
+        tax.eic_table(d.year, n, joint, earned),
+        column,
+    )
+    add(f, form + num[1], "Adjusted gross income", agi, "1040 line 11b")
+    start = tax.eic_phaseout_start(d.year, n, joint)
+    credit = by_earned
+    if agi != earned and agi >= start:
+        by_agi = add(
+            f,
+            form + num[2],
+            "EIC Table on AGI",
+            tax.eic_table(d.year, n, joint, agi),
+            column,
+        )
+        credit = min(by_earned, by_agi)
+    credit = add(
+        f,
+        form + num[3],
+        "Earned income credit",
+        credit,
+        f"line {num[0]}"
+        if credit == by_earned
+        else f"smaller of {num[0]} and {num[2]}",
+    )
+    if kids:
+        _schedule_eic(sheet, d, kids)
+    _check(credit)
+    return credit
 
 
 def _schedule_8812(
@@ -2031,6 +2229,8 @@ ORDER = (
     "2441",
     "8863",
     "8880",
+    "EIC",
+    SCH_EIC,
     "8889",
     hsa.SPOUSE_FORM,
     "8962",
@@ -2046,6 +2246,8 @@ HEADINGS = {
     "2441": "Form 2441 (child and dependent care expenses)",
     "8863": "Form 8863 (education credits)",
     "8880": "Form 8880 (credit for qualified retirement savings contributions)",
+    "EIC": "EIC Worksheet (Form 1040 line 27a: A, or B when self-employed)",
+    SCH_EIC: "Schedule EIC (qualifying child information)",
     d400.FORM: "NC Form D-400",
     d400.SCHED: "NC D-400 Schedule S (additions and deductions)",
     "Carryover": "Capital loss carryover to next year",
@@ -2065,6 +2267,8 @@ FORM_CAPABILITY = {
     "2441": "child_dependent_care_credit",
     "8863": "education_credits",
     "8880": "savers_credit",
+    "EIC": "earned_income_credit",
+    SCH_EIC: "earned_income_credit",
     d400.FORM: "nc_d400_draft",
     d400.SCHED: "nc_d400_draft",
     "Carryover": "schedule_d",
