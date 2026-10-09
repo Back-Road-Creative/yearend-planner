@@ -195,6 +195,7 @@ def test_il_is_a_registry_entry() -> None:
 
 FRONT = [
     "Illinois Department of Revenue 2025 Form IL-1040 Individual Income Tax Return",
+    "Step 2: Income",
     "1 Federal adjusted gross income from your federal Form 1040 or 1040-SR, "
     "Line 11a. 1 61,050 .00",
     "4 Total income. Add Lines 1 through 3. 4 61,170 .00",
