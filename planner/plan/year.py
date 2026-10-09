@@ -381,10 +381,19 @@ def _washsales(lay: Layout, year: int, today: date, _ov: Overrides) -> Section:
     return Section("washsales", True, lines or ["none"])
 
 
+def _state(lay: Layout, year: int) -> str:
+    """The household's state from the Needed panel ("" when not given)."""
+    for s in needed(lay, year).items:
+        if s.need.key == "state" and s.state in ("actual", "estimate"):
+            return str(s.value)
+    return ""
+
+
 def _calendar(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
     notes: list[str] = []
     owing: dict[int, list[str]] | None = None
     why_none: str | None = None
+    state = _state(lay, year)
     try:
         et = esttax.estimate(lay, year, today, ov)
     except (MissingInputError, OverrideError) as exc:
@@ -412,15 +421,14 @@ def _calendar(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
                 why_none = next(iter(reasons.values()))
             else:
                 why_none = "; ".join(
-                    f"{calendar.AGENCY_NAMES.get(a, a)}: {t}"
-                    for a, t in reasons.items()
+                    f"{calendar.agency_name(a)}: {t}" for a, t in reasons.items()
                 )
         notes.append(
             f"Q2 and Q3 fall in {year + 1}; whether they are required rests on "
             f"{year}'s projected tax repeated, less withholding (planner esttax)"
         )
     lines = []
-    for d in calendar.deadlines(year, owing, why_none):
+    for d in calendar.deadlines(year, state, owing, why_none):
         when = d.date if d.date == d.nominal else f"{d.date} (from {d.nominal})"
         past = "  done?" if date.fromisoformat(d.date) < today else ""
         lines.append(f"{when:28} {d.item}{past}")
@@ -450,7 +458,7 @@ PRICED = {
     "levers": (),
     "glide": glidepath.MONTHLY,
     "cash": glidepath.MONTHLY,
-    "esttax": esttax.WITHHELD,
+    "esttax": (),  # the withholding of the household's own agencies, below
 }
 RESTS_ON = "rests on unknown (left out, not zero): "
 
@@ -463,7 +471,12 @@ def _rests_on(lay: Layout, year: int, ov: Overrides, plan: YearPlan) -> None:
     for s in plan.sections:
         if not s.ok or s.name not in PRICED:
             continue
-        own = [k for k in PRICED[s.name] if inp.state(k) == UNKNOWN]
+        keys = PRICED[s.name]
+        if s.name == "esttax":
+            keys = tuple(
+                esttax.withheld_key(a) for a in esttax.agencies(inp.household.state)
+            )
+        own = [k for k in keys if inp.state(k) == UNKNOWN]
         s.rests_on = inp.tax_unknown + own
         if s.rests_on:
             s.notes.append(RESTS_ON + ", ".join(s.rests_on))
