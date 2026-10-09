@@ -1922,9 +1922,11 @@ Unit 7f added these checks to the proof script:
 
 - **Microsoft Defender.** Runner images turn off real-time protection and
   exclude whole drives. The proof removes those exclusions and turns
-  protection on before it unpacks the zip. It scans the unpacked folder,
-  fails if Defender flags anything, and checks at the end that protection
-  stayed on through every step.
+  protection on before it unpacks the zip. It scans the unpacked folder and
+  fails if Defender flags anything. A GitHub-hosted runner accepts the
+  request but leaves real-time protection off, so on Actions the proof logs
+  that and goes on; on a desktop machine it fails if protection is off before
+  the unpack or at the end, after every step.
 - **A folder too deep for Windows.** With long paths off (the Windows default),
   a file whose full path is longer than 259 characters cannot be opened. The
   release build records its deepest file in `python\LONGEST_PATH`. Before any

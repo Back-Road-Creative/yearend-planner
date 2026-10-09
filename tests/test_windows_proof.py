@@ -129,8 +129,8 @@ def _step(text: str, start: str, end: str) -> str:
 
 
 def test_proof_runs_under_defender_a_deep_folder_and_dead_stops() -> None:
-    """Unit 7f's proof steps: real-time protection on (runner exclusions
-    removed) before the zip is unpacked and still on at the end; a folder past
+    """Unit 7f's proof steps: real-time protection asked on (runner exclusions
+    removed) before the zip is unpacked and checked again at the end; a folder past
     the limit refused with long paths off and working with them on, the setting
     put back; runs killed at two of run's step lines, then a clean run."""
     from planner.cli import RUN_STEPS
@@ -157,7 +157,7 @@ def test_proof_runs_under_defender_a_deep_folder_and_dead_stops() -> None:
         assert f"'{mark}'" in cut, mark
     assert "taskkill /F /T /PID" in cut and "PYTHONUNBUFFERED" in cut
     assert "Example Bank (synthetic)" in cut
-    assert "went off during the proof" in cut
+    assert "Assert-RealTimeOn 'after every step of the proof'" in cut
 
 
 def test_release_build_records_its_deepest_file(tmp_path: Path) -> None:
@@ -175,3 +175,22 @@ def test_release_build_records_its_deepest_file(tmp_path: Path) -> None:
     assert "record_longest(stage)" in (
         SCRIPT.parents[0] / "build_release.py"
     ).read_text(encoding="utf-8")
+
+
+def test_proof_scans_the_zip_but_asserts_real_time_only_off_hosted_runners() -> None:
+    """Unit 7f, Defender decision: a GitHub-hosted runner cannot turn real-time
+    protection back on (Set-MpPreference returns, RealTimeProtectionEnabled
+    stays False; both CI lines failed on that throw at line 29), so the proof
+    keeps the custom scan of the unpacked release and asserts real-time
+    protection only when it is not running on Actions. A desktop run still
+    proves protection stayed on through every step."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "Start-MpScan -ScanType CustomScan -ScanPath $dest" in text
+    assert "Defender flagged the unzipped release" in text
+    assert "could not be turned on" not in text
+    assert "went off during the proof" not in text
+    m = re.search(r"^function Assert-RealTimeOn\b.*?^\}", text, re.M | re.S)
+    assert m, "windows_proof.ps1 defines Assert-RealTimeOn"
+    assert "$env:GITHUB_ACTIONS" in m.group(0)
+    assert "throw" in m.group(0)
+    assert text.count("\nAssert-RealTimeOn '") == 2
