@@ -1351,6 +1351,41 @@ the draft does not count them, so see a preparer). A married person filing separ
 gets no credit unless they lived apart from their spouse the last six months of the year;
 the draft takes none and says so.
 
+## Education credits (Phase 10, unit 3c-2)
+
+Every household is asked `education`: each student on the return, what was paid for
+their qualified tuition and related expenses (Form 1098-T box 1, or the school's
+statement), the tax-free aid applied to them (scholarships and grants, box 5, used for
+those expenses) and the credit, as `dependent 1 6500 aid 1500 aotc; you 3000 llc`, or
+`none`. A student is `you`, `spouse` (joint) or `dependent N` (the N-th dependent as
+typed). `aotc` is the American opportunity credit (a student in the first four years of
+college, at least half time, toward a credential, with no felony drug conviction and
+not claimed for four earlier years); `llc` is the lifetime learning credit. Each student
+takes one. A filer who is not married filing jointly and claims the American opportunity
+credit is also asked `aotc_refundable_barred`: yes when all of Form 8863's line 7
+conditions apply (under 18 at the end of the year, or 18, or a full-time student over 18
+and under 24, with earned income under half their support; a parent alive; not filing
+jointly), which makes the whole credit nonrefundable.
+
+The draft lays out Form 8863 (2025 Form 8863 and instructions):
+
+- Part III per student: the adjusted expenses (paid less aid) up to $4,000 (line 27), all
+  of the first $2,000 and a quarter of the next $2,000 (lines 28-30), or the lifetime
+  learning expenses (line 31).
+- Part I: the phase-out share, modified AGI from $90,000 down to $80,000 ($180,000 to
+  $160,000 joint; lines 2-6), and the refundable 40% (line 8), on Form 1040 line 29.
+- Part II: the lifetime learning credit, 20% of up to $10,000 of expenses (lines 10-12),
+  phased out the same way (lines 13-18), then the Credit Limit Worksheet: the
+  nonrefundable credits, capped at the tax less Schedule 3 lines 1 and 2, on Schedule 3
+  line 3 (line 19).
+
+Not drafted: Part III lines 20-26 (each student's school, its EIN and the yes-or-no
+answers; filled in from the 1098-T), recapture of an earlier year's credit after a
+refund, and expenses paid by someone other than you, your spouse or your dependent.
+A married person filing separately takes neither credit; the draft takes none and says
+so. A student's 1098-T is expected by January 31 (Expected forms) when `education` names
+one, and it reads as form `1098-T` (boxes 1 and 5).
+
 ## Coverage gate (Phase 10, unit 2a)
 
 `planner.coverage.gate` runs right after intake, before any plan or draft, and lists

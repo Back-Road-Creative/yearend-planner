@@ -60,6 +60,9 @@ ENGINE = (
     "cdcc_limit",
     "cdcc_relevant_expenses",
     "count_cdcc_eligible",
+    "refundable_american_opportunity_credit",
+    "non_refundable_american_opportunity_credit",
+    "lifetime_learning_credit",
     "head_earned",
     "spouse_earned",
     "self_employment_tax",
@@ -884,6 +887,12 @@ def build(lay: Layout, year: int) -> Draft:
     s3_2 = _form_2441(sheet, d, v, hh, care, l11, l18)
     if s3_2 is not None:
         add("Sch 3", "2", "Child and dependent care credit", s3_2, "Form 2441 line 11")
+    education = _form_8863(sheet, d, v, hh, l11, l18 - (s3_2 or 0.0))
+    if education is not None:
+        add("Sch 3", "3", "Education credits", education[1], "Form 8863 line 19")
+    engine_education = (
+        v["non_refundable_american_opportunity_credit"] + v["lifetime_learning_credit"]
+    )
     s3_8 = add(
         "Sch 3",
         "8",
@@ -891,9 +900,12 @@ def build(lay: Layout, year: int) -> Draft:
         v["income_tax_non_refundable_credits"]
         - v["non_refundable_ctc"]
         - v["cdcc"]
-        + (s3_2 or 0.0),
+        - engine_education
+        + (s3_2 or 0.0)
+        + (education[1] if education is not None else engine_education),
         "engine income_tax_non_refundable_credits less the child credit"
-        + (", with line 2 from Form 2441" if s3_2 is not None else ""),
+        + (", with line 2 from Form 2441" if s3_2 is not None else "")
+        + (", line 3 from Form 8863" if education is not None else ""),
     )
     s3_9 = add("Sch 3", "9", "Net premium tax credit", net_ptc, "Form 8962 line 26")
     s3_15 = add("Sch 3", "15", "Other payments and refundable credits", s3_9, "line 9")
@@ -940,8 +952,17 @@ def build(lay: Layout, year: int) -> Draft:
         f,
         "29",
         "American opportunity and other refundable credits",
-        v["income_tax_refundable_credits"] - v["eitc"] - v["refundable_ctc"],
-        "engine income_tax_refundable_credits less 27a and 28",
+        v["income_tax_refundable_credits"]
+        - v["eitc"]
+        - v["refundable_ctc"]
+        - v["refundable_american_opportunity_credit"]
+        + (
+            education[0]
+            if education is not None
+            else v["refundable_american_opportunity_credit"]
+        ),
+        "engine income_tax_refundable_credits less 27a and 28"
+        + (", with Form 8863 line 8" if education is not None else ""),
     )
     l31 = add(f, "31", "Amount from Schedule 3, line 15", s3_15, "Sch 3 line 15")
     l32 = add(
@@ -1117,6 +1138,157 @@ def _form_2441(
         "care paid in 2025, Worksheet A) is not drafted"
     )
     return l11
+
+
+# Form 8863 (2025): the American opportunity credit's expenses per student
+# (line 27's cap, all of the first $2,000 and a quarter of the next), the
+# modified AGI phase-out both credits share (lines 2 and 5; IRC 25A(d), fixed
+# since 2021), the refundable part (line 8) and the lifetime learning credit's
+# expense cap and rate (lines 11 and 12; IRC 25A(c)).
+AOTC_CAP, AOTC_FULL, AOTC_REST = 4000.0, 2000.0, 0.25
+EDUCATION_MAGI = {"JOINT": (180_000.0, 20_000.0)}
+EDUCATION_MAGI_OTHER = (90_000.0, 10_000.0)
+AOTC_REFUNDABLE = 0.40
+LLC_CAP, LLC_RATE = 10_000.0, 0.20
+
+
+def _student_name(who: str) -> str:
+    return {"p": "you", "s": "the spouse"}.get(who, f"dependent {who[1:]}")
+
+
+def _form_8863(
+    sheet: _Sheet,
+    d: Draft,
+    v: dict[str, float],
+    hh: Household,
+    magi: float,
+    limit: float,
+) -> tuple[float, float] | None:
+    """Form 8863, education credits (2025 Form 8863 and its instructions; unit
+    3c-2): Part III per student (lines 27-30, or 31 for the lifetime learning
+    credit), Part I (the American opportunity credit and its refundable line 8)
+    and Part II with the Credit Limit Worksheet. ``limit`` is 1040 line 18 less
+    Schedule 3 lines 1 and 2 (worksheet line 6). Returns (line 8, line 19), or
+    None when the return has no student."""
+    if not hh.students:
+        return None
+    add = sheet.add
+    f = "8863"
+    if hh.filing_status == "SEPARATE":
+        d.notes.append(
+            "Form 8863: a married person filing separately cannot take either "
+            "education credit (2025 i8863, Who Can Claim); the draft takes none"
+        )
+        return 0.0, 0.0
+    aotc = llc = 0.0
+    for n, st in enumerate(hh.students, 1):
+        who = _student_name(st.who)
+        if st.credit == "llc":
+            llc += add(
+                f,
+                f"S{n}-31",
+                f"Student {n} ({who}): lifetime learning expenses",
+                float(st.expenses),
+                "education: paid less tax-free assistance",
+            )
+            continue
+        l27 = add(
+            f,
+            f"S{n}-27",
+            f"Student {n} ({who}): expenses, up to $4,000",
+            min(float(st.expenses), AOTC_CAP),
+            "education: paid less tax-free assistance",
+        )
+        l28 = add(
+            f,
+            f"S{n}-28",
+            "Line 27 less $2,000",
+            max(l27 - AOTC_FULL, 0.0),
+            "27 - 2,000",
+        )
+        l29 = add(f, f"S{n}-29", "Line 28 times 25%", l28 * AOTC_REST, "28 x 0.25")
+        aotc += add(
+            f,
+            f"S{n}-30",
+            "American opportunity credit for the student",
+            l27 if l28 == 0 else AOTC_FULL + l29,
+            "27 if 28 is zero, else 2,000 + 29",
+        )
+    top, span = EDUCATION_MAGI.get(hh.filing_status, EDUCATION_MAGI_OTHER)
+
+    def phase(first: int, total: float) -> float:
+        """Lines 2-7 (or 13-18): ``total`` times the share left unphased."""
+        n = [str(first + i) for i in range(6)]
+        add(f, n[0], "Phase-out top", top, "$180,000 joint, else $90,000")
+        add(f, n[1], "Modified adjusted gross income", magi, "Form 1040 line 11")
+        room = add(f, n[2], "Line 2 less line 3", max(top - magi, 0.0), "2 - 3")
+        add(f, n[3], "Phase-out range", span, "$20,000 joint, else $10,000")
+        share = add(
+            f, n[4], "Line 4 over line 5 (at most 1)", min(room / span, 1.0), "4 / 5"
+        )
+        return add(f, n[5], "Credit after the phase-out", total * share, "1 x 6")
+
+    l7 = 0.0
+    if any(st.credit == "aotc" for st in hh.students):
+        add(
+            f,
+            "1",
+            "American opportunity credit, all students",
+            aotc,
+            "Part III line 30",
+        )
+        l7 = phase(2, aotc)
+    barred = hh.aotc_refundable_barred
+    l8 = add(
+        f,
+        "8",
+        "Refundable American opportunity credit",
+        0.0 if barred else l7 * AOTC_REFUNDABLE,
+        "none: the line 7 conditions apply" if barred else "7 x 0.40",
+    )
+    l9 = add(f, "9", "Nonrefundable American opportunity credit", l7 - l8, "7 - 8")
+    l18 = 0.0
+    if llc:
+        add(
+            f, "10", "Lifetime learning expenses, all students", llc, "Part III line 31"
+        )
+        l11 = add(
+            f,
+            "11",
+            "Smaller of line 10 or $10,000",
+            min(llc, LLC_CAP),
+            "min(10, 10,000)",
+        )
+        l12 = add(f, "12", "Line 11 times 20%", l11 * LLC_RATE, "11 x 0.20")
+        l18 = phase(13, l12)
+    l19 = add(
+        f,
+        "19",
+        "Nonrefundable education credits",
+        max(min(l18 + l9, limit), 0.0),
+        "Credit Limit Worksheet: smaller of 18 + 9 or 1040 line 18 less Sch 3 "
+        "lines 1-2",
+    )
+    for got, want, what in (
+        (l8, v["refundable_american_opportunity_credit"], "line 8"),
+        (
+            l19,
+            v["non_refundable_american_opportunity_credit"]
+            + v["lifetime_learning_credit"],
+            "line 19",
+        ),
+    ):
+        if abs(got - want) > TOLERANCE:
+            d.notes.append(
+                f"CHECK: Form 8863 {what} against the engine's: {got:,.2f} vs "
+                f"{want:,.2f}"
+            )
+    d.notes.append(
+        "Form 8863: Part III lines 20-26 (each student's name, school, its EIN "
+        "and the yes-or-no answers behind the credit typed) are filled in from "
+        "the 1098-T and the student's records"
+    )
+    return l8, l19
 
 
 def _schedule_8812(
@@ -1735,6 +1907,7 @@ ORDER = (
     SCH_SE_SPOUSE,
     "8949",
     "2441",
+    "8863",
     "8889",
     hsa.SPOUSE_FORM,
     "8962",
@@ -1748,6 +1921,7 @@ HEADINGS = {
     hsa.SPOUSE_FORM: "Form 8889 (health savings accounts), the spouse's",
     "8962": "Form 8962",
     "2441": "Form 2441 (child and dependent care expenses)",
+    "8863": "Form 8863 (education credits)",
     d400.FORM: "NC Form D-400",
     d400.SCHED: "NC D-400 Schedule S (additions and deductions)",
     "Carryover": "Capital loss carryover to next year",
@@ -1765,6 +1939,7 @@ FORM_CAPABILITY = {
     hsa.SPOUSE_FORM: "form_8889",
     "8962": "aca_premium_tax_credit",
     "2441": "child_dependent_care_credit",
+    "8863": "education_credits",
     d400.FORM: "nc_d400_draft",
     d400.SCHED: "nc_d400_draft",
     "Carryover": "schedule_d",

@@ -26,6 +26,7 @@ from planner.engine.household import (
     Household,
     MissingInputError,
     Person,
+    Student,
 )
 from planner.ingest.derive import CountyError, resolve_county
 from planner.ingest.needs import _needed
@@ -107,7 +108,14 @@ CONVERSION_TARGETS = ("manual", "auto")
 # Needed-panel key -> Household field, a whole-number code rather than dollars.
 CODES = {"tipped_occupation_code": "tipped_occupation_code"}
 # The Needed-panel keys a tax figure reads (the others drive the plan, not the tax).
-TAX_KEYS = (*MONEY, *CODES, "ordinary_dividends", "qualified_dividends")
+TAX_KEYS = (
+    *MONEY,
+    *CODES,
+    "ordinary_dividends",
+    "qualified_dividends",
+    "education",
+    "aotc_refundable_barred",
+)
 OVERRIDES = (
     "q4_dividend_estimate",
     "planned_st_sales",
@@ -242,6 +250,33 @@ def _county_key(lay: Layout, value: dict[str, Any]) -> str | None:
         raise MissingInputError(f"county: {exc} (planner enter county)") from exc
 
 
+def _students(
+    value: dict[str, Any], fields: dict[str, Any], notes: list[str]
+) -> tuple[Student, ...]:
+    """The typed students (the ``education`` answer) as the engine's people:
+    the expenses less the tax-free assistance (Form 8863's adjusted qualified
+    education expenses, never below zero). A student the return does not
+    have (a spouse off a joint return, a dependent past the last) is left
+    out, with a note."""
+    who = {"you": "p"} | ({"spouse": "s"} if "spouse" in fields else {})
+    who |= {f"dependent {i}": f"d{i}" for i in range(1, len(fields["dependents"]) + 1)}
+    out = []
+    for e in value.get("education") or ():
+        if e["student"] not in who:
+            notes.append(
+                f"education: {e['student']} is not on this return (the spouse is "
+                "only on a joint return; dependents count from 1 in the order "
+                f"typed): no credit for that student; check education"
+            )
+            continue
+        out.append(
+            Student(
+                who[e["student"]], max(int(e["paid"]) - int(e["aid"]), 0), e["credit"]
+            )
+        )
+    return tuple(out)
+
+
 def build(
     lay: Layout, year: int, overrides: Overrides | None = None, *, with_db: bool = True
 ) -> Inputs:
@@ -325,6 +360,8 @@ def build(
         )
         for d in value.get("dependents") or ()
     )
+    fields["students"] = _students(value, fields, out.notes)
+    fields["aotc_refundable_barred"] = value.get("aotc_refundable_barred") == "yes"
     wed = value.get("marriage_date")
     if (
         fields["filing_status"] == "JOINT"

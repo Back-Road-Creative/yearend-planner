@@ -7,14 +7,14 @@ taxable account with dividends, interest or sales means a consolidated 1099
 from that institution; an IRA with a withdrawal or conversion means a 1099-R),
 the answers in the Needed panel (wages mean a W-2, SE income a 1099-NEC from
 each client who sends one, interest and dividends a 1099-INT and 1099-DIV, a
-marketplace premium a 1095-A, a mortgage a 1098, a Social Security claim age
-reached an SSA-1099) and anything that arrived unpredicted. Each item is
-received, superseded (a corrected copy is due) or still expected, with the date
-the issuer owes it to you and where to download it. A form that is late and
-needed to file is a Needed-panel item, until it arrives or you waive it (the
-issuer never sends one, or you do not have it): a waiver names the form and the
-issuer for one year, lives in ``profile/forms_waived.yaml`` and can be undone.
-"""
+marketplace premium a 1095-A, a mortgage a 1098, a student a 1098-T, a Social
+Security claim age reached an SSA-1099) and anything that arrived unpredicted.
+Each item is received, superseded (a corrected copy is due) or still expected,
+with the date the issuer owes it to you and where to download it. A form that
+is late and needed to file is a Needed-panel item, until it arrives or you
+waive it (the issuer never sends one, or you do not have it): a waiver names
+the form and the issuer for one year, lives in ``profile/forms_waived.yaml``
+and can be undone."""
 
 from __future__ import annotations
 
@@ -52,6 +52,7 @@ INFO = (
     "5498-SA",
     "1095-A",
     "1098",
+    "1098-T",
     "SSA-1099",
 )
 # Month and day the issuer must furnish it (IRC 6041-6050 and the 1095-A rule
@@ -74,6 +75,7 @@ WHERE = {
     "1099-K": "the payment processor's dashboard (tax forms)",
     "1095-A": DOCS["f1095a"].path,
     "1098": DOCS["f1098"].path,
+    "1098-T": DOCS["f1098t"].path,
     "SSA-1099": DOCS["ssa_1099"].path,
 }
 INSTITUTION = "the institution's tax center (Vanguard: My Accounts > Tax center)"
@@ -85,6 +87,7 @@ ANY = (
     "your loan servicer",
     "your HSA custodian",
     "each payer",
+    "each school",
 )
 TRANSACTION_FORMS = (
     (re.compile(r"dividend|capital gain", re.I), "1099-DIV"),
@@ -296,6 +299,8 @@ def _from_answers(
         for e in out:
             if e.form == "1098":
                 e.to_file = False  # used only when itemizing beats the standard
+    if need_value(conn, lay, year, "education"):  # IRC 6050S: by January 31
+        _add(out, year, "1098-T", "each school", "a student's education credit")
     if profile.get("hsa_coverage") in ("self", "family"):
         _add(out, year, "5498-SA", "your HSA custodian", "HSA-eligible coverage")
     birth, claim = profile.get("birth_date"), profile.get("ss_claim_age")
