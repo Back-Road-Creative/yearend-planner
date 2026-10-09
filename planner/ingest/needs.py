@@ -32,6 +32,7 @@ from planner.engine.household import PERSON_INPUTS, PERSON_SAVERS
 from planner.ingest.derive import county_from_zip
 from planner.ledger import db, portfolio
 from planner.paths import Layout
+from planner.taxprep import statereturn
 
 PROFILE = "profile"
 PRIOR = "prior"  # the year before the plan year (the filed return)
@@ -65,7 +66,8 @@ class Need:
     kind: str  # date | int | money | fraction | enum | monthly | dependents |
     # education | str
     scope: str = YEAR
-    boxes: tuple[tuple[str, str], ...] = ()  # (form, box) ledger lookups, summed
+    # (form, box) ledger lookups, summed; a "-" before the box subtracts it
+    boxes: tuple[tuple[str, str], ...] = ()
     estimate: tuple[tuple[str, str], ...] = ()  # YTD facts that stand in meanwhile
     choices: tuple[str, ...] = ()
     # An estimate computed from the ledger when the boxes give nothing:
@@ -147,7 +149,7 @@ OUTPUTS = (
     "Estimated tax",
     "Cash buffer",
     "Draft 1040",
-    "NC D-400 draft",
+    "State return draft",
     "Schedule D",
     "Schedule C",
     "Form 8889",
@@ -294,7 +296,7 @@ NEEDS: tuple[Need, ...] = (
         "other income earned in, or taxed by, another state",
         "enum",
         choices=("full_year", "moved", "other_state"),
-        unlocks=("Estimated tax", "NC D-400 draft"),
+        unlocks=("Estimated tax", "State return draft"),
         asked=lambda s: _known_state(s),
     ),
     Need(
@@ -656,6 +658,7 @@ NEEDS: tuple[Need, ...] = (
         "the tax line of last year's return for the state you live in",
         "money",
         PRIOR,
+        boxes=statereturn.prior_boxes("state_tax"),
         estimate=(("CARRY-EST", "state_tax"),),
         doc="filed_return",
         unlocks=("Estimated tax", "Year rollover"),
@@ -693,7 +696,7 @@ NEEDS: tuple[Need, ...] = (
         "money",
         boxes=(("W-2", "17"), ("1099-R", "14")),
         doc="w2",
-        unlocks=("Estimated tax", "NC D-400 draft"),
+        unlocks=("Estimated tax", "State return draft"),
         asked=lambda s: s.get("state") == "NC",
     ),
     Need(
@@ -704,8 +707,40 @@ NEEDS: tuple[Need, ...] = (
         "money",
         boxes=(("W-2", "17"), ("1099-R", "14")),
         doc="w2",
-        unlocks=("Estimated tax",),
+        unlocks=("Estimated tax", "State return draft"),
         asked=lambda s: _other_taxing_state(s),
+    ),
+    Need(
+        "ca_subtractions",
+        "Other CA subtractions (Schedule CA (540) Part I line 27, column B)",
+        "subtracted from federal AGI on Form 540 line 14",
+        "Schedule CA (540) column B, less what the planner fills itself (taxable "
+        "Social Security, unemployment, US obligations interest, a state refund); "
+        "type 0 when none",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "CA",
+    ),
+    Need(
+        "ca_additions",
+        "Other CA additions (Schedule CA (540) Part I line 27, column C)",
+        "added to federal AGI on Form 540 line 16",
+        "Schedule CA (540) column C, less the HSA deduction the planner adds "
+        "back itself (e.g. other states' municipal bond interest); type 0 when "
+        "none",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "CA",
+    ),
+    Need(
+        "ca_use_tax",
+        "CA use tax owed (Form 540 line 91)",
+        "tax on purchases no sales tax was collected on",
+        "your purchase records, or the use tax table in the 540 booklet (the "
+        "draft uses the table until you type it)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "CA",
     ),
     Need(
         "nc_additions",
@@ -713,7 +748,7 @@ NEEDS: tuple[Need, ...] = (
         "added to federal AGI on D-400 line 7",
         "D-400 Schedule S Part A (most returns have none; type 0 when none)",
         "money",
-        unlocks=("NC D-400 draft",),
+        unlocks=("State return draft",),
         asked=lambda s: s.get("state") == "NC",
     ),
     Need(
@@ -724,7 +759,7 @@ NEEDS: tuple[Need, ...] = (
         "D-400 Schedule S Part B; the planner fills lines 18 and 19 itself "
         "(type 0 when none)",
         "money",
-        unlocks=("NC D-400 draft",),
+        unlocks=("State return draft",),
         asked=lambda s: s.get("state") == "NC",
     ),
     Need(
@@ -734,7 +769,7 @@ NEEDS: tuple[Need, ...] = (
         "your purchase records, or the use tax table in the D-400 instructions "
         "(the draft uses the table until you type it)",
         "money",
-        unlocks=("NC D-400 draft",),
+        unlocks=("State return draft",),
         asked=lambda s: s.get("state") == "NC",
     ),
     Need(
@@ -922,7 +957,7 @@ NEEDS: tuple[Need, ...] = (
         boxes=(("1099-INT", "1"), ("1099-INT", "3")),
         estimate=(("YTD", "interest"),),
         doc="vg_tax",
-        unlocks=("MAGI headroom", "Glide path", "Draft 1040", "NC D-400 draft"),
+        unlocks=("MAGI headroom", "Glide path", "Draft 1040", "State return draft"),
     ),
     Need(
         "tax_exempt_interest",
@@ -1733,9 +1768,10 @@ def _sum_boxes(
     total = 0.0
     origins: list[str] = []
     for form, box in boxes:
+        name, sign = statereturn.signed(box)
         for f in db.facts_for(conn, year, form):
-            if f.box == box and owner in (None, f.owner):
-                total += f.value
+            if f.box == name and owner in (None, f.owner):
+                total += sign * f.value
                 origins.append(_origin(f))
     if not origins:
         return None

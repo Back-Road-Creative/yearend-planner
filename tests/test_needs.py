@@ -64,7 +64,7 @@ def test_registry_keys_are_unique_and_every_box_names_a_template(
         for form, box in n.boxes:
             assert form in forms, (n.key, form)
             if forms[form]:
-                assert box in forms[form], (n.key, form, box)
+                assert box.removeprefix("-") in forms[form], (n.key, form, box)
 
 
 def test_fresh_folder_needs_everything_and_copies_the_example_profile(

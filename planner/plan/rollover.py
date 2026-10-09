@@ -38,7 +38,7 @@ LABELS = {
     "agi": "AGI carried from the draft (1040 line 11)",
     "total_tax": "Total tax carried from the draft (1040 line 24)",
     "nc_tax": "NC tax carried from the draft (D-400 line 15)",
-    "state_tax": "State tax carried from the draft (the return's tax line)",
+    "state_tax": "State tax carried from the draft (the safe harbor's lines)",
     "st": "Short-term capital loss carried forward",
     "lt": "Long-term capital loss carried forward",
 }
@@ -206,11 +206,14 @@ def carry(lay: Layout, year: int) -> Carry:
     for key, (form, line) in (
         ("agi", ("1040", "11a")),
         ("total_tax", ("1040", "24")),
-        *((r.carry, (r.form, r.tax_line)) for r in statereturn.RETURNS.values()),
     ):
         value = d.get(form, line)
         if value is not None:
             out.values[key] = value
+    for r in statereturn.RETURNS.values():
+        tax = statereturn.carried(d.get, r)
+        if tax is not None:
+            out.values[r.carry] = tax
     out.notes.append(
         f"{year} is not closed: next year reads the draft's figures as estimates "
         f"until the filed return is in (planner close --year {year})"

@@ -330,6 +330,11 @@ nc_d400_draft:
   evidence: implemented
   tests: ["tests/test_d400.py", "tests/test_state_returns.py"]
   note: "planner draft; Schedule S 16/18/19/20-40/41, D-400 6-34 for a full-year resident (joint: 20a yours, 20b the spouse's by document owner, unit 3a-6, D-401 p. 15); drafted through the state-return registry (planner/taxprep/statereturn.py, unit 3d-4) that the draft, close, rollover and coverage read; Schedule PN, D-400TC, D-422 named, not drafted"
+ca_540_draft:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_ca540.py", "tests/test_state_returns.py"]
+  note: "planner draft; CA Form 540 lines 13-19, 31-48, 61-64, 71-78, 91-115 for a full-year resident (unit 3d-6, 2025 Form 540 and booklet): Tax Table to $100,000 (schedule at the row midpoint) and Schedules X/Y/Z above, 2025 scales pinned to the booklet; filed 540 Sides 2-5 read by templates ca-540*.yaml; 540NR, Schedule G-1, credits 43-45, lines 63, 73, 74, 92, 110, 112-113 named, not drafted"
 taxpack:
   status: verified
   evidence: implemented

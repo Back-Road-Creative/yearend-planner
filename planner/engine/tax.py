@@ -125,11 +125,23 @@ def engine_version() -> str:
     return version("policyengine-us")
 
 
-def _param(path: str, year: int) -> float:
+def _node(path: str, year: int) -> Any:
     node = _system().parameters
     for part in path.split("."):
         node = getattr(node, part)
-    return float(node(f"{year}-01-01"))
+    return node(f"{year}-01-01")
+
+
+def _param(path: str, year: int) -> float:
+    return float(_node(path, year))
+
+
+def brackets(path: str, year: int) -> list[tuple[float, float]]:
+    """A marginal-rate scale parameter as (threshold, rate) rows, lowest first."""
+    scale = _node(path, year)
+    return [
+        (float(t), float(r)) for t, r in zip(scale.thresholds, scale.rates, strict=True)
+    ]
 
 
 # config/thresholds.yaml rows the engine also carries, checked against it.

@@ -5,6 +5,7 @@ Synthetic households only."""
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,7 @@ def test_nc_is_the_first_entry() -> None:
     nc = statereturn.RETURNS["NC"]
     assert nc.form == d400.FORM and nc.template == "NC-D400"
     assert nc.tax_line == "15" and nc.carry == "nc_tax"
-    assert statereturn.get("nc") is nc and statereturn.get("CA") is None
+    assert statereturn.get("nc") is nc and statereturn.get("SC") is None
     assert statereturn.get(None) is None
 
 
@@ -33,10 +34,19 @@ def test_nc_is_the_first_entry() -> None:
 def test_each_entry_has_its_filed_template(code: str) -> None:
     ret = statereturn.RETURNS[code]
     assert states.get(code).income_tax
-    tpl = yaml.safe_load((TEMPLATES / f"{ret.template.lower()}.yaml").read_text())
-    assert tpl["form"] == ret.template and tpl["issuer"] == code
-    assert {ret.tax_line, *ret.boxes} <= set(tpl["boxes"])
-    assert tpl["boxes"][ret.tax_line].get("required") is True
+    # A return that runs to several pages has a template per page (1040, CA-540).
+    pages = [
+        tpl
+        for tpl in (yaml.safe_load(p.read_text()) for p in TEMPLATES.glob("*.yaml"))
+        if tpl["form"] == ret.template
+    ]
+    assert (TEMPLATES / f"{ret.template.lower()}.yaml").exists()
+    assert pages and all(tpl["issuer"] == code for tpl in pages)
+    boxes = {b: spec for tpl in pages for b, spec in tpl["boxes"].items()}
+    assert {ret.tax_line, *ret.boxes, *(p.removeprefix("-") for p in ret.prior)} <= set(
+        boxes
+    )
+    assert boxes[ret.tax_line].get("required") is True
     assert ret.form in ret.forms
 
 
@@ -59,6 +69,17 @@ def test_another_states_prior_tax_carries_as_an_estimate() -> None:
     assert "state_tax" in rollover.LABELS  # a drafted state's carry key
 
 
+def test_a_minus_prior_line_subtracts_it() -> None:
+    # NY's safe harbor (unit 3d-7) is lines 46 and 58 less its refundable credits
+    ret = dataclasses.replace(_fake([]), prior=("64", "-71"))
+    laid = {("CA-540", "64"): 100.0, ("CA-540", "71"): 30.0}
+    assert statereturn.signed("-71") == ("71", -1.0)
+    assert statereturn.signed("64") == ("64", 1.0)
+    assert statereturn.carried(lambda f, line: laid.get((f, line)), ret) == 70.0
+    assert statereturn.carried(lambda f, line: None, ret) is None
+    assert statereturn.carried(lambda f, line: laid.get((f, line)), _fake([])) == 100.0
+
+
 def _fake(calls: list[dict[str, Any]]) -> statereturn.StateReturn:
     def lay(
         add: Any,
@@ -69,9 +90,9 @@ def _fake(calls: list[dict[str, Any]]) -> statereturn.StateReturn:
         year: int,
         agi: float,
         typed: Any,
-        married: bool,
+        status: str,
     ) -> None:
-        calls.append({"paid": paid, "typed": dict(typed), "married": married})
+        calls.append({"paid": paid, "typed": dict(typed), "status": status})
         add("CA-540", "13", "Federal AGI", agi, "1040 line 11a")
         add("CA-540", "64", "Total tax", 100.0, "test")
 
@@ -83,6 +104,7 @@ def _fake(calls: list[dict[str, Any]]) -> statereturn.StateReturn:
         boxes=("13", "64"),
         tax_line="64",
         carry="state_tax",
+        prior=("64",),
         keys=("state_withheld",),
         engine=(),
         lay=lay,
@@ -102,5 +124,5 @@ def test_the_draft_lays_the_households_state_return(
     assert d.get("CA-540", "64") == 100.0
     assert not [ln for ln in d.lines if ln.form in (d400.FORM, d400.SCHED)]
     assert calls and calls[0]["typed"]["state_withheld"] == 250.0
-    assert calls[0]["married"] is False
+    assert calls[0]["status"] == "SINGLE"
     assert not any("the CA return is not drafted" in n for n in d.notes)

@@ -4,17 +4,18 @@ it adds (each with its heading and capability row), the filed-return template
 safe harbor carries and the key it carries under, the typed Needed keys and
 engine variables the return reads, and the function that lays its lines.
 
-NC's D-400 is the first entry. A drafted state is a module beside d400.py, a
-template under templates/forms/ (``issuer`` is the state's code) and an entry
-here; the draft, ``planner close``, the rollover and the coverage gate read
-this table, so nothing else names a state's return."""
+NC's D-400 is the first entry, CA's Form 540 the second (unit 3d-6). A
+drafted state is a module beside d400.py, a template under templates/forms/
+(``issuer`` is the state's code; one per page when the return runs to several)
+and an entry here; the draft, ``planner close``, the rollover and the
+coverage gate read this table, so nothing else names a state's return."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from planner.taxprep import d400
+from planner.taxprep import ca540, d400
 
 
 @dataclass(frozen=True)
@@ -26,10 +27,14 @@ class StateReturn:
     boxes: tuple[str, ...]  # template boxes; the draft form numbers them the same
     tax_line: str  # the state's income tax: what the safe harbor carries
     carry: str  # the rollover key it carries under (CARRY-EST)
+    # The lines next year's safe harbor sums, from the filed return or the
+    # draft alike; a "-" before a line subtracts it (NY's refundable credits).
+    prior: tuple[str, ...]
     keys: tuple[str, ...]  # typed Needed keys the return reads
     engine: tuple[str, ...]  # engine variables the return reads
-    # (add, notes, values, facts, paid, year, agi, typed, married): lays the
-    # lines; ``paid`` is (date, amount, origin) per estimated payment to the state
+    # (add, notes, values, facts, paid, year, agi, typed, status): lays the
+    # lines; ``paid`` is (date, amount, origin) per estimated payment to the
+    # state, ``status`` the filing status (Household.filing_status)
     lay: Callable[..., None]
 
 
@@ -48,11 +53,54 @@ RETURNS: dict[str, StateReturn] = {
         boxes=("6", "12b", "15", "20a", "21a", "23", "26a", "28", "34"),
         tax_line="15",
         carry="nc_tax",  # prior_nc_tax's estimate, kept from v0.1.0
+        prior=("15",),
         keys=d400.KEYS,
         engine=d400.ENGINE,
         lay=d400.lay_lines,
     ),
+    "CA": StateReturn(
+        code="CA",
+        forms={ca540.FORM: ("CA Form 540", "ca_540_draft")},
+        form=ca540.FORM,
+        template="CA-540",
+        boxes=("13", "17", "19", "31", "48", "64", "71", "72", "78", "97", "99")
+        + ("100", "111", "115"),
+        # 540-ES 2026 worksheet line 19b: lines 48, 61 and 62 of the 2025 540
+        # (line 64 adds line 63, which the safe harbor leaves out).
+        tax_line="64",
+        carry="state_tax",  # prior_state_tax's estimate
+        prior=("48", "61", "62"),
+        keys=ca540.KEYS,
+        engine=ca540.ENGINE,
+        lay=ca540.lay_lines,
+    ),
 }
+
+
+def prior_boxes(carry: str) -> tuple[tuple[str, str], ...]:
+    """The filed-return (template, line) pairs the prior-year Needed item
+    carried under ``carry`` sums: one state's return is on file a year."""
+    return tuple(
+        (r.template, line)
+        for r in RETURNS.values()
+        if r.carry == carry
+        for line in r.prior
+    )
+
+
+def signed(line: str) -> tuple[str, float]:
+    """A ``prior`` entry as (line, sign): "-63" subtracts line 63."""
+    return (line[1:], -1.0) if line.startswith("-") else (line, 1.0)
+
+
+def carried(get: Callable[[str, str], float | None], ret: StateReturn) -> float | None:
+    """The safe-harbor tax a draft carries: the signed sum of the ``prior``
+    lines it laid (``get`` is Draft.get), None when it laid none; the same
+    lines a filed return is read for."""
+    got = [(sign, get(ret.form, line)) for line, sign in map(signed, ret.prior)]
+    if all(v is None for _, v in got):
+        return None
+    return round(sum(sign * v for sign, v in got if v is not None), 2)
 
 
 def get(code: str | None) -> StateReturn | None:
