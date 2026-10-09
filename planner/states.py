@@ -258,6 +258,13 @@ STATES: dict[str, State] = {
 DRAFTED = ("NC",)  # the states whose return the draft lays out
 
 
+def label(code: str | None) -> str:
+    """How an output line names the household's state tax: the code ("CA")
+    for a state that taxes income, else "state"."""
+    st = STATES.get((code or "").upper())
+    return st.code if st is not None and st.income_tax else "state"
+
+
 def get(code: str) -> State:
     """The state for a two-letter code (any case); ValueError for another."""
     try:
