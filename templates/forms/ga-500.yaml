@@ -1,0 +1,18 @@
+# Georgia Form 500, page 2 (income, the deduction; page 1 holds no amounts).
+# Merges with pages 3 and 4 (ga-500-p3.yaml, ga-500-p4.yaml) as form GA-500.
+# Page 5 (donations, penalties, lines 45 and 46) prints no readable tax year
+# and is not read; lines 29 and 30 on page 4 carry the result.
+form: GA-500
+years: [2025]
+match: ["Individual Income Tax Return", "Adjustments from Form 500 Schedule 1"]
+year_pattern: 'Georgia Department of Revenue\s*(?:YOUR SOCIAL SECURITY NUMBER)?\s*(20\d\d)'
+issuer: GA
+boxes:
+  "8": {label: "Federal adjusted gross income", pattern: 'From Federal Form 1040\)[\s.]*8\.\s+AMOUNT', required: true}
+  "9": {label: "Adjustments from Schedule 1", pattern: 'See IT-511 Tax Booklet\)[\s.]*9\.\s+AMOUNT'}
+  "10": {label: "Georgia adjusted gross income", pattern: 'Net total of Line 8 and Line 9\)[\s.]*10\.\s+AMOUNT'}
+  "11": {label: "Standard deduction", pattern: 'Do not use FEDERAL STANDARD DEDUCTION\)[\s.]*11\.\s+AMOUNT'}
+  "12a": {label: "Federal itemized deductions", pattern: 'Schedule A- Form 1040\)[\s.]*12a\.\s+AMOUNT'}
+  "12b": {label: "Less adjustments", pattern: 'Less adjustments: \(See IT-511 Tax Booklet\)[\s.]*12b\.\s+AMOUNT'}
+  "12c": {label: "Georgia total itemized deductions", pattern: 'Georgia Total Itemized Deductions[\s.]*12c\.\s+AMOUNT'}
+  "13": {label: "Income after the deduction", pattern: 'from Line 10; enter balance[\s.]*13\.\s+AMOUNT'}

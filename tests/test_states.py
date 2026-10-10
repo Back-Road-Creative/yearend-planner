@@ -94,7 +94,8 @@ def test_coverage_state_gaps(lay: Layout) -> None:  # noqa: F811
     assert state_gaps("PA") == []  # Form PA-40 drafted (unit 3d-8)
     assert state_gaps("IL") == []  # Form IL-1040 drafted (unit 3d-9)
     assert state_gaps("OH") == []  # Form IT 1040 drafted (unit 3d-10)
-    assert state_gaps("GA") and "GA return is not drafted" in state_gaps("GA")[0]
+    assert state_gaps("GA") == []  # Form 500 drafted (unit 3d-11)
+    assert state_gaps("MI") and "MI return is not drafted" in state_gaps("MI")[0]
     assert "not a state's two-letter code" in state_gaps("ZZ")[0]
 
 
