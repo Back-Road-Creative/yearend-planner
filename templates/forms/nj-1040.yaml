@@ -1,0 +1,9 @@
+# New Jersey NJ-1040, page 1 (the exemptions). Merges with pages 2
+# (nj-1040-p2.yaml) and 3 as form NJ-1040.
+form: NJ-1040
+years: [2025]
+match: ["New Jersey Resident", "Total Exemption Amount"]
+year_pattern: '(20\d\d) NJ-1040'
+issuer: NJ
+boxes:
+  "13": {label: "Total Exemption Amount", pattern: 'Add totals from the lines at 6 through 12\)[\s.]*13\.\s+AMOUNT'}

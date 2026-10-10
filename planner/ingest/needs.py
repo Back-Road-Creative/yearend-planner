@@ -998,6 +998,89 @@ NEEDS: tuple[Need, ...] = (
         asked=lambda s: s.get("state") == "NC",
     ),
     Need(
+        "nj_other_interest",
+        "Interest from other states' bonds (NJ-1040 line 16a)",
+        "added to NJ-1040 line 16a: New Jersey taxes interest on other states' "
+        "and their localities' obligations, and takes it out of line 16b",
+        "the tax-exempt interest on your 1099-INT box 8 and 1099-DIV box 12 that "
+        "is not from New Jersey bonds or a New Jersey qualified investment fund "
+        "(type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "NJ",
+    ),
+    Need(
+        "nj_other_dividends",
+        "Taxable fund dividends federal law exempts (NJ-1040 line 17)",
+        "added to NJ-1040 line 17: a fund that is not a New Jersey qualified "
+        "investment fund pays taxable dividends, even when federal law exempts "
+        "them (GIT-5)",
+        "1099-DIV box 12 from funds that did not certify as a New Jersey "
+        "qualified investment fund; the fund's year-end notice says (type 0 "
+        "when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "NJ",
+    ),
+    Need(
+        "nj_veterans",
+        "How many of you and your spouse are honorably discharged veterans "
+        "(NJ-1040 line 9)",
+        "a $6,000 exemption each on NJ-1040 line 9",
+        "a whole number: 0, 1, or 2 on a joint return; proof (DD-214) goes in "
+        "with the first return that claims it",
+        "int",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "NJ",
+    ),
+    Need(
+        "nj_other_deductions",
+        "Other NJ deductions (NJ-1040 lines 32-36)",
+        "subtracted on NJ-1040 line 38: alimony paid, a qualified conservation "
+        "contribution, the Health Enterprise Zone deduction, the Alternative "
+        "Business Calculation Adjustment and the organ and bone marrow donation "
+        "deduction",
+        "NJ-1040 lines 32-36 and their worksheets in the instructions; the draft "
+        "fills lines 30, 31 and 37a itself (type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "NJ",
+    ),
+    Need(
+        "nj_medical_expenses",
+        "Unreimbursed medical expenses and premiums (NJ-1040 Worksheet F line 1)",
+        "the part over 2% of NJ-1040 line 29 is deducted on line 31, with the "
+        "self-employed health insurance deduction the planner counts",
+        "doctor, dental, hospital, prescription and insurance costs you paid and "
+        "were not repaid for, Medicare premiums included (type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "NJ",
+    ),
+    Need(
+        "nj_property_taxes",
+        "Property taxes on your NJ main home, or 18% of the rent (NJ-1040 line 40a)",
+        "the property tax deduction (line 41) or the $50 credit (line 56), "
+        "whichever Worksheet H says saves more",
+        "the property taxes paid on your New Jersey main home this year, or 18% "
+        "of the rent a tenant paid; share them with co-owners by ownership "
+        "(type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "NJ",
+    ),
+    Need(
+        "nj_use_tax",
+        "NJ use tax owed (NJ-1040 line 51)",
+        "tax on internet, mail-order and other out-of-state purchases no sales "
+        "tax was collected on",
+        "your purchase records, or the use tax chart in the NJ-1040 instructions "
+        "(type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "NJ",
+    ),
+    Need(
         "wages",
         "Wages",
         "ordinary income",
@@ -1668,6 +1751,7 @@ INT_RANGE = {
     "hsa_months": (0, 12),
     "hsa_family_share": (0, 100),
     "tipped_occupation_code": (0, 999),
+    "nj_veterans": (0, 2),
 }
 MONEY_MAX = 100_000_000
 TEXT_MAX = 200
