@@ -134,7 +134,8 @@ The same inbox reads last year's filed return and the rest of the year-end paper
 Templates in `templates/forms/` now cover Form 1040 (both pages merge into one form,
 issuer `self`), Schedules 1, 2, 3, C, D and SE, NC Form D-400 (issuer `NC`), CA Form 540 (issuer
 `CA`; Sides 2-5 merge into one form), NY Form IT-201 (issuer `NY`; pages 2-4 merge), PA Form PA-40 (issuer `PA`; Sides 1-2
-merge as form `PA-PA40`), the Social
+merge as form `PA-PA40`), IL Form IL-1040 (issuer `IL`; front and back merge as form
+`IL-IL1040`, the back's year read from its revision date R-12/25), the Social
 Security Statement (monthly estimates at 62, 67 and 70, tax year = statement year),
 1099-NEC, 1099-K, 1098, 5498, 5498-SA and 1099-SA. A template may name a literal
 `issuer` for the taxpayer's own documents instead of a payer regex, and the line
@@ -984,6 +985,45 @@ and its Schedule SP from the same engine run as the federal return.
   income (7), gambling winnings (8), the prior-year credit (14), lines 16-17, the
   resident credit (22), Schedule OC, penalties and interest (27, REV-1630) and
   donations; local earned income tax is a separate return.
+
+## The IL return: Form IL-1040 (unit 3d-9)
+
+For an Illinois full-year resident (`state: IL`), `planner draft` adds Form IL-1040
+from the same engine run as the federal return.
+
+- **Lines.** Line numbers, the Line 10a exemption chart and income exceptions, the
+  4.95% rate and the use tax (UT) table follow the 2025 IL-1040 and its
+  instructions (R-12/25). Every line is in whole dollars, rounded half up after
+  adding the cents, as the instructions' "Should I round?" asks.
+- **Income (lines 1-4).** Federal AGI (1040 line 11a), plus federally tax-exempt
+  interest and dividends (1040 line 2a), plus `il_additions` (Schedule M) you type.
+- **Subtractions (lines 5-9).** Line 5 takes out the retirement income and
+  taxable social security in federal AGI (1040 lines 4b, 5b and 6b); line 6 the
+  state refund on Schedule 1 line 1 (the draft notes that only an Illinois
+  overpayment belongs there); line 7 US bond interest (1099-INT box 3), the
+  engine's 529 subtraction and `il_subtractions` you type. Line 9 is never below 0.
+- **Exemptions (line 10).** $2,850 each for you and a joint spouse (the Line 10a
+  chart when someone can claim you), $1,000 for each 65-or-older box and $2,850
+  per dependent (Schedule IL-E/EITC); zero when federal AGI is over $250,000
+  ($500,000 joint), and the draft says so. The blind boxes (10c) are not drafted.
+- **Tax and credits.** Line 12 is line 11 x 4.95%; line 16 the engine's Schedule
+  ICR property tax and K-12 credits, capped at the tax on line 18.
+- **Use tax (line 21).** `il_use_tax` when typed; until then the UT Table's figure
+  for your federal AGI, and the draft says so. The line is never blank.
+- **Payments.** Line 25 is IL withholding from W-2 box 17 and 1099-R box 14
+  (`state_withheld`); line 26 the IL estimated payments from the bank export or
+  typed; lines 29 and 30 the engine's IL EITC (20% of the federal credit) and
+  Child Tax Credit (40% of the IL EITC with a dependent child under 12).
+- **The end.** The draft ends on line 32/37/38 (refund) or 33/41 (owed).
+- **Safe harbor.** Next year's IL safe harbor (IL-2210 Step 2) is lines 14 and 22
+  less the credits on lines 15, 16, 17, 28, 29 and 30, from the draft and from a
+  filed IL-1040 alike; withholding is a payment, not a credit.
+- **Check.** Line 9 is compared with the engine's IL base income (with the typed
+  Schedule M items), and line 14 with its tax. A gap past the rounding is printed
+  as `CHECK:`.
+- **Not drafted, and named.** Part-year and nonresident returns (Schedule NR),
+  lines 10c, 13, 15 (Schedule CR), 17 (1299-C), 20, 22, 27, 28, the IL-2210
+  penalty (34) and donations (35).
 
 ## The tax pack: one folder for the preparer (Phase 4l)
 
