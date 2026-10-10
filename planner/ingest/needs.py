@@ -932,6 +932,42 @@ NEEDS: tuple[Need, ...] = (
         asked=lambda s: s.get("state") == "GA",
     ),
     Need(
+        "mi_additions",
+        "MI additions to federal AGI (MI-1040 Schedule 1 lines 1, 3-8)",
+        "added to federal AGI on MI-1040 line 11 with the self-employment tax "
+        "deduction the planner counts (Schedule 1 line 2)",
+        "MI-1040 Schedule 1 additions: interest and dividends from other "
+        "states' bonds, the federal net operating loss deduction, ... (type 0 "
+        "when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "MI",
+    ),
+    Need(
+        "mi_subtractions",
+        "MI subtractions the draft does not already count (MI-1040 Schedule 1 "
+        "lines 12, 13, 15, 18-22)",
+        "subtracted on MI-1040 line 13 with US obligations interest, military "
+        "retirement, taxable Social Security, Michigan tax refunds, Michigan 529 "
+        "contributions, the Michigan Standard Deduction and the retirement and "
+        "senior investment deductions",
+        "MI-1040 Schedule 1 lines 12, 13, 15 and 18-22 (the instruction book's "
+        "Schedule 1 lines; type 0 when none)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "MI",
+    ),
+    Need(
+        "mi_property_tax_credit",
+        "MI homestead property tax credit (MI-1040CR line 44 or MI-1040CR-2)",
+        "a refundable credit on MI-1040 line 26",
+        "your MI-1040CR (or MI-1040CR-2) line carried to MI-1040 line 26 "
+        "(type 0 when you do not claim it)",
+        "money",
+        unlocks=("State return draft",),
+        asked=lambda s: s.get("state") == "MI",
+    ),
+    Need(
         "nc_additions",
         "NC additions to federal AGI (D-400 Schedule S line 16)",
         "added to federal AGI on D-400 line 7",
