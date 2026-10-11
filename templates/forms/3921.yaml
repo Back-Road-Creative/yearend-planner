@@ -1,0 +1,17 @@
+# Form 3921 (Rev. April 2025), IRS box labels: an incentive stock option
+# exercised. The tax year is the exercise date's (box 2). Form 6251 line 2i
+# takes (box 4 - box 3) x box 5 (Pub. 525; planner.ingest.needs.iso_spread).
+# Prices per share print to four decimals. One form per exercise: the grant
+# and exercise dates join the issuer, so a second form is not a correction.
+form: "3921"
+years: [2025, 2026]
+match: ["3921", "Incentive Stock Option"]
+year_pattern: "\\b2 Date option exercised\\s*:?\\s*\\d{1,2}/\\d{1,2}/(20\\d\\d)"
+issuer_pattern: "transferor'?s name[^:\\n]*:\\s*([^\\n]+)"
+event:
+  granted: "\\b1 Date option granted\\s*:?\\s*(\\d{1,2}/\\d{1,2}/20\\d\\d)"
+  exercised: "\\b2 Date option exercised\\s*:?\\s*(\\d{1,2}/\\d{1,2}/20\\d\\d)"
+boxes:
+  "3": {label: "Exercise price per share", pattern: "\\b3 Exercise price per share\\s*:?\\s*\\$?\\s*([\\d,]*\\d(?:\\.\\d{1,4})?)", required: true}
+  "4": {label: "Fair market value per share on exercise date", pattern: "\\b4 Fair market value per share(?: on exercise date)?\\s*:?\\s*\\$?\\s*([\\d,]*\\d(?:\\.\\d{1,4})?)", required: true}
+  "5": {label: "No. of shares transferred", pattern: "\\b5 No\\.? of shares transferred\\s*:?\\s*([\\d,]*\\d(?:\\.\\d{1,4})?)", required: true}

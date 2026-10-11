@@ -157,6 +157,8 @@ class Household:
     unemployment: int = 0
     salt_refund: int = 0
     other_income: int = 0  # line 8z, 1099-MISC box 3 (unit 3e-2a)
+    # line 8k, stock option and ESPP income not on a W-2 (unit 3e-8)
+    stock_option_income: int = 0
     rental_income: int = 0  # Schedule E line 26 (unit 3e-2b)
     # Whether that is qualified business income (the rental_qbi answer): the
     # engine counts rental income as QBI unless told otherwise.
@@ -340,7 +342,12 @@ class Household:
                 person["rental_income_would_be_qualified"] = {y: False}
         # The engine leaves estate and trust income out of gross income and
         # takes only its loss (loss_ald), so a net gain is miscellaneous income.
-        misc = self.other_income + self.guaranteed_payments + max(self.trust_income, 0)
+        misc = (
+            self.other_income
+            + self.stock_option_income
+            + self.guaranteed_payments
+            + max(self.trust_income, 0)
+        )
         if misc:  # on top of any other miscellaneous income
             person["miscellaneous_income"] = {
                 y: misc + self.other.get("miscellaneous_income", 0)

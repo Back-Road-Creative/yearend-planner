@@ -52,6 +52,8 @@ INFO = (
     "1099-G",
     "1099-C",
     "1099-MISC",
+    "3921",
+    "3922",
     "5498",
     "5498-SA",
     "1095-A",
@@ -59,8 +61,9 @@ INFO = (
     "1098-T",
     "SSA-1099",
 )
-# A one-time event: last year's form does not mean another this year.
-ONCE = ("1099-C",)
+# A one-time event: last year's form does not mean another this year (an
+# option exercised or ESPP shares bought, Forms 3921 and 3922, IRC 6039).
+ONCE = ("1099-C", "3921", "3922")
 # Month and day the issuer must furnish it (IRC 6041-6050 and the 1095-A rule
 # in 36B(f)(3)); a broker's consolidated statement has until February 15 (IRC
 # 6045(b)), so dividends and interest use the later date and nothing is called
@@ -91,6 +94,8 @@ WHERE = {
     "SSA-1099": DOCS["ssa_1099"].path,
     "1099-G": "the state agency's website (unemployment or tax department: "
     "1099-G lookup)",
+    "3921": DOCS["equity"].path,
+    "3922": DOCS["equity"].path,
     "1099-C": "the creditor's mail or online account (a settled or forgiven debt)",
     "1099-MISC": "the payer's mail or online account (a tenant's or licensee's "
     "rent or royalty, a prize or other payment)",

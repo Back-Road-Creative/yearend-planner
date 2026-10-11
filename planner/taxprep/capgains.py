@@ -9,6 +9,14 @@ broker reports wash sales only inside its own account, so its 1099-B figure can
 differ; the difference is named. When no lots are on file the 1099-B summaries go
 straight onto Schedule D lines 1a and 8a (basis reported, no adjustments).
 
+Employee stock (unit 3e-8): for options granted from 2014 on, the broker's basis
+leaves out the income already taxed as wages or on Schedule 1 line 8k (Pub.
+525). The typed ``equity_basis_short`` and ``equity_basis_long`` are that
+income; each is an 8949 row with code B and a negative column (g) adjustment
+(Form 8949 instructions). With lots on file it is a row of its own; with only
+the 1099-B summaries that term's totals move onto the code B row, so Schedule D
+takes line 1b or 8b in place of 1a or 8a.
+
 A lot whose symbol is on the typed ``collectibles`` list (a bullion trust, say)
 carries code C. When Schedule D lines 15 and 16 are both gains, line 18 is the
 28% Rate Gain Worksheet (collectibles lots in Part II, 1099-DIV box 2d, K-1
@@ -56,6 +64,8 @@ LABELS = {
     "19": "Unrecaptured section 1250 gain (its worksheet, line 18)",
 }
 CARRYOVER = {"6": "st_loss_carryover", "14": "lt_loss_carryover"}
+# (8949 box, 1099-B summary prefix, typed key) for employee stock (unit 3e-8)
+EQUITY = (("A", "st", "equity_basis_short"), ("D", "lt", "equity_basis_long"))
 
 
 @dataclass(frozen=True)
@@ -253,11 +263,34 @@ def _lines(
         return round(sum(f.value for f in b if f.box == box), 2)
 
     issuers = ", ".join(sorted({f.issuer for f in b}))
-    if cg.lots:
-        for line, box in (("1b", "A"), ("8b", "D")):
-            if any(lt.box == box for lt in cg.lots):
-                cg.lines[line] = cg.totals(box)[3]
-                cg.sources[line] = f"Form 8949 box {box}"
+    lots = bool(cg.lots)
+    for box, pre, key in EQUITY:
+        comp = round(float(str(typed.get(key) or 0)), 2)
+        if not comp:
+            continue
+        moved = not lots and bool(b)
+        cg.lots.append(
+            Lot(
+                box,
+                f"{'1099-B total' if moved else 'employee stock'}: {key} (typed)",
+                "VARIOUS",
+                "VARIOUS",
+                summary(f"{pre}_proceeds") if moved else 0.0,
+                summary(f"{pre}_basis") if moved else 0.0,
+                "B",
+                -comp,
+                "",
+            )
+        )
+        cg.notes.append(
+            f"Form 8949 box {box}, code B: {comp:,.2f} of employee stock income "
+            f"the 1099-B basis leaves out (Pub. 525), typed in {key}"
+        )
+    for line, box in (("1b", "A"), ("8b", "D")):
+        if any(lt.box == box for lt in cg.lots):
+            cg.lines[line] = cg.totals(box)[3]
+            cg.sources[line] = f"Form 8949 box {box}" + ("" if lots else ", code B")
+    if lots:
         if b:
             lots_p = round(sum(lt.proceeds for lt in cg.lots), 2)
             form_p = round(summary("st_proceeds") + summary("lt_proceeds"), 2)
@@ -266,7 +299,7 @@ def _lines(
                     f"lot proceeds {lots_p:,.2f} vs 1099-B proceeds {form_p:,.2f} "
                     f"({issuers}); a sale may be missing from the lots CSV"
                 )
-            ours = round(sum(lt.adjustment for lt in cg.lots), 2)
+            ours = round(sum(lt.adjustment for lt in cg.lots if "W" in lt.code), 2)
             theirs = summary("wash_sale")
             if abs(ours - theirs) > 1:
                 cg.notes.append(
@@ -274,7 +307,9 @@ def _lines(
                     "1099-B; the broker sees only its own account"
                 )
     elif b:
-        for line, pre in (("1a", "st"), ("8a", "lt")):
+        for line, pre, onto in (("1a", "st", "1b"), ("8a", "lt", "8b")):
+            if onto in cg.lines:  # the totals are on the code B row
+                continue
             cg.lines[line] = round(
                 summary(f"{pre}_proceeds") - summary(f"{pre}_basis"), 2
             )

@@ -79,6 +79,11 @@ foreign_tax_credit:
   evidence: implemented
   tests: ["tests/test_form1116.py"]
   note: "Form 1116 (unit 3e-7), passive category income in one column (a fund's foreign income is totaled): foreign tax from 1099-DIV box 7 and 1099-INT box 6; $300 or less ($600 joint) with no carryover takes the election (Schedule 3 line 1, no form); otherwise lines 1a-35 from the typed foreign_source_income, foreign_qualified_dividends and foreign_tax_carryover, line 3a the standard deduction or the real estate taxes' share of capped SALT (CHECK), 3e = 1040 line 9, 4a by the home mortgage worksheet over $5,000, line 18 = taxable income + Sch 1-A line 37, the qualified dividend adjustment (0.4054 / 0.5405) with the Worksheet for Line 18 or the adjustment exception, whichever credit is larger; the credit reprices the engine and the 2441, 8863, 8880 and 8812 limits. Not drafted, named: other categories, K-1/K-3 foreign tax, foreign capital gains (Worksheets A and B), lines 2, 5, 12, 13, 16, 22, 34, the asset method for 4b, Schedules B and C (Form 1116)"
+equity_pay:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_equity_pay.py"]
+  note: "Equity pay (unit 3e-8): Forms 3921 and 3922 read by templates 3921.yaml and 3922.yaml (four-decimal prices per share) and W-2 box 12 code V; the Needed panel's iso_amt_adjustment comes from Form 3921 (box 4 - box 3) x box 5 (Pub. 525), stock_option_income is Schedule 1 line 8k (a disqualifying ISO sale or the ordinary part of an ESPP sale, typed with the Pub. 525 rules named), and equity_basis_short/long are Form 8949 code B rows with a negative adjustment (the 1099-B totals move to line 1b or 8b with only summaries). Form 6251 lines 1a-11 from the draft (1a = line 14 - Sch 1-A line 37, 2a the Schedule A taxes or the standard deduction, 2i, the separate-return line 4 rule, the exemption phase-out, 26%/28%, line 8 = Sch 3 line 1), checked against the engine, which now carries the ISO adjustment and the Schedule 1-A add-back. Not drafted, named: lines 2b-2h and 2j-3, Part III lines 12-40, the AMT Form 1116, Form 8801"
 earned_income_credit:
   status: verified
   evidence: implemented

@@ -1,0 +1,20 @@
+# Form 3922 (Rev. April 2025), IRS box labels: stock bought through an employee
+# stock purchase plan. The tax year is the exercise date's (box 2). Nothing is
+# taxed until the shares are sold; the sale's ordinary income (Pub. 525) is the
+# typed stock_option_income. Prices per share print to four decimals.
+# One form per purchase: the grant and exercise dates join the issuer, so a
+# second form is not a correction.
+form: "3922"
+years: [2025, 2026]
+match: ["3922", "Employee Stock Purchase Plan"]
+year_pattern: "\\b2 Date option exercised\\s*:?\\s*\\d{1,2}/\\d{1,2}/(20\\d\\d)"
+issuer_pattern: "corporation'?s name[^:\\n]*:\\s*([^\\n]+)"
+event:
+  granted: "\\b1 Date option granted\\s*:?\\s*(\\d{1,2}/\\d{1,2}/20\\d\\d)"
+  exercised: "\\b2 Date option exercised\\s*:?\\s*(\\d{1,2}/\\d{1,2}/20\\d\\d)"
+boxes:
+  "3": {label: "Fair market value per share on grant date", pattern: "\\b3 Fair market value per share(?: on grant date)?\\s*:?\\s*\\$?\\s*([\\d,]*\\d(?:\\.\\d{1,4})?)", required: true}
+  "4": {label: "Fair market value per share on exercise date", pattern: "\\b4 Fair market value per share(?: on exercise date)?\\s*:?\\s*\\$?\\s*([\\d,]*\\d(?:\\.\\d{1,4})?)", required: true}
+  "5": {label: "Exercise price paid per share", pattern: "\\b5 Exercise price paid per share\\s*:?\\s*\\$?\\s*([\\d,]*\\d(?:\\.\\d{1,4})?)", required: true}
+  "6": {label: "No. of shares transferred", pattern: "\\b6 No\\.? of shares transferred\\s*:?\\s*([\\d,]*\\d(?:\\.\\d{1,4})?)", required: true}
+  "8": {label: "Exercise price per share as if exercised on the grant date", pattern: "\\b8 Exercise price per share determined as if the option was exercised on the date shown in box 1\\s*:?\\s*\\$?\\s*([\\d,]*\\d(?:\\.\\d{1,4})?)"}
