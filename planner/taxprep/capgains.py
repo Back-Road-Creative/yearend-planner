@@ -23,6 +23,7 @@ from planner.ingest.needs import MANUAL_VALUES, load_manual, need_values
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import washsale
+from planner.taxprep import k1
 
 FORM = "SCH-D"
 ISSUER = "planner"
@@ -30,10 +31,12 @@ NOT_REPORTED = ("trad_ira", "inherited_ira", "roth", "hsa")
 LABELS = {
     "1a": "Short-term, 1099-B basis reported, no adjustments",
     "1b": "Short-term, Form 8949 box A",
+    "5": "Net short-term gain or loss from Schedules K-1",
     "6": "Short-term loss carryover",
     "7": "Net short-term gain or loss",
     "8a": "Long-term, 1099-B basis reported, no adjustments",
     "8b": "Long-term, Form 8949 box D",
+    "12": "Net long-term gain or loss from Schedules K-1",
     "13": "Capital gain distributions",
     "14": "Long-term loss carryover",
     "15": "Net long-term gain or loss",
@@ -265,6 +268,16 @@ def _lines(
     if dist:
         cg.lines["13"] = round(sum(f.value for f in dist), 2)
         cg.sources["13"] = "1099-DIV box 2a (" + ", ".join(f.issuer for f in dist) + ")"
+    k1s = typed.get("k1s")
+    for line, word in (("5", "stgain"), ("12", "ltgain")):
+        got = [
+            i
+            for i in k1.portfolio(k1s if isinstance(k1s, list) else [])
+            if i[0] == word
+        ]
+        if got:
+            cg.lines[line] = round(sum(a for _, _, a, _ in got), 2)
+            cg.sources[line] = "; ".join(f"{p} {s}" for _, p, _, s in got)
     for line, key in CARRYOVER.items():
         value = carried.get(key)
         if value is not None and (float(str(value)) or key in typed):
@@ -274,12 +287,12 @@ def _lines(
     if not cg.lines:
         return
     get = cg.lines.get
-    cg.lines["7"] = round(get("1a", 0.0) + get("1b", 0.0) + get("6", 0.0), 2)
-    cg.lines["15"] = round(
-        get("8a", 0.0) + get("8b", 0.0) + get("13", 0.0) + get("14", 0.0), 2
-    )
+    cg.lines["7"] = round(sum(get(k, 0.0) for k in ("1a", "1b", "5", "6")), 2)
+    cg.lines["15"] = round(sum(get(k, 0.0) for k in ("8a", "8b", "12", "13", "14")), 2)
     cg.lines["16"] = round(cg.lines["7"] + cg.lines["15"], 2)
-    cg.sources.update({"7": "1a + 1b + 6", "15": "8a + 8b + 13 + 14", "16": "7 + 15"})
+    cg.sources.update(
+        {"7": "1a + 1b + 5 + 6", "15": "8a + 8b + 12 + 13 + 14", "16": "7 + 15"}
+    )
     cg.lines = {k: cg.lines[k] for k in LABELS if k in cg.lines}
 
 

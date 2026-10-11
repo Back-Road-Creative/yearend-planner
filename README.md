@@ -68,7 +68,7 @@ part of a state refund by the instructions' worksheet (line 1) and canceled debt
 8c), with their withholding (unit 3e-1). Form 1099-MISC box 3 is other income on
 Schedule 1 line 8z, and its boxes 4 and 16 are withholding (unit 3e-2a). Schedule E
 Part I drafts rentals and royalties, applies the vacation-home rules (Pub. 527) and
-the Form 8582 special allowance, and carries line 26 to Schedule 1 line 5; rental income is QBI only when `rental_qbi` is yes (unit 3e-2b). Schedules K-1 from partnerships, S corporations and trusts (`k1s`) are drafted on Schedule E Parts II and III with one Form 8582 share across rentals and K-1s, and box 14 code A goes onto Schedule SE (unit 3e-3a).
+the Form 8582 special allowance, and carries line 26 to Schedule 1 line 5; rental income is QBI only when `rental_qbi` is yes (unit 3e-2b). Schedules K-1 from partnerships, S corporations and trusts (`k1s`) are drafted on Schedule E Parts II and III with one Form 8582 share across rentals and K-1s, and box 14 code A goes onto Schedule SE (unit 3e-3a). Their portfolio boxes (interest, dividends, royalties, short- and long-term gains) go to Schedules B, E line 4 and D lines 5 and 12 (unit 3e-3b).
 `planner separate` prices a joint couple's two married-filing-separately returns, each
 on that spouse's own documents, against the joint return (unit 3b-2; not in a
 community property state). Filing as married filing separately stays

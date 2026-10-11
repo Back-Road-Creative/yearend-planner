@@ -1441,7 +1441,12 @@ NEEDS: tuple[Need, ...] = (
         "otherrental (box 3, or 1041 box 8), guaranteed (1065 box 4c), "
         "section179 (1065 box 12, 1120-S box 11), se (1065 box 14 code A), "
         "portfolio (1041 box 5), deductions (1041 box 9) and the section 199A "
-        "statement's qbi, w2wages and ubia. Start with spouse when the "
+        "statement's qbi, w2wages and ubia; and the portfolio boxes interest "
+        "(1065 box 5, 1120-S 4, 1041 1), dividends and qualified (1065 6a and "
+        "6b, 1120-S 5a and 5b, 1041 2a and 2b), royalties (1065 box 7, 1120-S "
+        "6), stgain and ltgain (1065 boxes 8 and 9a, 1120-S 7 and 8a, 1041 3 "
+        "and 4a), which go to Schedules B, E line 4 and D lines 5 and 12, on "
+        "top of the 1099s. Start with spouse when the "
         "self-employment earnings are your spouse's. Example: " + k1.EXAMPLE + ". "
         "Type none if there are none",
         "k1s",
