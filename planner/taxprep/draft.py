@@ -26,7 +26,15 @@ from planner.ingest.needs import need_values, schedule_b_required
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
-from planner.taxprep import capgains, d400, f8582, hsa, sche, schedule_c, statereturn
+from planner.taxprep import (
+    capgains,
+    d400,
+    f8582,
+    hsa,
+    sche,
+    schedule_c,
+    statereturn,
+)
 from planner.taxprep.expected import inventory
 
 ENGINE = (
@@ -647,19 +655,28 @@ def build(lay: Layout, year: int) -> Draft:
                 f"planner categorize --year {year})"
             )
     sp_profit, sp_src = v["self_employment_income@spouse"], origin("spouse_se_income")
-    # Schedule SE line 2 adds K-1 (Form 1065) box 14 code A (unit 3e-3a)
+    # Schedule SE line 2 adds K-1 (Form 1065) box 14 code A (unit 3e-3a);
+    # line 1a takes the owner's Schedule F line 34s (unit 3e-5)
     k1_se = (hh.k1_se, hh.spouse.k1_se if hh.spouse is not None else 0)
+    farm = (hh.farm_income, hh.spouse.farm_income if hh.spouse is not None else 0)
     owners = [
-        (who, form, gain + extra, src + (" + K-1 box 14 code A" if extra else ""), base)
-        for who, form, gain, src, base, extra in (
-            ("you", "Sch SE", profit, profit_src, ss_wages, k1_se[0]),
-            ("spouse", SCH_SE_SPOUSE, sp_profit, sp_src, ss_spouse, k1_se[1]),
+        (
+            who,
+            form,
+            gain + extra + crop,
+            src + (" + K-1 box 14 code A" if extra else ""),
+            base,
+            crop,
         )
-        if gain + extra
+        for who, form, gain, src, base, extra, crop in (
+            ("you", "Sch SE", profit, profit_src, ss_wages, k1_se[0], farm[0]),
+            ("spouse", SCH_SE_SPOUSE, sp_profit, sp_src, ss_spouse, k1_se[1], farm[1]),
+        )
+        if gain + extra or crop
     ]
     ses = [
-        (form, *_schedule_se(sheet, d, v, who, form, gain, src, base))
-        for who, form, gain, src, base in owners
+        (form, *_schedule_se(sheet, d, v, who, form, gain - crop, src, base, crop))
+        for who, form, gain, src, base, crop in owners
     ]
     # The EIC's Worksheet B: each Schedule SE's form, profit and line 13.
     eic_se = [(s[0], o[2], s[2]) for s, o in zip(ses, owners, strict=True)]
@@ -672,7 +689,7 @@ def build(lay: Layout, year: int) -> Draft:
     se_src = " + ".join(s[0] for s in ses)
 
     # Schedule 1: lines 1 and 7 (unit 3e-1) and 8c only when there is any
-    s1_1 = s1_5 = s1_7 = s1_9 = 0.0
+    s1_1 = s1_5 = s1_6 = s1_7 = s1_9 = 0.0
     if inp.schedule_e is not None:
         for ln, label, value, src in inp.schedule_e.lines:
             add("Sch E", ln, label, value, src)
@@ -702,6 +719,19 @@ def build(lay: Layout, year: int) -> Draft:
             e_total,
             e_src,
         )
+    if inp.schedule_f is not None:
+        for form, ln, label, value, src in inp.schedule_f.lines:
+            add(form, ln, label, value, src)
+        owned = hh.farm_income + (hh.spouse.farm_income if hh.spouse else 0)
+        if owned:
+            forms = sorted({f for f, ln, *_ in inp.schedule_f.lines if ln == "34"})
+            s1_6 = add(
+                "Sch 1",
+                "6",
+                "Farm income or (loss)",
+                owned,
+                " + ".join(f"{f} line 34" for f in forms),
+            )
     if hh.salt_refund:
         s1_1 = add(
             "Sch 1",
@@ -759,14 +789,21 @@ def build(lay: Layout, year: int) -> Draft:
         )
     used = [
         ln
-        for ln, x in (("1", s1_1), ("3", s1_3), ("5", s1_5), ("7", s1_7), ("9", s1_9))
+        for ln, x in (
+            ("1", s1_1),
+            ("3", s1_3),
+            ("5", s1_5),
+            ("6", s1_6),
+            ("7", s1_7),
+            ("9", s1_9),
+        )
         if x
     ] or ["3"]
     s1_10 = add(
         "Sch 1",
         "10",
         "Additional income",
-        s1_1 + s1_3 + s1_5 + s1_7 + s1_9,
+        s1_1 + s1_3 + s1_5 + s1_6 + s1_7 + s1_9,
         " + ".join(used) if len(used) > 1 else f"line {used[0]}",
     )
     named = add(
@@ -1953,19 +1990,31 @@ def _schedule_se(
     profit: float,
     profit_src: str,
     ss_wages: float | None,
+    farm: float = 0.0,
 ) -> tuple[float, float]:
     """One person's Schedule SE Part I, line by line (``who`` is you or spouse;
     each spouse files their own: unit 3a-5): (self-employment tax on line 12,
     the deduction for half of it on line 13). The Social Security wage base,
     the rates and the $400 floor are the engine's own parameters; the engine's
     tax for that person is checked against line 12. ``ss_wages`` is the sum of
-    their W-2 boxes 3 and 7 on file, or None."""
+    their W-2 boxes 3 and 7 on file, or None; ``farm`` their Schedule F line
+    34s (line 1a)."""
     p = tax.self_employment_parameters(d.year)
     add = sheet.add
 
     share = p["net_earnings_share"]
     l2 = add(form, "2", "Net profit or (loss) from Schedule C", profit, profit_src)
-    l3 = add(form, "3", "Combine lines 1a, 1b and 2", l2, "line 2 (no farm profit)")
+    if farm:
+        l1a = add(
+            form,
+            "1a",
+            "Net farm profit or (loss) from Schedule F",
+            farm,
+            "Sch F line 34",
+        )
+        l3 = add(form, "3", "Combine lines 1a, 1b and 2", l1a + l2, "1a + 2")
+    else:
+        l3 = add(form, "3", "Combine lines 1a, 1b and 2", l2, "line 2 (no farm profit)")
     l4a = add(
         form,
         "4a",

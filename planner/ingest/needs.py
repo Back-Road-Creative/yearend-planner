@@ -32,7 +32,7 @@ from planner.engine.household import PERSON_INPUTS, PERSON_SAVERS
 from planner.ingest.derive import county_from_zip
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.taxprep import k1, refund, sche, statereturn
+from planner.taxprep import k1, refund, sche, schf, statereturn
 
 PROFILE = "profile"
 PRIOR = "prior"  # the year before the plan year (the filed return)
@@ -72,7 +72,7 @@ class Need:
     why: str
     source: str  # the document that supplies it, with where to get it
     kind: str  # date | int | money | fraction | enum | monthly | dependents |
-    # education | rentals | str
+    # education | rentals | k1s | farms | str
     scope: str = YEAR
     # (form, box) ledger lookups, summed; a "-" before the box subtracts it
     boxes: tuple[tuple[str, str], ...] = ()
@@ -1457,6 +1457,36 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
     ),
     Need(
+        "farms",
+        "Farming (Schedule F), or none",
+        "Schedule 1 line 6 and Schedule SE line 1a: each farm's gross income "
+        "less its expenses, with the passive-loss limit when you did not "
+        "materially participate",
+        "your farm books, sales receipts and expense records; Form 1099-PATR "
+        "(cooperative distributions), 1099-G or CCC-1099-G (agricultural "
+        "program payments, CCC loans), 1099-MISC (crop insurance); last "
+        "year's Form 4562 for depreciation. One entry a farm, separated by "
+        "semicolons: farm, then any of spouse (your spouse's farm), accrual "
+        "(the accrual method, Part III), nonmaterial (you did not materially "
+        "participate: line E No) and notatrisk (line 36b), then each line "
+        "as a word and amount. Income, cash method: resale and basis (lines "
+        "1a, 1b), raised (2), coop and cooptaxable (3a, 3b), program and "
+        "programtaxable (4a, 4b), cccelected (5a), cccforfeited and "
+        "ccctaxable (5b, 5c), cropins and cropinstaxable (6a, 6b), "
+        "deferredin (6d, crop insurance deferred from last year), custom "
+        "(7) and otherincome (8); accrual method: sales (37), coop, "
+        "program, ccc words and cropins (38-41), custom, otherincome, and "
+        "the inventory words begin, purchased and end (45, 46, 48). "
+        "Expenses (lines 10-32): " + ", ".join(schf.EXPENSES) + "; "
+        "conservationcarry is last year's conservation expense over the 25% "
+        "limit; prior, with nonmaterial, is the farm's prior-year unallowed "
+        "passive loss (last year's Form 8582 Part VII column (c)). A taxable "
+        "amount not typed is all of it. Example: " + schf.EXAMPLE + ". "
+        "Type none if there are none",
+        "farms",
+        unlocks=("MAGI headroom", "Draft 1040", "State return draft"),
+    ),
+    Need(
         "rental_active",
         "Did you actively participate in your rentals (yes or no)",
         "Form 8582 Part II's special allowance (up to $25,000, phased out "
@@ -2121,6 +2151,8 @@ def parse_value(need: Need, text: str) -> Any:
         return sche.parse(need.key, s)
     if need.kind == "k1s":
         return k1.parse(need.key, s)
+    if need.kind == "farms":
+        return schf.parse(need.key, s)
     if need.kind == "money":
         value = int(round(_number(need, s, "a dollar amount")))
         if value < 0 and need.key.removeprefix(SPOUSE) not in SIGNED:
