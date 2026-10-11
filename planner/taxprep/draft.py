@@ -26,7 +26,7 @@ from planner.ingest.needs import need_values, schedule_b_required
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
-from planner.taxprep import capgains, d400, hsa, schedule_c, statereturn
+from planner.taxprep import capgains, d400, hsa, sche, schedule_c, statereturn
 from planner.taxprep.expected import inventory
 
 ENGINE = (
@@ -234,6 +234,20 @@ def _cited(facts: list[db.FactRow], pairs: tuple[tuple[str, str], ...]) -> str:
         }
     )
     return ", ".join(hits) if hits else "no form shows any"
+
+
+def _misc_check(d: Draft, facts: list[db.FactRow], sch: sche.Result) -> None:
+    """1099-MISC boxes 1 and 2 against the rents and royalties typed: a payer's
+    form showing more than Schedule E lines 23a or 23b reports is a CHECK."""
+    typed = {ln: value for ln, _, value, _ in sch.lines}
+    for box, line, what in (("1", "23a", "rents"), ("2", "23b", "royalties")):
+        shown = _sum(facts, (("1099-MISC", box),))
+        if shown > typed.get(line, 0.0) + ROUNDING:
+            d.notes.append(
+                f"CHECK: 1099-MISC box {box} shows {shown:,.2f} of {what} but "
+                f"Schedule E line {line} has {typed.get(line, 0.0):,.2f}; check "
+                "the rentals answer"
+            )
 
 
 class _Sheet:
@@ -656,7 +670,18 @@ def build(lay: Layout, year: int) -> Draft:
     se_src = " + ".join(s[0] for s in ses)
 
     # Schedule 1: lines 1 and 7 (unit 3e-1) and 8c only when there is any
-    s1_1 = s1_7 = s1_9 = 0.0
+    s1_1 = s1_5 = s1_7 = s1_9 = 0.0
+    if inp.schedule_e is not None:
+        for ln, label, value, src in inp.schedule_e.lines:
+            add("Sch E", ln, label, value, src)
+        s1_5 = add(
+            "Sch 1",
+            "5",
+            "Rental real estate, royalties, partnerships, S corporations, trusts",
+            inp.schedule_e.total,
+            "Sch E line 26",
+        )
+        _misc_check(d, facts, inp.schedule_e)
     if hh.salt_refund:
         s1_1 = add(
             "Sch 1",
@@ -713,13 +738,15 @@ def build(lay: Layout, year: int) -> Draft:
             " + ".join(f"line {ln}" for ln, _ in s1_8),
         )
     used = [
-        ln for ln, x in (("1", s1_1), ("3", s1_3), ("7", s1_7), ("9", s1_9)) if x
+        ln
+        for ln, x in (("1", s1_1), ("3", s1_3), ("5", s1_5), ("7", s1_7), ("9", s1_9))
+        if x
     ] or ["3"]
     s1_10 = add(
         "Sch 1",
         "10",
         "Additional income",
-        s1_1 + s1_3 + s1_7 + s1_9,
+        s1_1 + s1_3 + s1_5 + s1_7 + s1_9,
         " + ".join(used) if len(used) > 1 else f"line {used[0]}",
     )
     named = add(
