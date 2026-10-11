@@ -7,12 +7,10 @@ dwelling is used as a home when personal days pass the greater of 14 and 10% of
 the fair rental days (Schedule E instructions, line 2); a home rented under 15
 days reports neither rents nor expenses, and one rented 15 days or more limits
 the operating expenses and depreciation to the rents (Worksheet 5-1). A rental
-not used as a home is passive: a net loss is allowed by the 2025 Form 8582
-Part II special allowance (lines 4-11, $25,000 less half of modified AGI over
-$100,000; $12,500 and $50,000 married filing separately) when rentals with
-active participation are the only passive activity and the rest of the
-instructions' conditions hold, otherwise from the Form 8582 you type. A
-royalty, or a dwelling used as a home, is not passive (line 22 instructions).
+not used as a home is passive: its loss, and its prior-year unallowed loss,
+is limited by Form 8582 (planner.taxprep.f8582), each property its own
+activity, and line 22 takes what Part VIII allows. A royalty, or a dwelling
+used as a home, is not passive (line 22 instructions).
 
 Each property is typed as ``rental rents 18000 mortgage 4000 taxes 2000
 expenses 3000 depreciation 3000 days 300 personal 0`` or ``royalty royalties
@@ -20,13 +18,16 @@ expenses 3000 depreciation 3000 days 300 personal 0`` or ``royalty royalties
 the order typed. ``expenses`` is the rest of lines 5-11, 13-15, 17 and 19 as
 one figure (line 19 here); ``direct`` is a rental-only expense (advertising,
 agent fees) that is not split by days; ``carryover`` and ``carrydep`` are last
-year's Worksheet 5-1 lines 7a and 7b.
+year's Worksheet 5-1 lines 7a and 7b; ``prior`` is the property's prior-year
+unallowed passive loss (last year's Form 8582 Part VII column (c)).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+
+from planner.taxprep import f8582
 
 FORM = "Sch E"
 EXAMPLE = (
@@ -43,6 +44,7 @@ WORDS = {
         "depreciation",
         "carryover",
         "carrydep",
+        "prior",
         "days",
         "personal",
     ),
@@ -51,9 +53,6 @@ WORDS = {
 REQUIRED = {"rental": ("rents", "days", "personal"), "royalty": ("royalties",)}
 LETTERS = "ABCDEFGHI"  # three properties to a page
 MONEY_MAX = 100_000_000
-# Form 8582 lines 5 and 8: (line 5, the line 8 cap), married filing separately
-# and living apart all year in the second entry.
-ALLOWANCE = {False: (150_000, 25_000), True: (75_000, 12_500)}
 
 
 def parse(key: str, s: str) -> list[dict[str, Any]]:
@@ -113,6 +112,11 @@ class Column:
     source: dict[str, str] = field(default_factory=dict)
     carry: tuple[float, float] = (0.0, 0.0)  # Worksheet 5-1 lines 7a, 7b
     personal: tuple[float, float] = (0.0, 0.0)  # personal mortgage, taxes
+    prior: float = 0.0  # prior-year unallowed passive loss
+
+    @property
+    def name(self) -> str:
+        return f"rental {self.letter}"
 
     @property
     def passive(self) -> bool:
@@ -178,6 +182,7 @@ def columns(entries: list[dict[str, Any]]) -> list[Column]:
         c = Column(letter, p["kind"])
         if c.kind == "rental":
             _rental(c, p)
+            c.prior = float(p.get("prior", 0))
         else:
             c.lines = {
                 "4": float(p["royalties"]),
@@ -197,7 +202,7 @@ def columns(entries: list[dict[str, Any]]) -> list[Column]:
 
 
 def passive_net(cols: list[Column]) -> float:
-    """Form 8582 line 1d for the rentals: their line 21s combined."""
+    """The passive rentals' line 21s combined, before prior-year losses."""
     return sum(c.net for c in cols if c.passive)
 
 
@@ -212,8 +217,6 @@ class Result:
     lines: list[tuple[str, str, float, str]]  # (line, label, value, source)
     total: float  # line 26, onto Schedule 1 line 5 (or line 41)
     notes: list[str]
-    ratio: float = 1.0  # the share of each passive loss allowed
-    ratio_src: str = ""
 
 
 LABELS = {
@@ -229,90 +232,27 @@ LABELS = {
 }
 
 
-def allowance(
-    cols: list[Column],
-    *,
-    magi: float,
-    separate: bool,
-    simple: str | None,
-    allowed: float | None,
-    k1_income: float = 0.0,
-    k1_losses: float = 0.0,
-) -> tuple[float, str, list[str]]:
-    """(The share of each passive loss Form 8582 allows, its source, notes).
-    Rental columns and K-1 passive items (planner.taxprep.k1) share one
-    allowance. ``simple`` is the rental_passive_simple answer and ``allowed``
-    the typed passive_loss_allowed: Form 8582's allowed losses in total
-    (Schedule E line 22, line 28 column (g) and line 33 column (c)). The
-    special allowance needs rentals to be the only passive activity, so a
-    K-1 passive item always takes the typed figure."""
+def activities(cols: list[Column], *, active: bool) -> list[f8582.Activity]:
+    """Each passive property as a Form 8582 activity: Part IV when you actively
+    participated (``active``), Part V otherwise."""
+    return [
+        f8582.Activity(
+            c.name,
+            f"Sch E, line 22{c.letter}",
+            income=max(c.net, 0.0),
+            loss=max(-c.net, 0.0),
+            prior=c.prior,
+            active=active,
+        )
+        for c in cols
+        if c.passive and (c.net or c.prior)
+    ]
+
+
+def schedule(cols: list[Column], allowed: dict[str, float]) -> Result:
+    """Lines 3-26. ``allowed`` is each passive property's loss Form 8582
+    allows (planner.taxprep.f8582.Result.allowed), by its name."""
     notes: list[str] = []
-    pnet = passive_net(cols)
-    rental_losses = -sum(c.net for c in cols if c.passive and c.net < 0)
-    losses = rental_losses + k1_losses
-    income = rental_losses + pnet + k1_income  # Form 8582 lines 1a + 2a + 3a
-    if income >= losses:
-        return 1.0, "passive income covers the passive losses", notes
-    k1 = bool(k1_income or k1_losses)
-    if simple == "yes" and not k1:
-        five, cap = ALLOWANCE[separate]
-        line8 = min(max(five - max(magi, 0.0), 0.0) * 0.5, cap)
-        allow = income + min(-pnet, line8)  # Form 8582 lines 9 + 10
-        src = (
-            f"Form 8582 lines 9 + 10: the special allowance "
-            f"{min(-pnet, line8):,.0f} (50% of {five:,} less modified AGI "
-            f"{magi:,.0f}, at most {cap:,}) + passive income {income:,.0f}"
-        )
-    elif allowed is not None and (k1 or simple == "no"):
-        allow = min(float(allowed), losses)
-        src = "passive_loss_allowed (Form 8582)"
-        if float(allowed) > losses:
-            notes.append(
-                f"CHECK passive_loss_allowed {float(allowed):,.0f} is more than "
-                f"the passive losses {losses:,.0f}; the draft takes the losses"
-            )
-    else:
-        allow = income
-        src = "passive income only (the passive-loss answers are missing)"
-        notes.append(
-            "Schedule E allows a passive loss only up to the passive income "
-            "until "
-            + (
-                "passive_loss_allowed (Form 8582) is answered"
-                if k1
-                else "rental_passive_simple (and, when no, passive_loss_allowed "
-                "from Form 8582) is answered"
-            )
-        )
-    if losses - allow > 0.005:
-        notes.append(
-            f"Schedule E: {losses - allow:,.2f} of passive loss is not allowed "
-            "this year; it carries to next year's Form 8582 as a prior-year "
-            "unallowed loss (lines 1c, 2c, 3c)"
-        )
-    return allow / losses, src, notes
-
-
-def schedule(
-    cols: list[Column],
-    *,
-    magi: float,
-    separate: bool,
-    simple: str | None,
-    allowed: float | None,
-    k1_income: float = 0.0,
-    k1_losses: float = 0.0,
-) -> Result:
-    """Lines 3-26, with the passive-loss share from ``allowance``."""
-    ratio, ratio_src, notes = allowance(
-        cols,
-        magi=magi,
-        separate=separate,
-        simple=simple,
-        allowed=allowed,
-        k1_income=k1_income,
-        k1_losses=k1_losses,
-    )
     lines: list[tuple[str, str, float, str]] = []
     total_in = total_out = 0.0
     for c in cols:
@@ -332,18 +272,20 @@ def schedule(
                 lines.append((ln + c.letter, LABELS[ln], c.lines[ln], src))
         if c.net >= 0:
             total_in += c.net
-            continue
-        if c.passive:
-            l22 = c.net * ratio
+        if c.passive and (c.net < 0 or c.prior):
+            l22 = -allowed.get(c.name, 0.0)
             lines.append(
                 (
                     "22" + c.letter,
                     LABELS["22"],
                     l22,
-                    f"{ratio_src}, by its share of the losses",
+                    "Form 8582 Part VIII column (c)"
+                    + (" (with its prior-year loss)" if c.prior else ""),
                 )
             )
             total_out += l22
+        elif c.net >= 0:
+            continue
         elif c.kind == "rental":  # a home's loss is not passive
             lines.append(
                 ("22" + c.letter, LABELS["22"], c.net, "line 21 (not passive: a home)")
@@ -397,4 +339,4 @@ def schedule(
         notes.append(
             "Schedule E: properties past C go on a second page (lines 1-22 only)"
         )
-    return Result(lines, total, notes, ratio, ratio_src)
+    return Result(lines, total, notes)

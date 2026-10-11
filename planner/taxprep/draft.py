@@ -26,7 +26,7 @@ from planner.ingest.needs import need_values, schedule_b_required
 from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
-from planner.taxprep import capgains, d400, hsa, sche, schedule_c, statereturn
+from planner.taxprep import capgains, d400, f8582, hsa, sche, schedule_c, statereturn
 from planner.taxprep.expected import inventory
 
 ENGINE = (
@@ -691,6 +691,9 @@ def build(lay: Layout, year: int) -> Draft:
             "26 + 32 + 37 (39, 40 not drafted)",
         )
         e_src = "Sch E line 41"
+    if inp.form_8582 is not None:
+        for ln, label, value, src in inp.form_8582.lines:
+            add(f8582.FORM, ln, label, value, src)
     if inp.schedule_e is not None or inp.schedule_k1 is not None:
         s1_5 = add(
             "Sch 1",
