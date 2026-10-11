@@ -128,7 +128,7 @@ TAX_KEYS = (
     "education",
     "rentals",
     "rental_passive_simple",
-    "rental_loss_allowed",
+    "passive_loss_allowed",
     "rental_qbi",
     "aotc_refundable_barred",
     "savers_barred",
@@ -506,7 +506,7 @@ def build(
             - fields.get("hsa_contribution", 0)
             - fields.get("se_health_premiums", 0)
         )
-        allowed = value.get("rental_loss_allowed")
+        allowed = value.get("passive_loss_allowed")
         out.schedule_e = sche.schedule(
             cols,
             magi=magi,
