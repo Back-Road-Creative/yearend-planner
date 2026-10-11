@@ -124,6 +124,7 @@ WITHHELD = (
     ("1099-NEC", "4"),
     ("1099-K", "4"),
     ("1099-B", "4"),
+    ("1099-DA", "4"),
     ("SSA-1099", "6"),
     ("1099-G", "4"),
     ("1099-MISC", "4"),
@@ -511,7 +512,10 @@ def build(lay: Layout, year: int) -> Draft:
         facts = db.facts_for(conn, year)
         pays = esttax.payments(conn, lay, year)
         typed = need_values(
-            conn, lay, year, (*state_keys, "foreign_accounts", *f1116.KEYS)
+            conn,
+            lay,
+            year,
+            (*state_keys, "foreign_accounts", "digital_asset_activity", *f1116.KEYS),
         )
         cg = capgains.build(conn, lay, year)
         h = hsa.build(conn, lay, year)
@@ -936,6 +940,22 @@ def build(lay: Layout, year: int) -> Draft:
 
     # Form 1040 income
     f = "1040"
+    said = typed["digital_asset_activity"]
+    if said in ("yes", "no"):
+        word = "Yes" if said == "yes" else "No"
+        add(
+            f,
+            "DA",
+            f"Digital assets received, sold or exchanged: {word}",
+            0.0,
+            "Needed panel digital_asset_activity",
+        )
+    else:
+        d.unknown.append("digital_asset_activity")
+        d.notes.append(
+            "Form 1040's digital assets question (page 1) is unanswered: type "
+            "digital_asset_activity on the Needed panel"
+        )
     wage_src = origin("wages")
     if care is not None and care.line26 > 0:
         add(
@@ -2596,9 +2616,9 @@ def _schedule_d(
 ) -> None:
     """Form 8949 rows, the Schedule D lines and, for a loss beyond the yearly
     limit, the carryover worksheet for next year."""
-    seen = {"A": 0, "D": 0}
+    seen: dict[str, int] = {}
     for lot in cg.lots:
-        seen[lot.box] += 1
+        seen[lot.box] = seen.get(lot.box, 0) + 1
         adj = f" +{lot.adjustment:,.2f}" if lot.adjustment else ""
         code = f"; code {lot.code}{adj}" if lot.code else ""
         sheet.add(

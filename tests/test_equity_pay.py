@@ -56,7 +56,7 @@ def test_templates_read_forms_3921_and_3922() -> None:
     assert _boxes(F3921) == (
         "3921",
         2025,
-        "Example Tech Inc (synthetic) (granted 03/01/2021, exercised 06/15/2025)",
+        "Example Tech Inc (synthetic) [granted 03/01/2021, exercised 06/15/2025]",
         {"3": 12.5, "4": 87.25, "5": 400.0},
     )
     form, year, _, boxes = _boxes(F3922)

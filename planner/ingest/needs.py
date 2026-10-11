@@ -30,6 +30,7 @@ from planner import states
 from planner.config import ASSUMPTION_FIELDS, load_assumptions, safe_load
 from planner.engine.household import PERSON_INPUTS, PERSON_SAVERS
 from planner.ingest.derive import county_from_zip
+from planner.ingest.pdf import base_issuer
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.taxprep import f4797, k1, refund, sche, schf, statereturn
@@ -1730,6 +1731,29 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("Schedule D", "Draft 1040"),
     ),
     Need(
+        "digital_asset_activity",
+        "A digital asset received, sold or exchanged this year (yes or no)",
+        "the Form 1040 page 1 digital assets question, answered on every return",
+        "your own records and any Form 1099-DA: cryptocurrency, stablecoins and "
+        "NFTs count",
+        "enum",
+        choices=("yes", "no"),
+        unlocks=("Draft 1040",),
+        derive_text=lambda config, conn, year, s: digital_activity(conn, year),
+    ),
+    Need(
+        "digital_assets",
+        "Symbols you sold that are digital assets, or none",
+        "Form 8949 boxes G-L: a digital asset sale goes on its own part of Form "
+        "8949 (a 1099-DA's asset already does)",
+        "the exchange's tax page or your wallet records: the symbols in the "
+        "realized-lots CSV that are cryptocurrency, stablecoins or NFTs, "
+        "separated by commas (BTC, ETH), or none",
+        "symbols",
+        asked=lambda s: s.get("digital_asset_activity") == "yes",
+        unlocks=("Schedule D", "Draft 1040"),
+    ),
+    Need(
         "business_sales",
         "Sales of business or rental property (Form 4797), or none",
         "Form 4797: a gain on property held more than 1 year is a section 1231 "
@@ -2119,6 +2143,20 @@ def iso_spread(conn: sqlite3.Connection, year: int) -> tuple[float | None, str]:
     return round(total, 2), (
         "Form 3921 (box 4 - box 3) x box 5: " + "; ".join(parts) + "; type a "
         "smaller figure if some of these shares were sold this year"
+    )
+
+
+def digital_activity(conn: sqlite3.Connection, year: int) -> tuple[str | None, str]:
+    """The 1040 digital assets question: yes when a Form 1099-DA (a broker's
+    digital asset sale) is on file for the year, else left to you."""
+    got = sorted({base_issuer(f.issuer) for f in db.facts_for(conn, year, "1099-DA")})
+    if got:
+        return "yes", "Form 1099-DA on file (" + ", ".join(got) + ")"
+    return None, (
+        "no Form 1099-DA on file: yes if you received a digital asset as a "
+        "reward, award or payment, or sold, exchanged or otherwise disposed of "
+        "one; only holding one, or buying one with dollars, is no (Form 1040 "
+        "instructions)"
     )
 
 

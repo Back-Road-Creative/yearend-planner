@@ -27,6 +27,19 @@ instructions. The section 1202 exclusion, Forms 4684, 6252, 6781 and 8824
 (28% worksheet lines 2-3) and Form 4797 (1250 worksheet lines 1-9) are named,
 not drafted.
 
+Digital assets (unit 3e-9): a broker reports each sale on its own Form
+1099-DA. A lot whose symbol is a 1099-DA's asset (box 1a or 1b) or on the
+typed ``digital_assets`` list goes in Form 8949 box G, H or I (short-term) or
+J, K or L (long-term), not A or D: G or J when a 1099-DA for that asset and
+sale date has box 2 (basis reported to the IRS) checked, H or K when it is
+blank, I or L when no 1099-DA reports the sale (Form 8949 instructions). Its
+box 1i is the wash sale loss disallowed (code W): the wash sale rule reaches
+only a digital asset that is also a security (Schedule D instructions), so no
+other digital lot is washed here. A 1099-DA no lot matches is a row of its own
+from boxes 1f and 1g, its term from box 6 or the checkbox letter; a blank box
+1g or an unknown term (code X) leaves the sale out, named. Schedule D lines 1b,
+2 and 3 total boxes A or G, H and I; lines 8b, 9 and 10 boxes D or J, K and L.
+
 The stored ``SCH-D`` facts feed the Needed panel's gains once the year has ended;
 until then the year-to-date estimate stands in.
 """
@@ -35,7 +48,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 
 from planner.ingest.needs import MANUAL_VALUES, load_manual, need_values
 from planner.ledger import db, portfolio
@@ -48,12 +61,16 @@ ISSUER = "planner"
 NOT_REPORTED = ("trad_ira", "inherited_ira", "roth", "hsa")
 LABELS = {
     "1a": "Short-term, 1099-B basis reported, no adjustments",
-    "1b": "Short-term, Form 8949 box A",
+    "1b": "Short-term, Form 8949 box A or G",
+    "2": "Short-term, Form 8949 box B or H",
+    "3": "Short-term, Form 8949 box C or I",
     "5": "Net short-term gain or loss from Schedules K-1",
     "6": "Short-term loss carryover",
     "7": "Net short-term gain or loss",
     "8a": "Long-term, 1099-B basis reported, no adjustments",
-    "8b": "Long-term, Form 8949 box D",
+    "8b": "Long-term, Form 8949 box D or J",
+    "9": "Long-term, Form 8949 box E or K",
+    "10": "Long-term, Form 8949 box F or L",
     "11": "Gain from Form 4797, Part I",
     "12": "Net long-term gain or loss from Schedules K-1",
     "13": "Capital gain distributions",
@@ -66,13 +83,36 @@ LABELS = {
 CARRYOVER = {"6": "st_loss_carryover", "14": "lt_loss_carryover"}
 # (8949 box, 1099-B summary prefix, typed key) for employee stock (unit 3e-8)
 EQUITY = (("A", "st", "equity_basis_short"), ("D", "lt", "equity_basis_long"))
+# Schedule D line -> the Form 8949 boxes it totals (2025 Schedule D)
+BOX_LINES = {
+    "1b": ("A", "G"),
+    "2": ("H",),
+    "3": ("I",),
+    "8b": ("D", "J"),
+    "9": ("K",),
+    "10": ("L",),
+}
+SHORT = ("A", "G", "H", "I")
+BOXES = {
+    "A": "short-term, basis reported to the IRS",
+    "D": "long-term, basis reported to the IRS",
+    "G": "short-term digital assets, 1099-DA basis reported to the IRS",
+    "H": "short-term digital assets, 1099-DA basis not reported",
+    "I": "short-term digital assets, no 1099-DA",
+    "J": "long-term digital assets, 1099-DA basis reported to the IRS",
+    "K": "long-term digital assets, 1099-DA basis not reported",
+    "L": "long-term digital assets, no 1099-DA",
+}
+# the "Applicable checkbox on Form 8949" letter -> term (X: the broker does not
+# know it; Form 8949 instructions)
+LETTER_TERM = {"G": "short", "H": "short", "J": "long", "K": "long"}
 
 
 @dataclass(frozen=True)
 class Lot:
     """One Form 8949 row; money in dollars, ``adjustment`` positive (column g)."""
 
-    box: str  # A (short-term) | D (long-term)
+    box: str  # a key of BOXES
     description: str
     acquired: str
     sold: str
@@ -106,6 +146,58 @@ class CapGains:
             round(sum(lt.adjustment for lt in mine), 2),
             round(sum(lt.gain for lt in mine), 2),
         )
+
+
+@dataclass
+class _Sale:
+    """One Form 1099-DA: one broker's sale of one digital asset."""
+
+    issuer: str
+    got: dict[str, float | str]
+    used: bool = False
+
+    def text(self, box: str) -> str:
+        return str(self.got.get(box) or "")
+
+    def money(self, box: str) -> float | None:
+        v = self.got.get(box)
+        return None if v is None else float(v)
+
+    @property
+    def names(self) -> set[str]:
+        return {self.text(b).upper() for b in ("1a", "1b")} - {""}
+
+    @property
+    def sold(self) -> str:
+        return _iso(self.text("1e"))
+
+    @property
+    def term(self) -> str | None:
+        said = self.text("6")
+        if said in ("short", "long"):
+            return said
+        return LETTER_TERM.get(self.text("8949"))
+
+    def box(self, short: bool) -> str:
+        """Form 8949 box G or J when box 2 is checked, else H or K."""
+        return ("GH" if short else "JK")[self.text("2") != "yes"]
+
+
+def _iso(us: str) -> str:
+    """A 1099-DA date (MM/DD/YYYY) as the lots store it; anything else as is."""
+    try:
+        return datetime.strptime(us, "%m/%d/%Y").date().isoformat()
+    except ValueError:
+        return us
+
+
+def _sales(facts: list[db.FactRow]) -> list[_Sale]:
+    by: dict[tuple[int, str], _Sale] = {}
+    for f in facts:
+        if f.form == "1099-DA":
+            sale = by.setdefault((f.document_id, f.issuer), _Sale(f.issuer, {}))
+            sale.got[f.box] = f.text if f.text is not None else f.value
+    return list(by.values())
 
 
 def _term(row: db.LedgerRow) -> str | None:
@@ -193,6 +285,10 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> CapGains:
     )
     typed = load_manual(lay, year)[MANUAL_VALUES]
     collectible = set(typed.get("collectibles") or ())
+    facts = db.facts_for(conn, year, text=None)
+    sales = _sales(facts)
+    digital = {str(s).upper() for s in typed.get("digital_assets") or ()}
+    digital |= {n for s in sales for n in s.names}
     unknown_accounts: set[str] = set()
     for row in rows:
         if row.amount_cents is None or row.basis_cents is None or not row.date:
@@ -216,15 +312,20 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> CapGains:
             db.from_cents(row.basis_cents),
         )
         loss = round(basis - proceeds, 2)
-        adj = (
-            _washed(row, row.date, loss, pool, cg.notes)
-            if loss > 0 and row.symbol
-            else 0.0
-        )
+        sym = (row.symbol or "").upper()
+        if sym and sym in digital:
+            box, adj = _digital(cg, sales, sym, row.date, term)
+        else:
+            box = "A" if term == "short" else "D"
+            adj = (
+                _washed(row, row.date, loss, pool, cg.notes)
+                if loss > 0 and row.symbol
+                else 0.0
+            )
         qty = f"{row.quantity:g} sh " if row.quantity else ""
         cg.lots.append(
             Lot(
-                "A" if term == "short" else "D",
+                box,
                 f"{qty}{row.symbol or row.description}".strip(),
                 row.acquired or "VARIOUS",
                 row.date,
@@ -245,10 +346,72 @@ def build(conn: sqlite3.Connection, lay: Layout, year: int) -> CapGains:
             "collectibles are typed but no realized-lots CSV is on file: the 1099-B "
             "totals do not separate them, so Schedule D line 18 leaves them out"
         )
-    facts = db.facts_for(conn, year)
+    _unmatched(cg, sales, collectible)
+    facts = [f for f in facts if f.text is None]
     carried = need_values(conn, lay, year, tuple(CARRYOVER.values()))
     _lines(cg, facts, typed, carried)
     return cg
+
+
+def _digital(
+    cg: CapGains, sales: list[_Sale], sym: str, sold: str, term: str
+) -> tuple[str, float]:
+    """(Form 8949 box, wash sale adjustment) for a digital asset lot: the
+    1099-DA for that asset and sale date, when there is one, decides."""
+    sale = next(
+        (s for s in sales if not s.used and sym in s.names and s.sold == sold), None
+    )
+    if sale is None:
+        return ("I" if term == "short" else "L"), 0.0
+    sale.used = True
+    if sale.term and sale.term != term:
+        cg.notes.append(
+            f"{sym} sold {sold}: the lot is {term}-term but the 1099-DA from "
+            f"{sale.issuer} says {sale.term}-term; check the date acquired"
+        )
+    return sale.box(term == "short"), sale.money("1i") or 0.0
+
+
+def _unmatched(cg: CapGains, sales: list[_Sale], collectible: set[str]) -> None:
+    """A 1099-DA no lot matched: a Form 8949 row from its own boxes, or named
+    and left out when its basis or term is not on it."""
+    for s in sales:
+        if s.used:
+            continue
+        asset = s.text("1b") or s.text("1a") or "digital asset"
+        what = f"{asset} sold {s.sold}"
+        basis, term = s.money("1g"), s.term
+        if basis is None or term is None:
+            gap = "box 1g (basis) is blank" if basis is None else "the term is unknown"
+            cg.unknown.append(f"1099-DA {s.issuer}: {gap}")
+            cg.notes.append(
+                f"1099-DA from {s.issuer}, {what}: {gap} and no lot on file "
+                "matches it, so the sale is left out; import the lots CSV (your "
+                "own records: basis, date acquired)"
+            )
+            continue
+        wash = s.money("1i") or 0.0
+        code = ("C" if s.names & collectible else "") + ("W" if wash else "")
+        units = s.text("1c")
+        cg.lots.append(
+            Lot(
+                s.box(term == "short"),
+                f"{units} {asset}".strip(),
+                _iso(s.text("1d")) or "VARIOUS",
+                s.sold,
+                s.money("1f") or 0.0,
+                basis,
+                code,
+                wash,
+                "",
+            )
+        )
+        if s.text("2") != "yes":
+            cg.notes.append(
+                f"1099-DA from {s.issuer}, {what}: box 1g was not reported to the "
+                "IRS (box 2 blank); Form 8949 box H or K, check the basis against "
+                "your own records"
+            )
 
 
 def _lines(
@@ -263,7 +426,7 @@ def _lines(
         return round(sum(f.value for f in b if f.box == box), 2)
 
     issuers = ", ".join(sorted({f.issuer for f in b}))
-    lots = bool(cg.lots)
+    lots = any(lt.box in ("A", "D") for lt in cg.lots)
     for box, pre, key in EQUITY:
         comp = round(float(str(typed.get(key) or 0)), 2)
         if not comp:
@@ -286,13 +449,18 @@ def _lines(
             f"Form 8949 box {box}, code B: {comp:,.2f} of employee stock income "
             f"the 1099-B basis leaves out (Pub. 525), typed in {key}"
         )
-    for line, box in (("1b", "A"), ("8b", "D")):
-        if any(lt.box == box for lt in cg.lots):
-            cg.lines[line] = cg.totals(box)[3]
-            cg.sources[line] = f"Form 8949 box {box}" + ("" if lots else ", code B")
+    for line, boxes in BOX_LINES.items():
+        mine = [x for x in boxes if any(lt.box == x for lt in cg.lots)]
+        if mine:
+            cg.lines[line] = round(sum(cg.totals(x)[3] for x in mine), 2)
+            moved = not lots and mine[0] in ("A", "D")
+            cg.sources[line] = "Form 8949 box " + " + ".join(mine)
+            cg.sources[line] += ", code B" if moved else ""
     if lots:
         if b:
-            lots_p = round(sum(lt.proceeds for lt in cg.lots), 2)
+            lots_p = round(
+                sum(lt.proceeds for lt in cg.lots if lt.box in ("A", "D")), 2
+            )
             form_p = round(summary("st_proceeds") + summary("lt_proceeds"), 2)
             if abs(lots_p - form_p) > 1:
                 cg.notes.append(
@@ -307,8 +475,8 @@ def _lines(
                     "1099-B; the broker sees only its own account"
                 )
     elif b:
-        for line, pre, onto in (("1a", "st", "1b"), ("8a", "lt", "8b")):
-            if onto in cg.lines:  # the totals are on the code B row
+        for line, pre, box in (("1a", "st", "A"), ("8a", "lt", "D")):
+            if any(lt.box == box for lt in cg.lots):  # on the code B row
                 continue
             cg.lines[line] = round(
                 summary(f"{pre}_proceeds") - summary(f"{pre}_basis"), 2
@@ -350,14 +518,12 @@ def _lines(
     if not cg.lines:
         return
     get = cg.lines.get
-    cg.lines["7"] = round(sum(get(k, 0.0) for k in ("1a", "1b", "5", "6")), 2)
-    cg.lines["15"] = round(
-        sum(get(k, 0.0) for k in ("8a", "8b", "11", "12", "13", "14")), 2
-    )
+    st = ("1a", "1b", "2", "3", "5", "6")
+    lt = ("8a", "8b", "9", "10", "11", "12", "13", "14")
+    cg.lines["7"] = round(sum(get(k, 0.0) for k in st), 2)
+    cg.lines["15"] = round(sum(get(k, 0.0) for k in lt), 2)
     cg.lines["16"] = round(cg.lines["7"] + cg.lines["15"], 2)
-    cg.sources.update(
-        {"7": "1a + 1b + 5 + 6", "15": "8a + 8b + 11 + 12 + 13 + 14", "16": "7 + 15"}
-    )
+    cg.sources.update({"7": " + ".join(st), "15": " + ".join(lt), "16": "7 + 15"})
     _rate_gains(cg, facts, typed, k1p)
     cg.lines = {k: cg.lines[k] for k in LABELS if k in cg.lines}
 
@@ -382,7 +548,9 @@ def _rate_gains(
         return round(amount, 2), where + [f"{p} {s}" for _, p, _, s in got]
 
     get = cg.lines.get
-    w1 = round(sum(lt.gain for lt in cg.lots if lt.box == "D" and "C" in lt.code), 2)
+    w1 = round(
+        sum(lt.gain for lt in cg.lots if lt.box not in SHORT and "C" in lt.code), 2
+    )
     w4, w4_from = reported("2d", "collectibles")
     w5 = get("14", 0.0)  # the long-term carryover, already negative
     w6 = min(get("7", 0.0), 0.0)
@@ -461,12 +629,11 @@ def render(cg: CapGains) -> str:
     out = [f"Form 8949 and Schedule D for {cg.year}"]
     if not cg.lots and not cg.lines:
         out.append("no sales, capital gain distributions or carryovers on file")
-    for box in ("A", "D"):
+    for box, words in BOXES.items():
         mine = [lt for lt in cg.lots if lt.box == box]
         if not mine:
             continue
-        term = "short-term" if box == "A" else "long-term"
-        out.append(f"Form 8949 box {box} ({term}, basis reported to the IRS)")
+        out.append(f"Form 8949 box {box} ({words})")
         for lt in mine:
             out.append(
                 f"  {lt.description:24.24} {lt.acquired:10} {lt.sold:10} "
@@ -483,7 +650,7 @@ def render(cg: CapGains) -> str:
         out.append(
             f"  line {line:4} {LABELS[line]:52} {value:>12,.2f}  {cg.sources[line]}"
         )
-    if cg.lots:
+    if any(lt.box in ("A", "D") for lt in cg.lots):
         out.append(
             "note: box A / D assumes the broker reported basis to the IRS; a "
             "noncovered lot belongs in box B / E"

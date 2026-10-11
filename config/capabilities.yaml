@@ -84,6 +84,11 @@ equity_pay:
   evidence: implemented
   tests: ["tests/test_equity_pay.py"]
   note: "Equity pay (unit 3e-8): Forms 3921 and 3922 read by templates 3921.yaml and 3922.yaml (four-decimal prices per share) and W-2 box 12 code V; the Needed panel's iso_amt_adjustment comes from Form 3921 (box 4 - box 3) x box 5 (Pub. 525), stock_option_income is Schedule 1 line 8k (a disqualifying ISO sale or the ordinary part of an ESPP sale, typed with the Pub. 525 rules named), and equity_basis_short/long are Form 8949 code B rows with a negative adjustment (the 1099-B totals move to line 1b or 8b with only summaries). Form 6251 lines 1a-11 from the draft (1a = line 14 - Sch 1-A line 37, 2a the Schedule A taxes or the standard deduction, 2i, the separate-return line 4 rule, the exemption phase-out, 26%/28%, line 8 = Sch 3 line 1), checked against the engine, which now carries the ISO adjustment and the Schedule 1-A add-back. Not drafted, named: lines 2b-2h and 2j-3, Part III lines 12-40, the AMT Form 1116, Form 8801"
+digital_assets:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_digital_assets.py"]
+  note: "Digital assets (unit 3e-9): Form 1099-DA read by template 1099-da.yaml, one form per sale (the asset, units and dates join the issuer, so a second sale is not a correction of the first), boxes 1a-1g, 1i, 2, 4, 6 and the Form 8949 letter. A lot whose symbol is a 1099-DA asset or in the typed digital_assets goes to Form 8949 box G/J (matched 1099-DA, box 2 checked), H/K (box 2 blank) or I/L (no 1099-DA), takes the 1099-DA's box 1i as code W and is not wash-sale checked (not a security); a 1099-DA with no lot is its own row with its basis, a blank 1g or unknown term left for you. Schedule D lines 1b, 2, 3, 8b, 9 and 10 sum their boxes, lines 7 and 15 every line. 1099-DA box 4 is 1040 line 25b. The Form 1040 page 1 digital assets question (digital_asset_activity) is derived yes from a 1099-DA, else asked. Not drafted, named: digital assets received as income (Schedule 1 line 8v, Schedule C), Form 709 gifts, tokenized-security wash sales across accounts"
 earned_income_credit:
   status: verified
   evidence: implemented
