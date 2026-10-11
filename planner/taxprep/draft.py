@@ -647,13 +647,15 @@ def build(lay: Layout, year: int) -> Draft:
                 f"planner categorize --year {year})"
             )
     sp_profit, sp_src = v["self_employment_income@spouse"], origin("spouse_se_income")
+    # Schedule SE line 2 adds K-1 (Form 1065) box 14 code A (unit 3e-3a)
+    k1_se = (hh.k1_se, hh.spouse.k1_se if hh.spouse is not None else 0)
     owners = [
-        (who, form, gain, src, base)
-        for who, form, gain, src, base in (
-            ("you", "Sch SE", profit, profit_src, ss_wages),
-            ("spouse", SCH_SE_SPOUSE, sp_profit, sp_src, ss_spouse),
+        (who, form, gain + extra, src + (" + K-1 box 14 code A" if extra else ""), base)
+        for who, form, gain, src, base, extra in (
+            ("you", "Sch SE", profit, profit_src, ss_wages, k1_se[0]),
+            ("spouse", SCH_SE_SPOUSE, sp_profit, sp_src, ss_spouse, k1_se[1]),
         )
-        if gain
+        if gain + extra
     ]
     ses = [
         (form, *_schedule_se(sheet, d, v, who, form, gain, src, base))
@@ -674,14 +676,29 @@ def build(lay: Layout, year: int) -> Draft:
     if inp.schedule_e is not None:
         for ln, label, value, src in inp.schedule_e.lines:
             add("Sch E", ln, label, value, src)
+        _misc_check(d, facts, inp.schedule_e)
+    e_total = inp.schedule_e.total if inp.schedule_e is not None else 0.0
+    e_src = "Sch E line 26"
+    if inp.schedule_k1 is not None:
+        for ln, label, value, src in inp.schedule_k1.lines:
+            add("Sch E", ln, label, value, src)
+        d.notes.extend(inp.schedule_k1.notes)
+        e_total = add(
+            "Sch E",
+            "41",
+            "Total income or (loss)",
+            e_total + inp.schedule_k1.part2 + inp.schedule_k1.part3,
+            "26 + 32 + 37 (39, 40 not drafted)",
+        )
+        e_src = "Sch E line 41"
+    if inp.schedule_e is not None or inp.schedule_k1 is not None:
         s1_5 = add(
             "Sch 1",
             "5",
             "Rental real estate, royalties, partnerships, S corporations, trusts",
-            inp.schedule_e.total,
-            "Sch E line 26",
+            e_total,
+            e_src,
         )
-        _misc_check(d, facts, inp.schedule_e)
     if hh.salt_refund:
         s1_1 = add(
             "Sch 1",

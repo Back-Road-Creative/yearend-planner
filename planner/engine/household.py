@@ -77,6 +77,7 @@ class Person:
     # Their W-2 boxes 3 and 7, to the wage base (Schedule SE line 8a: unit 3a-5);
     # None = the engine takes their wages
     ss_wages: int | None = None
+    k1_se: int = 0  # their K-1 (Form 1065) box 14 code A (unit 3e-3a)
 
 
 @dataclass(frozen=True)
@@ -159,6 +160,20 @@ class Household:
     # Whether that is qualified business income (the rental_qbi answer): the
     # engine counts rental income as QBI unless told otherwise.
     rental_qbi: bool = False
+    # Schedule E Part II and III (unit 3e-3a): each kind of K-1's net after the
+    # passive-loss limit, guaranteed payments apart (gross income, not QBI or
+    # net investment income), the passive part (net investment income), the
+    # self-employment earnings (box 14 code A) and the section 199A statement.
+    partnership_income: int = 0
+    s_corp_income: int = 0
+    trust_income: int = 0
+    guaranteed_payments: int = 0
+    passive_pass_through: int = 0
+    k1_se: int = 0
+    k1_qbi: bool = False  # partnership and S corporation income is QBI
+    trust_qbi: bool = False
+    qbi_w2_wages: int = 0
+    qbi_ubia: int = 0
     cancelled_debt: int = 0
     non_qualified_dividends: int = 0
     qualified_dividends: int = 0
@@ -319,10 +334,28 @@ class Household:
             person["rental_income"] = {y: self.rental_income}
             if not self.rental_qbi:
                 person["rental_income_would_be_qualified"] = {y: False}
-        if self.other_income:  # on top of any other miscellaneous income
+        # The engine leaves estate and trust income out of gross income and
+        # takes only its loss (loss_ald), so a net gain is miscellaneous income.
+        misc = self.other_income + self.guaranteed_payments + max(self.trust_income, 0)
+        if misc:  # on top of any other miscellaneous income
             person["miscellaneous_income"] = {
-                y: self.other_income + self.other.get("miscellaneous_income", 0)
+                y: misc + self.other.get("miscellaneous_income", 0)
             }
+        if self.partnership_income or self.s_corp_income:
+            person["partnership_income"] = {y: self.partnership_income}
+            person["s_corp_income"] = {y: self.s_corp_income}
+            person["partnership_s_corp_income_would_be_qualified"] = {y: self.k1_qbi}
+        if self.trust_income < 0:
+            person["estate_income"] = {y: self.trust_income}
+            person["estate_income_would_be_qualified"] = {y: self.trust_qbi}
+        if self.passive_pass_through:
+            person["passive_partnership_s_corp_income"] = {y: self.passive_pass_through}
+        if self.k1_se:
+            person["partnership_self_employment_net_earnings"] = {y: self.k1_se}
+        if self.qbi_w2_wages:
+            person["w2_wages_from_qualified_business"] = {y: self.qbi_w2_wages}
+        if self.qbi_ubia:
+            person["unadjusted_basis_qualified_property"] = {y: self.qbi_ubia}
         for name in omit:
             person.pop(name, None)
         people: dict[str, Any] = {"p": person}
@@ -337,6 +370,8 @@ class Household:
             }
             if sp.ss_wages is not None:
                 people["s"]["taxable_earnings_for_social_security"] = {y: sp.ss_wages}
+            if sp.k1_se:
+                people["s"]["partnership_self_employment_net_earnings"] = {y: sp.k1_se}
         for i, d in enumerate(self.dependents, 1):
             people[f"d{i}"] = {
                 "age": {y: d.age},

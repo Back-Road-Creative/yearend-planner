@@ -94,6 +94,11 @@ schedule_e_part1:
   evidence: implemented
   tests: ["tests/test_schedule_e.py"]
   note: "Schedule E Part I (unit 3e-2b) from the typed rentals answer: lines 3, 4, 12, 16, 18-26 per property and 23a-26 in total, line 26 onto Schedule 1 line 5 and the engine's rental_income; Pub. 527 ch. 5 day split, the used-as-a-home test, the under-15-days exclusion and Worksheet 5-1 with carryovers; the Form 8582 Part II special allowance by modified AGI when rental_passive_simple is yes, the typed Form 8582 figure when no; royalty and home losses nonpassive; a CHECK when 1099-MISC box 1 or 2 is above lines 23a or 23b. Full Form 8582 worksheets come in unit 3e-4"
+schedule_e_k1:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_schedule_k1.py"]
+  note: "Schedule E Parts II and III (unit 3e-3a) from the typed k1s answer: lines 28-37 per K-1 of Form 1065, 1120-S and 1041 (business and rental boxes, guaranteed payments, section 179, 1041 boxes 5 and 9) and line 41 onto Schedule 1 line 5; one Form 8582 share with Part I, with the typed passive_loss_allowed when a K-1 has a passive item; the engine's partnership_income, s_corp_income, estate income, passive pass-through income and box 14 code A on Schedule SE line 2; QBI only from a typed section 199A statement. Portfolio boxes come in unit 3e-3b"
 aca_slcsp_county:
   status: verified
   evidence: implemented
