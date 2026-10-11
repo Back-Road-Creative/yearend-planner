@@ -111,9 +111,7 @@ def test_worksheets_fill_lines_18_and_19(lay: Layout) -> None:
     assert "K-1 box 4b" in cg.sources["18"]
     assert "unrecaptured_1250 (typed)" in cg.sources["19"]
     assert "K-1 box 4c" in cg.sources["19"]
-    assert "Form 4797 (Unrecaptured Section 1250 Gain Worksheet lines 1-9)" in (
-        " ".join(cg.notes)
-    )
+    assert "Unrecaptured Section 1250 Gain Worksheet line 4" in (" ".join(cg.notes))
 
 
 def test_losses_use_up_the_28_percent_gain_first(lay: Layout) -> None:
@@ -157,8 +155,8 @@ def test_k1_collectibles_and_trust_1250() -> None:
     ]
     pship = k1.portfolio(k1.parse("k1s", "partnership nonpassive collectibles -300"))
     assert pship[0][2:] == (-300.0, "K-1 box 9b")
-    with pytest.raises(ValueError):  # 1065 box 9c waits for Form 4797
-        k1.parse("k1s", "partnership nonpassive unrecaptured1250 500")
+    pship = k1.portfolio(k1.parse("k1s", "partnership nonpassive unrecaptured1250 5"))
+    assert pship[0][2:] == (5.0, "K-1 box 9c")  # through Form 4797 (unit 3e-6c)
 
 
 def test_draft_prices_by_the_schedule_d_tax_worksheet(lay: Layout) -> None:

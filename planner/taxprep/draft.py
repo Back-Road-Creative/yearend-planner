@@ -29,10 +29,12 @@ from planner.plan import esttax, inputs
 from planner.taxprep import (
     capgains,
     d400,
+    f4797,
     f8582,
     hsa,
     sche,
     schedule_c,
+    schf,
     statereturn,
 )
 from planner.taxprep.expected import inventory
@@ -690,7 +692,7 @@ def build(lay: Layout, year: int) -> Draft:
     se_src = " + ".join(s[0] for s in ses)
 
     # Schedule 1: lines 1 and 7 (unit 3e-1) and 8c only when there is any
-    s1_1 = s1_5 = s1_6 = s1_7 = s1_9 = 0.0
+    s1_1 = s1_4 = s1_5 = s1_6 = s1_7 = s1_9 = 0.0
     if inp.schedule_e is not None:
         for ln, label, value, src in inp.schedule_e.lines:
             add("Sch E", ln, label, value, src)
@@ -748,6 +750,20 @@ def build(lay: Layout, year: int) -> Draft:
         profit + sp_profit,
         f"{profit_src} + the spouse's {sp_src}" if sp_profit else profit_src,
     )
+    form4797 = cg.form4797
+    if form4797 is not None:
+        for ln, label, value, src in form4797.lines:
+            add(f4797.FORM, ln, label, value, src)
+        d.notes.extend(form4797.notes)
+        d.unknown.extend(form4797.unknown)
+        if form4797.line18b:
+            s1_4 = add(
+                "Sch 1",
+                "4",
+                "Other gains or (losses)",
+                form4797.line18b,
+                "Form 4797 line 18b",
+            )
     if hh.unemployment:
         s1_7 = add(
             "Sch 1",
@@ -793,6 +809,7 @@ def build(lay: Layout, year: int) -> Draft:
         for ln, x in (
             ("1", s1_1),
             ("3", s1_3),
+            ("4", s1_4),
             ("5", s1_5),
             ("6", s1_6),
             ("7", s1_7),
@@ -804,7 +821,7 @@ def build(lay: Layout, year: int) -> Draft:
         "Sch 1",
         "10",
         "Additional income",
-        s1_1 + s1_3 + s1_5 + s1_6 + s1_7 + s1_9,
+        s1_1 + s1_3 + s1_4 + s1_5 + s1_6 + s1_7 + s1_9,
         " + ".join(used) if len(used) > 1 else f"line {used[0]}",
     )
     named = add(
@@ -2488,9 +2505,14 @@ ORDER = (
     "Sch B",
     "Sch C",
     "Sch D",
+    "Sch E",
+    "Sch F",
+    *(f"Sch F ({x})" for x in schf.LETTERS[1:]),
     "Sch SE",
     SCH_SE_SPOUSE,
     "8949",
+    "4797",
+    f8582.FORM,
     "2441",
     "8863",
     "8880",
@@ -2514,6 +2536,8 @@ HEADINGS = {
     SCH_EIC: "Schedule EIC (qualifying child information)",
     **{f: h for r in statereturn.RETURNS.values() for f, (h, _) in r.forms.items()},
     "Carryover": "Capital loss carryover to next year",
+    "4797": "Form 4797 (sales of business property)",
+    f8582.FORM: "Form 8582 (passive activity loss limitations)",
 }
 # The capability row behind each form's tag; any other form is draft_return's.
 FORM_CAPABILITY = {
@@ -2522,6 +2546,7 @@ FORM_CAPABILITY = {
     "Sch C": "schedule_c",
     "Sch D": "schedule_d",
     "8949": "schedule_d",
+    "4797": "schedule_d",
     "Sch SE": "self_employment_tax",
     SCH_SE_SPOUSE: "self_employment_tax",
     "8889": "form_8889",
@@ -2537,6 +2562,26 @@ FORM_CAPABILITY = {
 }
 
 
+def heading(form: str) -> str:
+    """The printed title of one form tag ("Sch E" is Schedule E)."""
+    return HEADINGS.get(form) or (
+        f"Schedule {form[4:]}" if form.startswith("Sch ") else form
+    )
+
+
+def forms(d: Draft) -> list[str]:
+    """The forms drafted, in ORDER, then any other form in the order first
+    laid, then the carryover worksheet: a form left off ORDER still prints."""
+    drafted = list(dict.fromkeys(ln.form for ln in d.lines))
+    known = (*ORDER, "Carryover")
+    rest = [f for f in drafted if f not in known]
+    return (
+        [f for f in ORDER if f in drafted]
+        + rest
+        + (["Carryover"] if "Carryover" in drafted else [])
+    )
+
+
 def render(d: Draft) -> str:
     out = [
         f"Draft {d.year} return (policyengine-us {d.engine_version}); line "
@@ -2546,12 +2591,10 @@ def render(d: Draft) -> str:
     if d.not_ready:
         out.append(d.not_ready)  # the blocker first, then the standing notice
     out.append(NOTICE)
-    for form in (*ORDER, "Carryover"):
+    for form in forms(d):
         lines = [ln for ln in d.lines if ln.form == form]
-        if not lines:
-            continue
         out.append("")
-        out.append(f"{HEADINGS.get(form, f'Schedule {form[4:]}')} [{d.tag(form)}]")
+        out.append(f"{heading(form)} [{d.tag(form)}]")
         for ln in lines:
             places = 2 if round(ln.value, 2) == ln.value else 4
             out.append(

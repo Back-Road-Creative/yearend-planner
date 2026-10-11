@@ -33,7 +33,7 @@ from planner.ingest.needs import MANUAL_VALUES, load_manual, need_values
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import washsale
-from planner.taxprep import k1
+from planner.taxprep import f4797, k1
 
 FORM = "SCH-D"
 ISSUER = "planner"
@@ -46,6 +46,7 @@ LABELS = {
     "7": "Net short-term gain or loss",
     "8a": "Long-term, 1099-B basis reported, no adjustments",
     "8b": "Long-term, Form 8949 box D",
+    "11": "Gain from Form 4797, Part I",
     "12": "Net long-term gain or loss from Schedules K-1",
     "13": "Capital gain distributions",
     "14": "Long-term loss carryover",
@@ -84,6 +85,7 @@ class CapGains:
     sources: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
     unknown: list[str] = field(default_factory=list)  # sales left out (not zero)
+    form4797: f4797.Result | None = None  # unit 3e-6c
 
     def totals(self, box: str) -> tuple[float, float, float, float]:
         """(proceeds, basis, adjustment, gain) over one 8949 box."""
@@ -293,6 +295,17 @@ def _lines(
         if got:
             cg.lines[line] = round(sum(a for _, _, a, _ in got), 2)
             cg.sources[line] = "; ".join(f"{p} {s}" for _, p, _, s in got)
+    sales = typed.get("business_sales")
+    lookback = typed.get("section_1231_lookback")
+    cg.form4797 = f4797.compute(
+        sales if isinstance(sales, list) else [],
+        k1s if isinstance(k1s, list) else [],
+        k1p,
+        None if lookback is None else float(str(lookback)),
+    )
+    if cg.form4797 is not None and cg.form4797.schedule_d:
+        cg.lines["11"] = cg.form4797.schedule_d
+        cg.sources["11"] = "Form 4797 line 9 (line 7 less line 8)"
     for line, key in CARRYOVER.items():
         value = carried.get(key)
         if value is not None and (float(str(value)) or key in typed):
@@ -303,10 +316,12 @@ def _lines(
         return
     get = cg.lines.get
     cg.lines["7"] = round(sum(get(k, 0.0) for k in ("1a", "1b", "5", "6")), 2)
-    cg.lines["15"] = round(sum(get(k, 0.0) for k in ("8a", "8b", "12", "13", "14")), 2)
+    cg.lines["15"] = round(
+        sum(get(k, 0.0) for k in ("8a", "8b", "11", "12", "13", "14")), 2
+    )
     cg.lines["16"] = round(cg.lines["7"] + cg.lines["15"], 2)
     cg.sources.update(
-        {"7": "1a + 1b + 5 + 6", "15": "8a + 8b + 12 + 13 + 14", "16": "7 + 15"}
+        {"7": "1a + 1b + 5 + 6", "15": "8a + 8b + 11 + 12 + 13 + 14", "16": "7 + 15"}
     )
     _rate_gains(cg, facts, typed, k1p)
     cg.lines = {k: cg.lines[k] for k in LABELS if k in cg.lines}
@@ -325,6 +340,8 @@ def _rate_gains(
     def reported(box: str, word: str) -> tuple[float, list[str]]:
         div = [f for f in facts if f.form == "1099-DIV" and f.box == box and f.value]
         got = [i for i in k1p if i[0] == word]
+        if word == "unrecaptured1250":  # line 11 takes a trust's; line 5 the rest
+            got = [i for i in got if "1041" in i[1]]
         amount = sum(f.value for f in div) + sum(a for _, _, a, _ in got)
         where = [f"1099-DIV box {box} ({f.issuer})" for f in div]
         return round(amount, 2), where + [f"{p} {s}" for _, p, _, s in got]
@@ -337,7 +354,9 @@ def _rate_gains(
     w7 = max(round(w1 + w4 + w5 + w6, 2), 0.0)
     w11, w11_from = reported("2b", "unrecaptured1250")
     w10_12 = float(str(typed.get("unrecaptured_1250") or 0))
-    w13 = round(w10_12 + w11, 2)
+    form = cg.form4797
+    w9 = form.worksheet if form is not None else 0.0
+    w13 = round(w9 + w10_12 + w11, 2)
     w14 = round(w1 + w4, 2)  # 28% worksheet lines 1-4 (2 and 3 not drafted)
     w17 = -min(round(w14 + w6 + w5, 2), 0.0)
     w18 = max(round(w13 - w17, 2), 0.0)
@@ -357,15 +376,19 @@ def _rate_gains(
         )
     if w18 > 0:
         cg.lines["19"] = w18
-        parts = (["unrecaptured_1250 (typed)"] if w10_12 else []) + w11_from
+        parts = (
+            (form.worksheet_from if w9 and form is not None else [])
+            + (["unrecaptured_1250 (typed)"] if w10_12 else [])
+            + w11_from
+        )
         cg.sources["19"] = "Unrecaptured Section 1250 Gain Worksheet: " + "; ".join(
             parts
         )
     if w7 > 0 or w18 > 0:
         cg.notes.append(
             "Schedule D lines 18 and 19 leave out the section 1202 exclusion, Forms "
-            "4684, 6252, 6781 and 8824 (28% Rate Gain Worksheet lines 2-3) and Form "
-            "4797 (Unrecaptured Section 1250 Gain Worksheet lines 1-9)"
+            "4684, 6252, 6781 and 8824 (28% Rate Gain Worksheet lines 2-3, "
+            "Unrecaptured Section 1250 Gain Worksheet line 4)"
         )
 
 

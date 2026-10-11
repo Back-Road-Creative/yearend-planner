@@ -297,3 +297,22 @@ def test_rental_income_is_qbi_only_when_answered_yes(planner_home: Path) -> None
     assert draft.build(lay, 2025).get("1040", "13a") == 0.0
     enter(lay, 2025, "rental_qbi", "yes")
     assert draft.build(lay, 2025).get("1040", "13a") == 2000.0  # 20% of 10,000
+
+
+def test_rendered_draft_and_package_carry_schedule_e_and_8582(
+    planner_home: Path,
+) -> None:
+    from planner.taxprep import package
+
+    lay = _lay(planner_home)
+    enter(lay, 2025, "rentals", "rental rents 2000 expenses 7000 days 365 personal 0")
+    enter(lay, 2025, "rental_active", "yes")
+    d = draft.build(lay, 2025)
+    text = draft.render(d)
+    assert "Schedule E [" in text and "Form 8582 (passive activity loss" in text
+    assert text.index("Schedule 1 [") < text.index("Schedule E [")
+    html = package.html_page(d)
+    assert "Schedule E <small>" in html and "Form 8582 (passive" in html
+    # A form drafted but missing from the ORDER list still prints, last.
+    d.lines.append(draft.Line("Form 9999", "1", "Synthetic", 1.0, "test"))
+    assert "Form 9999" in draft.render(d) and "Form 9999" in package.html_page(d)

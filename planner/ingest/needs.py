@@ -32,7 +32,7 @@ from planner.engine.household import PERSON_INPUTS, PERSON_SAVERS
 from planner.ingest.derive import county_from_zip
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.taxprep import k1, refund, sche, schf, statereturn
+from planner.taxprep import f4797, k1, refund, sche, schf, statereturn
 
 PROFILE = "profile"
 PRIOR = "prior"  # the year before the plan year (the filed return)
@@ -72,7 +72,7 @@ class Need:
     why: str
     source: str  # the document that supplies it, with where to get it
     kind: str  # date | int | money | fraction | enum | monthly | dependents |
-    # education | rentals | k1s | farms | symbols | str
+    # education | rentals | k1s | farms | symbols | sales | str
     scope: str = YEAR
     # (form, box) ledger lookups, summed; a "-" before the box subtracts it
     boxes: tuple[tuple[str, str], ...] = ()
@@ -1448,8 +1448,9 @@ NEEDS: tuple[Need, ...] = (
         "6), stgain and ltgain (1065 boxes 8 and 9a, 1120-S 7 and 8a, 1041 3 "
         "and 4a), which go to Schedules B, E line 4 and D lines 5 and 12, on "
         "top of the 1099s, and the parts of ltgain that are collectibles (1065 "
-        "9b, 1120-S 8b, 1041 4b) and unrecaptured1250 (1041 4c), for Schedule "
-        "D lines 18 and 19; prior is the K-1's prior-year unallowed passive loss "
+        "9b, 1120-S 8b, 1041 4b) and unrecaptured1250 (1065 9c, 1120-S 8c, "
+        "1041 4c), for Schedule D lines 18 and 19; section1231 (1065 box 10, "
+        "1120-S box 9) for Form 4797 Part I; prior is the K-1's prior-year unallowed passive loss "
         "(last year's Form 8582 Part VII column (c)), and active after passive "
         "or nonpassive marks a box 2 rental you actively participated in. "
         "Start with spouse when the "
@@ -1627,6 +1628,44 @@ NEEDS: tuple[Need, ...] = (
         "symbols",
         asked=lambda s: float(s.get("long_term_gains") or 0) > 0,
         unlocks=("Schedule D", "Draft 1040"),
+    ),
+    Need(
+        "business_sales",
+        "Sales of business or rental property (Form 4797), or none",
+        "Form 4797: a gain on property held more than 1 year is a section 1231 "
+        "gain (Schedule D line 11) less the depreciation recaptured as ordinary "
+        "income (Schedule 1 line 4); a loss is ordinary",
+        "the closing statement and Form 1099-S, and your depreciation records "
+        "(Form 4562, the rental's or business's schedule). One entry a sale, "
+        "separated by semicolons: the kind (1245 for equipment, vehicles and "
+        "other personal property, 1250 for buildings, land for land), acquired "
+        "and sold dates, price (the gross sales price), basis (cost plus "
+        "improvements plus the expense of the sale, before depreciation), "
+        "depreciation (allowed or allowable) and, for 1250 property depreciated "
+        "faster than straight line, additional (the excess). Split a rental "
+        "house's sale into its 1250 building and its land. Not a sale of your "
+        "home, a stock or a fund (Form 8949). Example: " + f4797.EXAMPLE + ". "
+        "Type none if there are none",
+        "sales",
+        asked=lambda s: bool(
+            s.get("rentals") or s.get("farms") or s.get("se_income") or s.get("k1s")
+        ),
+        unlocks=("Draft 1040", "Schedule D"),
+    ),
+    Need(
+        "section_1231_lookback",
+        "Net section 1231 losses of the 5 years before not yet recaptured",
+        "Form 4797 line 8: that much of this year's net section 1231 gain is "
+        "ordinary income, not a long-term capital gain",
+        "your Forms 4797 for the 5 years before: the net section 1231 losses "
+        "(line 7 losses) less the amounts already recaptured on line 8 of the "
+        "years since; 0 when none",
+        "money",
+        asked=lambda s: (
+            bool(s.get("business_sales"))
+            or any(e.get("section1231") for e in s.get("k1s") or ())
+        ),
+        unlocks=("Draft 1040", "Schedule D"),
     ),
     Need(
         "unrecaptured_1250",
@@ -2203,6 +2242,8 @@ def parse_value(need: Need, text: str) -> Any:
         return schf.parse(need.key, s)
     if need.kind == "symbols":
         return _symbols(need.key, s)
+    if need.kind == "sales":
+        return f4797.parse(need.key, s)
     if need.kind == "money":
         value = int(round(_number(need, s, "a dollar amount")))
         if value < 0 and need.key.removeprefix(SPOUSE) not in SIGNED:
