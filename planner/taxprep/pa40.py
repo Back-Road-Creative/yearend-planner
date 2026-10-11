@@ -73,9 +73,12 @@ def _given(typed: Mapping[str, Any], key: str) -> tuple[float, str]:
     return float(value), "typed"
 
 
-def compensation(facts: list[db.FactRow]) -> tuple[float, list[str]] | None:
+def compensation(
+    facts: list[db.FactRow], deferrals: tuple[str, ...] = DEFERRALS
+) -> tuple[float, list[str]] | None:
     """Line 1a's W-2 part: each W-2's box 16, else its box 1 plus the elective
-    deferrals; None with no W-2 on file."""
+    ``deferrals`` (box 12 codes) the state taxes; None with no W-2 on file.
+    NJ-1040 line 15 reads the same boxes with its own codes."""
     docs: dict[int, list[db.FactRow]] = {}
     for f in facts:
         if f.form == "W-2":
@@ -90,7 +93,7 @@ def compensation(facts: list[db.FactRow]) -> tuple[float, list[str]] | None:
             total += box["16"]
             cited.append(f"W-2 box 16 ({issuer})")
         else:
-            total += box.get("1", 0.0) + sum(box.get(b, 0.0) for b in DEFERRALS)
+            total += box.get("1", 0.0) + sum(box.get(b, 0.0) for b in deferrals)
             cited.append(f"W-2 box 1 + box 12 deferrals ({issuer}; no box 16)")
     return round(total, 2), cited
 

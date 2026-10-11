@@ -7,18 +7,29 @@ engine variables the return reads, and the function that lays its lines.
 NC's D-400 is the first entry, CA's Form 540 the second (unit 3d-6), NY's
 IT-201 the third (unit 3d-7), PA's PA-40 the fourth (unit 3d-8), IL's
 IL-1040 the fifth (unit 3d-9), OH's IT 1040 the sixth (unit 3d-10), GA's
-Form 500 the seventh (unit 3d-11), MI's MI-1040 the eighth (unit 3d-12). A
-drafted state is a module beside d400.py, a template under templates/forms/
-(``issuer`` is the state's code; one per page when the return runs to several)
-and an entry here; the draft, ``planner close``, the rollover and the
-coverage gate read this table, so nothing else names a state's return."""
+Form 500 the seventh (unit 3d-11), MI's MI-1040 the eighth (unit 3d-12),
+NJ's NJ-1040 the ninth (unit 3d-13). A drafted state is a module beside
+d400.py, a template under templates/forms/ (``issuer`` is the state's code;
+one per page when the return runs to several) and an entry here; the draft,
+``planner close``, the rollover and the coverage gate read this table, so
+nothing else names a state's return."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from planner.taxprep import ca540, d400, ga500, il1040, mi1040, ny201, oh1040, pa40
+from planner.taxprep import (
+    ca540,
+    d400,
+    ga500,
+    il1040,
+    mi1040,
+    nj1040,
+    ny201,
+    oh1040,
+    pa40,
+)
 
 
 @dataclass(frozen=True)
@@ -187,6 +198,23 @@ RETURNS: dict[str, StateReturn] = {
         keys=mi1040.KEYS,
         engine=mi1040.ENGINE,
         lay=mi1040.lay_lines,
+    ),
+    "NJ": StateReturn(
+        code="NJ",
+        forms={nj1040.FORM: ("NJ-1040", "nj_1040_draft")},
+        form=nj1040.FORM,
+        template="NJ-1040",
+        boxes=("13", "15", "16a", "17", "19", "20a", "27", "28c", "29", "30", "38")
+        + ("39", "40a", "41", "42", "43", "50", "54", "55", "56", "57", "58")
+        + ("64", "65", "66", "67"),
+        # NJ-2210 line 4b is last year's line 50; withholding and the
+        # refundable credits (lines 55, 56, 58-65) count as payments.
+        tax_line="50",
+        carry="state_tax",  # prior_state_tax's estimate
+        prior=("50",),
+        keys=nj1040.KEYS,
+        engine=nj1040.ENGINE,
+        lay=nj1040.lay_lines,
     ),
 }
 

@@ -1163,6 +1163,60 @@ federal return.
   flow-through credits), 33 (amended returns), 38 (credit forward) and the
   MI-2210 penalty. A filed MI-1040 is read from pages 1-3.
 
+## The NJ return: NJ-1040 (unit 3d-13)
+
+For a New Jersey full-year resident (`state: NJ`), `planner draft` adds the
+NJ-1040, from the same engine run as the federal return.
+
+- **Lines.** Line numbers, the exemptions, the retirement exclusions,
+  Worksheets F and H, the Tax Table and the rounding rule follow the 2025
+  NJ-1040 and its instructions (fund distributions follow GIT-5). Every line is
+  in whole dollars, 50 cents or more rounded up.
+- **Exemptions (lines 6-13).** $1,000 for you (and your spouse), $1,000 each
+  65 or older and each blind or disabled, $6,000 each veteran (`nj_veterans`
+  you type, 0-2), $1,500 each qualified child and other dependent, $1,000 each
+  dependent in college.
+- **Income (lines 15-27).** New Jersey adds its own categories, not federal
+  AGI: W-2 box 16 state wages (line 15, which keep the 403(b), 457 and other
+  deferrals New Jersey taxes; box 1 when a W-2 has no box 16), interest less US
+  obligations interest plus `nj_other_interest` (16a), dividends plus
+  `nj_other_dividends` (17), business, property, pension and IRA (Roth
+  conversions included), partnership and S corporation, rental, gambling,
+  alimony and other income. A loss in a category is no entry: it never offsets
+  another, and a capital loss does not carry over. Tax-exempt interest and
+  dividends on a 1099 ask for the other states' part.
+- **Gross income (lines 28-29).** Less the pension and other retirement
+  exclusions (28a-28c). At or under the filing threshold ($10,000 single or
+  separate, $20,000 otherwise) no tax is due; the credits and payments still
+  lay out.
+- **Deductions (lines 30-39).** Line 31 is Worksheet F: `nj_medical_expenses`
+  you type over 2% of line 29, plus the self-employed health insurance
+  deduction; until typed, the draft prints the engine's estimate (from 65 it
+  counts the standard Medicare Part B premium) and asks. `nj_other_deductions`
+  you type (lines 32-36) and NJBEST (37a, from the engine).
+- **Property tax (lines 40a, 41, 56).** `nj_property_taxes` you type (or 18%
+  of rent; until typed, federal real estate taxes). Worksheet H takes the
+  deduction (up to $15,000) when it saves at least $50 of tax, else the $50
+  credit on line 56; $7,500 and $25 married filing separately.
+- **Tax (lines 42-54).** The Tax Table under $100,000 (the rate schedule at the
+  middle of the $50 row), else the Tax Rate Schedules; `nj_use_tax` you type on
+  line 51.
+- **Credits and payments (lines 55-68).** NJ withholding from W-2 box 17 and
+  1099-R box 14 (`state_withheld`, 55), NJ estimated payments (57), the NJ EITC
+  (58, 40% of the federal credit), the child and dependent care credit (64) and
+  the child tax credit (65). The draft ends on line 67/79 (owed) or 68/80
+  (refund).
+- **Safe harbor.** Next year's NJ safe harbor (NJ-2210) is the lesser of 80%
+  of next year's line 50 and 100% of this year's, from the draft and from a
+  filed NJ-1040 alike; withholding and the refundable credits (55, 56, 58-65)
+  count as paid; no penalty under $400.
+- **Check.** Line 29 is compared with the engine's New Jersey gross income
+  plus the typed items, and line 50 with its tax when nothing is typed. A gap
+  past the rounding is printed as `CHECK:`.
+- **Not drafted, and named.** Part-year and nonresident returns, lines 20b,
+  37b-37c, 44 (Schedule NJ-COJ), 46-48, 52, 53c (Schedule NJ-HCC), 59-63 and
+  69-78, and the Senior Freeze. A filed NJ-1040 is read from pages 1-3.
+
 ## The tax pack: one folder for the preparer (Phase 4l)
 
 `planner taxpack --year 2025` writes `out/tax-2025/`. Every file shows
