@@ -102,6 +102,42 @@ def _rate_schedule(amount: Any, fs: Any, income: Any) -> Any:
     return tax
 
 
+def sdtw_bands(
+    l1: Any,
+    s19: Any,
+    l11: Any,
+    l9: Any,
+    l10: Any,
+    zero_top: Any,
+    fifteen_top: Any,
+    top24: Any,
+) -> dict[str, Any]:
+    """The Schedule D Tax Worksheet's rate groups (2025 Schedule D
+    instructions) from taxable income (line 1), Schedule D line 19 (``s19``),
+    line 11 (19 plus the 28% rate gain), lines 9 and 10, the 0% and 15%
+    thresholds and the top of the 24% bracket: line 21 (taxed by the rate
+    schedule), 22 (at 0%), 30 (15%), 33 (20%), 39 (25%) and 42 (28%). Scalars
+    or engine arrays alike."""
+    from numpy import maximum as max_
+    from numpy import minimum as min_
+
+    l13 = l10 - min_(l9, l11)
+    l14 = max_(l1 - l13, 0.0)
+    l16 = min_(l1, zero_top)
+    l17 = min_(l14, l16)
+    l20 = min_(l14, min_(l1, top24))
+    l21 = max_(max_(l1 - l10, 0.0), l20)
+    l22 = l16 - l17
+    l23 = min_(l1, l13)
+    l25 = max_(l23 - l22, 0.0)
+    l29 = max_(min_(l1, fifteen_top) - (l21 + l22), 0.0)
+    l30 = min_(l25, l29)
+    l33 = l23 - (l22 + l30)
+    l39 = max_(min_(l9, s19) - max_(l10 + l21 - l1, 0.0), 0.0)
+    l42 = l1 - (l21 + l22 + l30 + l33 + l39)
+    return {"21": l21, "22": l22, "30": l30, "33": l33, "39": l39, "42": l42}
+
+
 def _sdtw(tax_unit: Any, period: Any, parameters: Any) -> tuple[Any, Any, Any]:
     """The Schedule D Tax Worksheet (2025 Schedule D instructions), used when
     Schedule D line 18 (28% rate gain) or line 19 (unrecaptured section 1250
@@ -109,7 +145,7 @@ def _sdtw(tax_unit: Any, period: Any, parameters: Any) -> tuple[Any, Any, Any]:
     income kept off the rate schedule (line 1 less line 21) and the tax on it
     (lines 31 + 34 + 40 + 43); both are 0 when line 46, the tax on all taxable
     income, is the smaller (line 47)."""
-    from policyengine_us.model_api import add, max_, min_, where
+    from policyengine_us.model_api import add, max_, where
 
     p = parameters(period).gov.irs
     cg = p.capital_gains
@@ -117,32 +153,30 @@ def _sdtw(tax_unit: Any, period: Any, parameters: Any) -> tuple[Any, Any, Any]:
     l1 = max_(tax_unit("taxable_income", period), 0.0)
     s19 = add(tax_unit, period, ["unrecaptured_section_1250_gain"])
     l11 = s19 + add(tax_unit, period, ["capital_gains_28_percent_rate_gain"])
-    l9 = tax_unit("dwks09", period)
-    l10 = tax_unit("dwks10", period)
-    l13 = l10 - min_(l9, l11)
-    l14 = max_(l1 - l13, 0.0)
-    l16 = min_(l1, cg.thresholds["1"][fs])
-    l17 = min_(l14, l16)
-    l20 = min_(l14, min_(l1, p.income.bracket.thresholds["4"][fs]))  # 24% top
-    l21 = max_(max_(l1 - l10, 0.0), l20)
-    l22 = l16 - l17  # taxed at 0%
-    l23 = min_(l1, l13)
-    l25 = max_(l23 - l22, 0.0)
-    l29 = max_(min_(l1, cg.thresholds["2"][fs]) - (l21 + l22), 0.0)
-    l30 = min_(l25, l29)  # taxed at 15%
-    l33 = l23 - (l22 + l30)  # taxed at 20%
-    l39 = max_(min_(l9, s19) - max_(l10 + l21 - l1, 0.0), 0.0)  # at 25%
-    l42 = l1 - (l21 + l22 + l30 + l33 + l39)  # at 28%
-    gains_tax = (
-        cg.rates["2"] * l30
-        + cg.rates["3"] * l33
-        + cg.unrecaptured_s_1250_rate * l39
-        + cg.other_cg_rate * l42
+    b = sdtw_bands(
+        l1,
+        s19,
+        l11,
+        tax_unit("dwks09", period),
+        tax_unit("dwks10", period),
+        cg.thresholds["1"][fs],
+        cg.thresholds["2"][fs],
+        p.income.bracket.thresholds["4"][fs],
     )
-    l45 = gains_tax + _rate_schedule(l21, fs, p.income)
+    gains_tax = (
+        cg.rates["2"] * b["30"]
+        + cg.rates["3"] * b["33"]
+        + cg.unrecaptured_s_1250_rate * b["39"]
+        + cg.other_cg_rate * b["42"]
+    )
+    l45 = gains_tax + _rate_schedule(b["21"], fs, p.income)
     worksheet = l45 <= _rate_schedule(l1, fs, p.income)
     applies = tax_unit("has_qdiv_or_ltcg", period) & (l11 > 0) & (l1 > 0)
-    return applies, where(worksheet, l1 - l21, 0.0), where(worksheet, gains_tax, 0.0)
+    return (
+        applies,
+        where(worksheet, l1 - b["21"], 0.0),
+        where(worksheet, gains_tax, 0.0),
+    )
 
 
 SDTW_VARS = (

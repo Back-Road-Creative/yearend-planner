@@ -74,6 +74,11 @@ savers_credit:
   evidence: implemented
   tests: ["tests/test_form_8880.py"]
   note: "Form 8880 (unit 3c-3): each spouse's traditional, Roth IRA and ABLE contributions (line 1) and W-2 box 12 elective deferrals (codes D, E, F, G, H, S, AA, BB, EE; line 2), less the testing period's distributions (line 4, never below the year's own IRA distributions), capped at $2,000 per person (line 6), times the line 9 decimal (checked at every edge of the 2025 table for every filing status) and held to the tax by the Credit Limit Worksheet, on Schedule 3 line 4. The age test (born after January 1, 18 years back) comes from the birth date; student and dependent status is the filer's yes or no. The testing period's distributions (two years back to the next filing deadline) are typed, since earlier years' 1099-Rs are not on file"
+foreign_tax_credit:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_form1116.py"]
+  note: "Form 1116 (unit 3e-7), passive category income in one column (a fund's foreign income is totaled): foreign tax from 1099-DIV box 7 and 1099-INT box 6; $300 or less ($600 joint) with no carryover takes the election (Schedule 3 line 1, no form); otherwise lines 1a-35 from the typed foreign_source_income, foreign_qualified_dividends and foreign_tax_carryover, line 3a the standard deduction or the real estate taxes' share of capped SALT (CHECK), 3e = 1040 line 9, 4a by the home mortgage worksheet over $5,000, line 18 = taxable income + Sch 1-A line 37, the qualified dividend adjustment (0.4054 / 0.5405) with the Worksheet for Line 18 or the adjustment exception, whichever credit is larger; the credit reprices the engine and the 2441, 8863, 8880 and 8812 limits. Not drafted, named: other categories, K-1/K-3 foreign tax, foreign capital gains (Worksheets A and B), lines 2, 5, 12, 13, 16, 22, 34, the asset method for 4b, Schedules B and C (Form 1116)"
 earned_income_credit:
   status: verified
   evidence: implemented

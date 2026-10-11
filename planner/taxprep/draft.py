@@ -18,6 +18,7 @@ import dataclasses
 import math
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
 from planner import NOTICE, coverage
 from planner.engine import tax
@@ -29,6 +30,7 @@ from planner.plan import esttax, inputs
 from planner.taxprep import (
     capgains,
     d400,
+    f1116,
     f4797,
     f8582,
     hsa,
@@ -63,6 +65,11 @@ ENGINE = (
     "income_tax_before_credits",
     "adjusted_net_capital_gain",
     *tax.SDTW_VARS,
+    "dwks09",
+    "dwks10",
+    "salt",
+    "salt_deduction",
+    "foreign_tax_credit",
     "alternative_minimum_tax",
     "non_refundable_ctc",
     "income_tax_non_refundable_credits",
@@ -501,7 +508,9 @@ def build(lay: Layout, year: int) -> Draft:
     try:
         facts = db.facts_for(conn, year)
         pays = esttax.payments(conn, lay, year)
-        typed = need_values(conn, lay, year, (*state_keys, "foreign_accounts"))
+        typed = need_values(
+            conn, lay, year, (*state_keys, "foreign_accounts", *f1116.KEYS)
+        )
         cg = capgains.build(conn, lay, year)
         h = hsa.build(conn, lay, year)
         hs = hsa.build(conn, lay, year, "spouse")  # a joint spouse's own 8889
@@ -1012,14 +1021,10 @@ def build(lay: Layout, year: int) -> Draft:
             # The form's rounded phase-out leaves more deduction than the
             # engine's: price again on the form's figure, so line 15 and the
             # tax on it (line 16) and the credits and taxes that follow agree.
-            v = tax.values(
-                year,
-                dataclasses.replace(
-                    priced, tax_unit_inputs={**priced.tax_unit_inputs, **form_rounded}
-                ),
-                (*ENGINE, *state_engine),
-                PRIOR,
+            priced = dataclasses.replace(
+                priced, tax_unit_inputs={**priced.tax_unit_inputs, **form_rounded}
             )
+            v = tax.values(year, priced, (*ENGINE, *state_engine), PRIOR, OWN)
         l13b = add(
             f,
             "13b",
@@ -1061,11 +1066,26 @@ def build(lay: Layout, year: int) -> Draft:
     l17 = add(f, "17", "Amount from Schedule 2, line 3", s2_3, "Sch 2 line 3")
     l18 = add(f, "18", "Lines 16 and 17", l16 + l17, "16 + 17")
 
+    # Form 1116 and Schedule 3 line 1 (unit 3e-7)
+    s3_1 = _form_1116(sheet, d, v, hh, facts, typed, year, l15, l16 + s2_1a)
+    if s3_1 != priced.tax_unit_inputs.get("foreign_tax_credit_potential", 0.0):
+        # The plan's household carries the foreign tax itself, which the engine
+        # caps at the whole tax; the credit is Form 1116's limit, so price the
+        # credits that follow it on that.
+        priced = dataclasses.replace(
+            priced,
+            tax_unit_inputs={
+                **priced.tax_unit_inputs,
+                "foreign_tax_credit_potential": s3_1,
+            },
+        )
+        v = tax.values(year, priced, (*ENGINE, *state_engine), PRIOR, OWN)
+
     # Form 2441 and Schedule 3
-    s3_2 = _form_2441(sheet, d, v, hh, care, l11, l18)
+    s3_2 = _form_2441(sheet, d, v, hh, care, l11, l18 - s3_1)
     if s3_2 is not None:
         add("Sch 3", "2", "Child and dependent care credit", s3_2, "Form 2441 line 11")
-    education = _form_8863(sheet, d, v, hh, l11, l18 - (s3_2 or 0.0))
+    education = _form_8863(sheet, d, v, hh, l11, l18 - s3_1 - (s3_2 or 0.0))
     if education is not None:
         add("Sch 3", "3", "Education credits", education[1], "Form 8863 line 19")
     savers = _form_8880(
@@ -1074,7 +1094,7 @@ def build(lay: Layout, year: int) -> Draft:
         v,
         hh,
         l11,
-        l18 - (s3_2 or 0.0) - (education[1] if education is not None else 0.0),
+        l18 - s3_1 - (s3_2 or 0.0) - (education[1] if education is not None else 0.0),
     )
     if savers is not None:
         add(
@@ -1093,6 +1113,8 @@ def build(lay: Layout, year: int) -> Draft:
         "Nonrefundable credits (other than the child credit)",
         v["income_tax_non_refundable_credits"]
         - v["non_refundable_ctc"]
+        - v["foreign_tax_credit"]
+        + s3_1
         - v["cdcc"]
         - engine_education
         - v["savers_credit"]
@@ -1100,6 +1122,7 @@ def build(lay: Layout, year: int) -> Draft:
         + (education[1] if education is not None else engine_education)
         + (v["savers_credit"] if savers is None else savers),
         "engine income_tax_non_refundable_credits less the child credit"
+        + (", line 1 the foreign tax credit" if s3_1 else "")
         + (", with line 2 from Form 2441" if s3_2 is not None else "")
         + (", line 3 from Form 8863" if education is not None else "")
         + (", line 4 from Form 8880" if savers is not None else ""),
@@ -1238,6 +1261,79 @@ def build(lay: Layout, year: int) -> Draft:
     return d
 
 
+def _form_1116(
+    sheet: _Sheet,
+    d: Draft,
+    v: dict[str, float],
+    hh: Household,
+    facts: list[db.FactRow],
+    typed: dict[str, Any],
+    year: int,
+    taxable: float,
+    line20: float,
+) -> float:
+    """Schedule 3 line 1, the foreign tax credit, by the election or by Form
+    1116 (``planner.taxprep.f1116``); ``line20`` is 1040 line 16 plus Schedule 2
+    line 1z. Laid on the draft; returns the credit (0 with no foreign tax)."""
+    paid = _sum(facts, f1116.BOXES)
+    carry = typed.get("foreign_tax_carryover")
+    if not paid and not carry:
+        return 0.0
+    itemizes = v["tax_unit_itemizes"] > 0
+    if itemizes:
+        share = hh.real_estate_taxes / v["salt"] if v["salt"] > 0 else 0.0
+        deduction = min(share, 1.0) * v["salt_deduction"]
+        deduction_src = (
+            f"Sch A: real estate taxes' share ({hh.real_estate_taxes:,.0f} of "
+            f"{v['salt']:,.2f}) of the capped line 5e; state income tax left out, "
+            "medical expenses not modeled"
+        )
+        d.notes.append(
+            "CHECK: Form 1116 line 3a counts the real estate taxes' share of the "
+            "capped state and local tax deduction; add medical expenses (Schedule A "
+            "line 4), general sales tax and personal property taxes if you have them"
+        )
+    else:
+        deduction, deduction_src = v["standard_deduction"], "1040 line 12e"
+    status = hh.filing_status
+    r = f1116.compute(
+        f1116.Facts(
+            paid=paid,
+            income=_float(typed.get("foreign_source_income")),
+            qualified=_float(typed.get("foreign_qualified_dividends")),
+            carryover=_float(carry),
+            joint=status == "JOINT",
+            line20=line20,
+            taxable=taxable,
+            senior=d.get(SCH_1A, "37") or 0.0,
+            deduction=deduction,
+            deduction_src=deduction_src,
+            adjustments=d.get("Sch 1", "26") or 0.0,
+            gross=d.get("1040", "9") or 0.0,
+            mortgage=float(hh.mortgage_interest) if itemizes else 0.0,
+            other_interest=v["auto_loan_interest_deduction"],
+            top24=tax._param(f"gov.irs.income.bracket.thresholds.4.{status}", year),
+            bands=f1116.bands(year, status, taxable, v),
+        )
+    )
+    credit = f1116.lay(sheet.add, d.notes, r)
+    sheet.add(
+        "Sch 3",
+        "1",
+        "Foreign tax credit",
+        credit,
+        "Form 1116 line 35"
+        if r.form
+        else f"the election: {_cited(facts, f1116.BOXES)}, not more than "
+        "1040 line 16 + Sch 2 line 1z",
+    )
+    return credit
+
+
+def _float(x: Any) -> float | None:
+    return None if x is None else float(x)
+
+
 def _form_2441(
     sheet: _Sheet,
     d: Draft,
@@ -1334,7 +1430,13 @@ def _form_2441(
     )
     l9a = add(f, "9a", "Line 6 times line 8", l6 * l8, "6 x 8")
     l9c = add(f, "9c", "Lines 9a and 9b", l9a, "9a + 9b (9b not drafted)")
-    l10 = add(f, "10", "Tax limit", l18, "Credit Limit Worksheet: 1040 line 18")
+    l10 = add(
+        f,
+        "10",
+        "Tax limit",
+        l18,
+        "Credit Limit Worksheet: 1040 line 18 less Sch 3 line 1",
+    )
     allowed = hh.filing_status != "SEPARATE"
     l11 = add(f, "11", "Credit", min(l9c, l10) if allowed else 0.0, "min(9c, 10)")
     if not allowed:
@@ -2513,6 +2615,8 @@ ORDER = (
     "8949",
     "4797",
     f8582.FORM,
+    f1116.FORM,
+    f1116.W18,
     "2441",
     "8863",
     "8880",
@@ -2537,6 +2641,8 @@ HEADINGS = {
     **{f: h for r in statereturn.RETURNS.values() for f, (h, _) in r.forms.items()},
     "Carryover": "Capital loss carryover to next year",
     "4797": "Form 4797 (sales of business property)",
+    f1116.FORM: "Form 1116 (foreign tax credit), passive category income",
+    f1116.W18: "Form 1116 Worksheet for Line 18",
     f8582.FORM: "Form 8582 (passive activity loss limitations)",
 }
 # The capability row behind each form's tag; any other form is draft_return's.
@@ -2547,6 +2653,8 @@ FORM_CAPABILITY = {
     "Sch D": "schedule_d",
     "8949": "schedule_d",
     "4797": "schedule_d",
+    f1116.FORM: "foreign_tax_credit",
+    f1116.W18: "foreign_tax_credit",
     "Sch SE": "self_employment_tax",
     SCH_SE_SPOUSE: "self_employment_tax",
     "8889": "form_8889",
