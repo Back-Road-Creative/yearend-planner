@@ -1,0 +1,12 @@
+# Form 1099-MISC (Rev. April 2025), IRS box labels: the layout for tax years
+# 2025 and 2026. The December 2026 revision adds boxes 13a, 13b and 14 (tips
+# and overtime) and is a new file when it is in use.
+form: 1099-MISC
+years: [2025, 2026]
+match: ["1099-MISC", "Miscellaneous"]
+boxes:
+  "1": {label: "Rents", pattern: "\\b1 Rents\\s+AMOUNT"}
+  "2": {label: "Royalties", pattern: "\\b2 Royalties\\s+AMOUNT"}
+  "3": {label: "Other income", pattern: "\\b3 Other income\\s+AMOUNT"}
+  "4": {label: "Federal income tax withheld", pattern: "\\b4 Federal income tax withheld\\s+AMOUNT"}
+  "16": {label: "State tax withheld", pattern: "\\b16 State tax withheld\\s+AMOUNT"}

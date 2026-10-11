@@ -154,6 +154,7 @@ class Household:
     # benefit rule's worksheet) and canceled debt (line 8c, 1099-C box 2).
     unemployment: int = 0
     salt_refund: int = 0
+    other_income: int = 0  # line 8z, 1099-MISC box 3 (unit 3e-2a)
     cancelled_debt: int = 0
     non_qualified_dividends: int = 0
     qualified_dividends: int = 0
@@ -310,6 +311,10 @@ class Household:
             }
         for k, v in self.other.items():
             person[k] = {y: v}
+        if self.other_income:  # on top of any other miscellaneous income
+            person["miscellaneous_income"] = {
+                y: self.other_income + self.other.get("miscellaneous_income", 0)
+            }
         for name in omit:
             person.pop(name, None)
         people: dict[str, Any] = {"p": person}
