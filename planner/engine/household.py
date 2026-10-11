@@ -149,6 +149,12 @@ class Household:
     se_income: int = 0
     interest: int = 0
     tax_exempt_interest: int = 0  # 1040 line 2a: in ACA MAGI and Social Security
+    # Schedule 1 (unit 3e-1): unemployment compensation (line 7, 1099-G box 1),
+    # the taxable part of a state or local income tax refund (line 1, the tax
+    # benefit rule's worksheet) and canceled debt (line 8c, 1099-C box 2).
+    unemployment: int = 0
+    salt_refund: int = 0
+    cancelled_debt: int = 0
     non_qualified_dividends: int = 0
     qualified_dividends: int = 0
     short_term_gains: int = 0
@@ -276,6 +282,9 @@ class Household:
             "self_employment_income": {y: self.se_income},
             "taxable_interest_income": {y: self.interest},
             "tax_exempt_interest_income": {y: self.tax_exempt_interest},
+            "unemployment_compensation": {y: self.unemployment},
+            "salt_refund_income": {y: self.salt_refund},
+            "debt_relief": {y: self.cancelled_debt},
             "non_qualified_dividend_income": {y: self.non_qualified_dividends},
             "qualified_dividend_income": {y: self.qualified_dividends},
             "short_term_capital_gains": {y: self.short_term_gains},

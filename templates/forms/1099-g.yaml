@@ -1,0 +1,13 @@
+# Form 1099-G (Rev. March 2024), IRS box labels: the layout for tax years 2024
+# and 2025. The December 2026 revision renumbers the state boxes (state income
+# tax withheld moves from box 11 to 12) and is a new file when it is in use.
+form: 1099-G
+years: [2024, 2025]
+match: ["1099-G", "Certain Government Payments"]
+boxes:
+  "1": {label: "Unemployment compensation", pattern: "\\b1 Unemployment compensation\\s+AMOUNT"}
+  "2": {label: "State or local income tax refunds, credits, or offsets", pattern: "\\b2 State or local income tax refunds, credits, or offsets\\s+AMOUNT"}
+  "4": {label: "Federal income tax withheld", pattern: "\\b4 Federal income tax withheld\\s+AMOUNT"}
+  "6": {label: "Taxable grants", pattern: "\\b6 Taxable grants\\s+AMOUNT"}
+  "7": {label: "Agriculture payments", pattern: "\\b7 Agriculture payments\\s+AMOUNT"}
+  "11": {label: "State income tax withheld", pattern: "\\b11 State income tax withheld\\s+AMOUNT"}
