@@ -72,7 +72,7 @@ class Need:
     why: str
     source: str  # the document that supplies it, with where to get it
     kind: str  # date | int | money | fraction | enum | monthly | dependents |
-    # education | rentals | k1s | farms | str
+    # education | rentals | k1s | farms | symbols | str
     scope: str = YEAR
     # (form, box) ledger lookups, summed; a "-" before the box subtracts it
     boxes: tuple[tuple[str, str], ...] = ()
@@ -1447,7 +1447,9 @@ NEEDS: tuple[Need, ...] = (
         "6b, 1120-S 5a and 5b, 1041 2a and 2b), royalties (1065 box 7, 1120-S "
         "6), stgain and ltgain (1065 boxes 8 and 9a, 1120-S 7 and 8a, 1041 3 "
         "and 4a), which go to Schedules B, E line 4 and D lines 5 and 12, on "
-        "top of the 1099s; prior is the K-1's prior-year unallowed passive loss "
+        "top of the 1099s, and the parts of ltgain that are collectibles (1065 "
+        "9b, 1120-S 8b, 1041 4b) and unrecaptured1250 (1041 4c), for Schedule "
+        "D lines 18 and 19; prior is the K-1's prior-year unallowed passive loss "
         "(last year's Form 8582 Part VII column (c)), and active after passive "
         "or nonpassive marks a box 2 rental you actively participated in. "
         "Start with spouse when the "
@@ -1612,6 +1614,40 @@ NEEDS: tuple[Need, ...] = (
         estimate=(("CARRY-EST", "lt"),),
         doc="filed_return",
         unlocks=("Schedule D",),
+    ),
+    Need(
+        "collectibles",
+        "Symbols you sold that are collectibles, or none",
+        "Form 8949 code C and Schedule D line 18: a long-term collectibles gain "
+        "is taxed at up to 28%",
+        "the fund's prospectus or the broker's tax guide: a trust holding gold, "
+        "silver or platinum bullion is a collectible, as are works of art, rugs, "
+        "antiques, gems, stamps, coins and alcoholic beverages (Schedule D "
+        "instructions). The symbols, separated by commas (GLD, SLV), or none",
+        "symbols",
+        asked=lambda s: float(s.get("long_term_gains") or 0) > 0,
+        unlocks=("Schedule D", "Draft 1040"),
+    ),
+    Need(
+        "unrecaptured_1250",
+        "Unrecaptured section 1250 gain not on a 1099-DIV, K-1 or Form 4797",
+        "Schedule D line 19: gain from depreciation on real property is taxed at "
+        "up to 25%",
+        "the Unrecaptured Section 1250 Gain Worksheet lines 10 and 12 (Schedule "
+        "D instructions): the part of a gain on selling a partnership interest "
+        "the partnership's statement puts down to unrecaptured section 1250 "
+        "gain, plus that gain from section 1250 property held more than 1 year "
+        "with no entry in Form 4797 Part I (an installment payment on an "
+        "earlier year's sale, say); 0 when none",
+        "money",
+        asked=lambda s: (
+            float(s.get("long_term_gains") or 0) > 0
+            and (
+                bool(s.get("rentals"))
+                or any(e.get("kind") == "partnership" for e in s.get("k1s") or ())
+            )
+        ),
+        unlocks=("Schedule D", "Draft 1040"),
     ),
     Need(
         "ira_distributions",
@@ -1992,6 +2028,7 @@ def need_for(key: str) -> Need:
 # Bounds on typed answers: amounts that may be negative, whole-number ranges,
 # and the cap past which a figure is a typo rather than a fact.
 SIGNED = frozenset({"se_income", "short_term_gains", "long_term_gains"})
+SYMBOL = re.compile(r"[A-Z0-9][A-Z0-9.\-]{0,11}")
 # The Treasury tipped-occupation list (IRS.gov/TippedOccupations) numbers its
 # occupations with three-digit codes; 0 is "none".
 DEPENDENTS_MAX = 20
@@ -2053,6 +2090,17 @@ def _date(key: str, s: str) -> str:
     if not date(1900, 1, 1) <= d <= date.today():
         raise ValueError(f"{key}: between 1900-01-01 and today, got {s}")
     return d.isoformat()
+
+
+def _symbols(key: str, s: str) -> list[str]:
+    """Ticker symbols separated by commas, upper-cased, or none."""
+    if s.lower() == "none":
+        return []
+    got = [p.strip().upper() for p in s.split(",") if p.strip()]
+    bad = [p for p in got if not SYMBOL.fullmatch(p)]
+    if not got or bad:
+        raise ValueError(f"{key}: symbols separated by commas (GLD, SLV), or none")
+    return sorted(set(got))
 
 
 def _dependents(key: str, s: str) -> list[dict[str, Any]]:
@@ -2153,6 +2201,8 @@ def parse_value(need: Need, text: str) -> Any:
         return k1.parse(need.key, s)
     if need.kind == "farms":
         return schf.parse(need.key, s)
+    if need.kind == "symbols":
+        return _symbols(need.key, s)
     if need.kind == "money":
         value = int(round(_number(need, s, "a dollar amount")))
         if value < 0 and need.key.removeprefix(SPOUSE) not in SIGNED:

@@ -343,8 +343,8 @@ schedule_b:
 schedule_d:
   status: verified
   evidence: implemented
-  tests: ["tests/test_capgains.py"]
-  note: "planner gains; 8949 lots, cross-account wash sales (W), 1099-DIV 2a, carryover in and out"
+  tests: ["tests/test_capgains.py", "tests/test_rate_gains.py"]
+  note: "planner gains; 8949 lots, cross-account wash sales (W), collectibles (C), 1099-DIV 2a, carryover in and out; lines 18 and 19 from the 28% Rate Gain and Unrecaptured Section 1250 Gain Worksheets (1099-DIV 2b and 2d, K-1 collectibles and trust box 4c, typed unrecaptured_1250; Form 4797 lines and section 1202 not drafted)"
 form_8889:
   status: verified
   evidence: implemented

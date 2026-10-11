@@ -997,7 +997,9 @@ def build(lay: Layout, year: int) -> Draft:
             # tax on it (line 16) and the credits and taxes that follow agree.
             v = tax.values(
                 year,
-                dataclasses.replace(priced, tax_unit_inputs=form_rounded),
+                dataclasses.replace(
+                    priced, tax_unit_inputs={**priced.tax_unit_inputs, **form_rounded}
+                ),
                 (*ENGINE, *state_engine),
                 PRIOR,
             )
@@ -2443,13 +2445,14 @@ def _schedule_d(
     seen = {"A": 0, "D": 0}
     for lot in cg.lots:
         seen[lot.box] += 1
-        wash = f"; W +{lot.adjustment:,.2f}" if lot.code else ""
+        adj = f" +{lot.adjustment:,.2f}" if lot.adjustment else ""
+        code = f"; code {lot.code}{adj}" if lot.code else ""
         sheet.add(
             "8949",
             f"{lot.box}{seen[lot.box]}",
             f"{lot.description} {lot.acquired} to {lot.sold}",
             lot.gain,
-            f"proceeds {lot.proceeds:,.2f} basis {lot.basis:,.2f}{wash}",
+            f"proceeds {lot.proceeds:,.2f} basis {lot.basis:,.2f}{code}",
         )
     for line, value in cg.lines.items():
         sheet.add("Sch D", line, capgains.LABELS[line], value, cg.sources[line])

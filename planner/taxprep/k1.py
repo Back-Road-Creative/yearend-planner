@@ -23,7 +23,12 @@ Shareholder's and Beneficiary's Instructions:
   5a-5b, 1041 2a-2b) to Schedule B line 5 and Form 1040 line 3a, royalties
   (1065 box 7, 1120-S box 6) to Schedule E line 4, and the net short- and
   long-term capital gains (1065 boxes 8 and 9a, 1120-S 7 and 8a, 1041 3 and 4a)
-  to Schedule D lines 5 and 12 (unit 3e-3b).
+  to Schedule D lines 5 and 12 (unit 3e-3b). The collectibles (28%) gain
+  (1065 box 9b, 1120-S 8b, 1041 4b) is line 4 of the 28% Rate Gain Worksheet
+  and a trust's unrecaptured section 1250 gain (1041 box 4c) line 11 of the
+  Unrecaptured Section 1250 Gain Worksheet (Schedule D lines 18 and 19, unit
+  3e-6b2); a partnership's or S corporation's (1065 9c, 1120-S 8c) is line 5,
+  through Form 4797, and is not taken.
 - The section 199A statement (1065 box 20 code Z, 1120-S box 17 code V, 1041
   box 14 code I) gives the qualified business income, W-2 wages and UBIA.
 
@@ -68,6 +73,7 @@ BOXES = {
         "royalties": "7",
         "stgain": "8",
         "ltgain": "9a",
+        "collectibles": "9b",
         "qbi": "20Z",
         "w2wages": "20Z",
         "ubia": "20Z",
@@ -83,6 +89,7 @@ BOXES = {
         "royalties": "6",
         "stgain": "7",
         "ltgain": "8a",
+        "collectibles": "8b",
         "qbi": "17V",
         "w2wages": "17V",
         "ubia": "17V",
@@ -98,18 +105,26 @@ BOXES = {
         "qualified": "2b",
         "stgain": "3",
         "ltgain": "4a",
+        "collectibles": "4b",
+        "unrecaptured1250": "4c",
         "qbi": "14I",
         "w2wages": "14I",
         "ubia": "14I",
     },
 }
-SIGNED = ("ordinary", "rental", "otherrental", "se", "qbi", "stgain", "ltgain")
+SIGNED = (
+    *("ordinary", "rental", "otherrental", "se", "qbi"),
+    *("stgain", "ltgain", "collectibles"),
+)
 # The boxes Schedule E Parts II and III take; the portfolio boxes go elsewhere
 PART_E = (
     *("ordinary", "rental", "otherrental", "guaranteed"),
     *("section179", "portfolio", "deductions", "prior"),
 )
-PORTFOLIO = ("interest", "dividends", "qualified", "royalties", "stgain", "ltgain")
+PORTFOLIO = (
+    *("interest", "dividends", "qualified", "royalties", "stgain", "ltgain"),
+    *("collectibles", "unrecaptured1250"),
+)
 ORDINALS = ("1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th")
 ALWAYS_PASSIVE = ("rental", "otherrental")
 LETTERS = "ABCDEFGHI"
