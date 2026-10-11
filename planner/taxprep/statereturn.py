@@ -8,9 +8,10 @@ NC's D-400 is the first entry, CA's Form 540 the second (unit 3d-6), NY's
 IT-201 the third (unit 3d-7), PA's PA-40 the fourth (unit 3d-8), IL's
 IL-1040 the fifth (unit 3d-9), OH's IT 1040 the sixth (unit 3d-10), GA's
 Form 500 the seventh (unit 3d-11), MI's MI-1040 the eighth (unit 3d-12),
-NJ's NJ-1040 the ninth (unit 3d-13). A drafted state is a module beside
-d400.py, a template under templates/forms/ (``issuer`` is the state's code;
-one per page when the return runs to several) and an entry here; the draft,
+NJ's NJ-1040 the ninth (unit 3d-13), VA's Form 760 the tenth (unit 3d-14).
+A drafted state is a module beside d400.py, a template under templates/forms/
+(``issuer`` is the state's code; one per page when the return runs to several)
+and an entry here; the draft,
 ``planner close``, the rollover and the coverage gate read this table, so
 nothing else names a state's return."""
 
@@ -29,6 +30,7 @@ from planner.taxprep import (
     ny201,
     oh1040,
     pa40,
+    va760,
 )
 
 
@@ -215,6 +217,25 @@ RETURNS: dict[str, StateReturn] = {
         keys=nj1040.KEYS,
         engine=nj1040.ENGINE,
         lay=nj1040.lay_lines,
+    ),
+    "VA": StateReturn(
+        code="VA",
+        forms={va760.FORM: ("Form 760", "va_760_draft")},
+        form=va760.FORM,
+        template="VA-760",
+        boxes=("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12")
+        + ("13", "14", "15", "16", "17", "18", "20", "23", "26", "27", "28")
+        + ("33", "35", "36"),
+        # Form 760C line 1 and 3 are the "Income Tax Liability After Spouse Tax
+        # Adjustment and Tax Credits": line 18 less the credits on lines 23-25
+        # (the booklet's worksheet says after the nonrefundable credits; the
+        # form's own wording is followed).
+        tax_line="18",
+        carry="state_tax",  # prior_state_tax's estimate
+        prior=("18", "-23", "-24", "-25"),
+        keys=va760.KEYS,
+        engine=va760.ENGINE,
+        lay=va760.lay_lines,
     ),
 }
 
