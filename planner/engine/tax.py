@@ -9,7 +9,9 @@ income that deduction leaves; the credit then reduces the premiums that
 qualify, which moves income and the credit again. ``settle_se_health`` runs
 that loop (Pub. 974's Iterative Calculation Method) by feeding the engine the
 settled deduction as its premium input, so every figure read back (tax, MAGI,
-credit, the draft's Schedule 1 line 17) is consistent with it.
+credit, the draft's Schedule 1 line 17) is consistent with it. The engine's
+28% rate and unrecaptured section 1250 gain path is replaced by the Schedule D
+Tax Worksheet (``_sdtw_tax``).
 """
 
 from __future__ import annotations
@@ -88,12 +90,108 @@ def _aca_400_edge(system: Any) -> None:
             )
 
 
+def _rate_schedule(amount: Any, fs: Any, income: Any) -> Any:
+    """Tax on ``amount`` by the rate schedule, for an array of tax units."""
+    from policyengine_us.model_api import max_, min_
+
+    tax, low = 0.0, 0.0
+    for n in range(1, len(list(income.bracket.rates.__iter__())) + 1):
+        top = max_(low, income.bracket.thresholds[str(n)][fs])
+        tax = tax + income.bracket.rates[str(n)] * max_(0.0, min_(amount, top) - low)
+        low = top
+    return tax
+
+
+def _sdtw(tax_unit: Any, period: Any, parameters: Any) -> tuple[Any, Any, Any]:
+    """The Schedule D Tax Worksheet (2025 Schedule D instructions), used when
+    Schedule D line 18 (28% rate gain) or line 19 (unrecaptured section 1250
+    gain) is more than zero. Returns whether it applies, the part of taxable
+    income kept off the rate schedule (line 1 less line 21) and the tax on it
+    (lines 31 + 34 + 40 + 43); both are 0 when line 46, the tax on all taxable
+    income, is the smaller (line 47)."""
+    from policyengine_us.model_api import add, max_, min_, where
+
+    p = parameters(period).gov.irs
+    cg = p.capital_gains
+    fs = tax_unit("filing_status", period)
+    l1 = max_(tax_unit("taxable_income", period), 0.0)
+    s19 = add(tax_unit, period, ["unrecaptured_section_1250_gain"])
+    l11 = s19 + add(tax_unit, period, ["capital_gains_28_percent_rate_gain"])
+    l9 = tax_unit("dwks09", period)
+    l10 = tax_unit("dwks10", period)
+    l13 = l10 - min_(l9, l11)
+    l14 = max_(l1 - l13, 0.0)
+    l16 = min_(l1, cg.thresholds["1"][fs])
+    l17 = min_(l14, l16)
+    l20 = min_(l14, min_(l1, p.income.bracket.thresholds["4"][fs]))  # 24% top
+    l21 = max_(max_(l1 - l10, 0.0), l20)
+    l22 = l16 - l17  # taxed at 0%
+    l23 = min_(l1, l13)
+    l25 = max_(l23 - l22, 0.0)
+    l29 = max_(min_(l1, cg.thresholds["2"][fs]) - (l21 + l22), 0.0)
+    l30 = min_(l25, l29)  # taxed at 15%
+    l33 = l23 - (l22 + l30)  # taxed at 20%
+    l39 = max_(min_(l9, s19) - max_(l10 + l21 - l1, 0.0), 0.0)  # at 25%
+    l42 = l1 - (l21 + l22 + l30 + l33 + l39)  # at 28%
+    gains_tax = (
+        cg.rates["2"] * l30
+        + cg.rates["3"] * l33
+        + cg.unrecaptured_s_1250_rate * l39
+        + cg.other_cg_rate * l42
+    )
+    l45 = gains_tax + _rate_schedule(l21, fs, p.income)
+    worksheet = l45 <= _rate_schedule(l1, fs, p.income)
+    applies = tax_unit("has_qdiv_or_ltcg", period) & (l11 > 0) & (l1 > 0)
+    return applies, where(worksheet, l1 - l21, 0.0), where(worksheet, gains_tax, 0.0)
+
+
+SDTW_VARS = (
+    "capital_gains_28_percent_rate_gain",
+    "unrecaptured_section_1250_gain",
+    "capital_gains_excluded_from_taxable_income",
+)
+
+
+def _sdtw_tax(system: Any) -> None:
+    """Price 28% rate and unrecaptured section 1250 gain by the Schedule D Tax
+    Worksheet. The engine's own path keeps the 28% gain in the rate schedule's
+    base below the 0% threshold and also adds 28% of all of it, bands the
+    gains at the 0% threshold instead of the 24% bracket top (line 19) and
+    never takes line 46 when it is smaller, so a filer in the 12% bracket with
+    $10,000 of collectibles gain is charged $2,800 more than the worksheet.
+    The engine's tax is income_tax_main_rates (the rate schedule on taxable
+    income less capital_gains_excluded_from_taxable_income) plus
+    capital_gains_tax; with the worksheet those are lines 44 and 31 + 34 + 40 +
+    43, and regular_tax_before_credits (Form 6251 line 10's regular tax, less
+    capital_gains_tax) is the main-rates tax. Without such gain the engine's
+    formulas run unchanged."""
+    from policyengine_us.model_api import Variable, where
+
+    def pick(name: str, branch: Any) -> None:
+        engine = system.variables[name].formulas["0001-01-01"]
+
+        def formula(tax_unit: Any, period: Any, parameters: Any) -> Any:
+            applies, excluded, gains_tax = _sdtw(tax_unit, period, parameters)
+            mine = branch(tax_unit, period, excluded, gains_tax)
+            return where(applies, mine, engine(tax_unit, period, parameters))
+
+        system.update_variable(type(name, (Variable,), {"formula": formula}))
+
+    pick("capital_gains_excluded_from_taxable_income", lambda tu, pe, x, g: x)
+    pick("capital_gains_tax", lambda tu, pe, x, g: g)
+    pick(
+        "regular_tax_before_credits",
+        lambda tu, pe, x, g: tu("income_tax_main_rates", pe),
+    )
+
+
 @lru_cache(maxsize=1)
 def _system() -> Any:
     from policyengine_us import CountryTaxBenefitSystem
 
     system = CountryTaxBenefitSystem()
     _aca_400_edge(system)
+    _sdtw_tax(system)
     return system
 
 
@@ -266,15 +364,28 @@ def table_tax(amount: float, year: int, filing_status: str) -> float:
     return float(Decimal(f"{exact:.2f}").quantize(Decimal("1"), ROUND_HALF_UP))
 
 
+def preferential(v: dict[str, float]) -> float:
+    """The part of taxable income line 16 keeps off the rate schedule: the
+    adjusted net capital gain (Qualified Dividends and Capital Gain Tax
+    Worksheet), or with 28% rate or unrecaptured section 1250 gain the
+    Schedule D Tax Worksheet's line 1 less line 21 (0 when line 46 is the
+    smaller). ``v`` holds the engine's ``SDTW_VARS`` and
+    adjusted_net_capital_gain."""
+    if v[SDTW_VARS[0]] + v[SDTW_VARS[1]] > 0:
+        return v[SDTW_VARS[2]]
+    return v["adjusted_net_capital_gain"]
+
+
 def line_16(
     regular: float, taxable: float, gains: float, year: int, filing_status: str
 ) -> tuple[float, float]:
     """Form 1040 line 16 from the engine's rate-schedule tax (its
-    income_tax_before_credits less AMT): the ordinary part
-    of taxable income under $100,000 is taxed by the Tax Table (the Qualified
-    Dividends and Capital Gain Tax Worksheet, line 22), and that worksheet's
-    total is capped at the tax on all taxable income (line 24). Returns the
-    line and its gap from the engine's figure."""
+    income_tax_before_credits less AMT): the ordinary part of taxable income
+    (``gains`` is ``preferential``) under $100,000 is taxed by the Tax Table
+    (the Qualified Dividends and Capital Gain Tax Worksheet, line 22; the
+    Schedule D Tax Worksheet, line 44), and that worksheet's total is capped
+    at the tax on all taxable income (line 24; line 47). Returns the line and
+    its gap from the engine's figure."""
     ordinary = taxable - min(max(gains, 0.0), taxable)
     line = regular
     if ordinary < TAX_TABLE_TOP:
@@ -790,6 +901,7 @@ def _compute(year: int, household: Household) -> TaxResult:
             "income_tax_before_credits",
             "alternative_minimum_tax",
             "adjusted_net_capital_gain",
+            *SDTW_VARS,
             "state_income_tax",
             "adjusted_gross_income",
             "aca_magi",
@@ -853,7 +965,7 @@ def _compute(year: int, household: Household) -> TaxResult:
     _, table_gap = line_16(
         regular,
         v["taxable_income"],
-        v["adjusted_net_capital_gain"],
+        preferential(v),
         year,
         household.filing_status,
     )
