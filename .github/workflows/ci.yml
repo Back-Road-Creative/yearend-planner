@@ -7,6 +7,13 @@ on:
   # and the merge robot's barrier holds every PR. `gh workflow run ci --ref main` fills it.
   workflow_dispatch:
 
+# A newer push to the same pull request replaces its obsolete run. Main and
+# dispatch runs each get their own group (the run id), so no proof run on main
+# is ever cancelled or queued behind another.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     strategy:
@@ -20,9 +27,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --frozen --extra dev
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run mypy planner tests
+      # Static checks run once, on Ubuntu: ruff is platform-independent, and mypy
+      # checks the Windows branches (sys.platform == "win32") via --platform win32.
+      - if: matrix.os == 'ubuntu-latest'
+        run: uv run ruff check .
+      - if: matrix.os == 'ubuntu-latest'
+        run: uv run ruff format --check .
+      - if: matrix.os == 'ubuntu-latest'
+        run: uv run mypy planner tests
+      - if: matrix.os == 'ubuntu-latest'
+        run: uv run mypy --platform win32 planner tests
       # Coverage floor on one OS (measured 96% at unit 2f; the floor sits 3 under).
       - run: uv run pytest ${{ matrix.os == 'ubuntu-latest' && '--cov=planner --cov-report=term --cov-fail-under=93' || '' }}
         env:
@@ -68,6 +82,9 @@ jobs:
           name: yearend-planner-win64
           path: dist/yearend-planner-*-win64.zip
           if-no-files-found: error
+          # A ~200 MB zip per run. Release evidence is the tag's draft release
+          # (release.yml), not this artifact, so a week is enough to inspect one.
+          retention-days: 7
       - name: Prove the zip
         shell: pwsh
         run: |
