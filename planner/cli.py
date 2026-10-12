@@ -1707,6 +1707,46 @@ def yearend(
 
 
 @app.command()
+def benefits(
+    year: int | None = typer.Option(
+        None, help="plan year (not needed with --programs)", min=1990, max=2100
+    ),
+    programs: bool = typer.Option(
+        False, help="list the registry: each program's rules, sources and review date"
+    ),
+    q4_dividends: float = Q4,
+    sales_st: float = ST,
+    sales_lt: float = LT,
+    conversion: float = CONV,
+    hsa: float | None = HSA,
+) -> None:
+    """The benefits screen: each program possibly eligible, not eligible under
+    what's modeled, or not enough information, on the year's projected income,
+    with why and how to apply. A screen, not a decision."""
+    from planner import benefits as bn
+    from planner.engine.household import MissingInputError
+    from planner.plan.inputs import OverrideError
+
+    if programs:
+        for line in bn.program_lines():
+            typer.echo(line)
+        return
+    if year is None:
+        typer.echo("refused: --year is needed to screen a year", err=True)
+        raise typer.Exit(code=2)
+    ov = _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa)
+    try:
+        out = bn.build(layout(), year, ov)
+    except (MissingInputError, OverrideError) as exc:
+        typer.echo(f"needs: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for line in out.lines():
+        typer.echo(line)
+    for note in out.notes:
+        typer.echo(f"note: {note}")
+
+
+@app.command()
 def place(
     year: int = typer.Option(..., help="plan year", min=1990, max=2100),
     as_of: str | None = AS_OF,

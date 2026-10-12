@@ -46,6 +46,7 @@ SECTIONS = (
     "goals",
     "placement",
     "yearend",
+    "benefits",
 )
 MARRIED = ("married_joint", "married_separate")
 
@@ -492,6 +493,20 @@ def _yearend(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
     return Section("yearend", True, ye.lines(), ye.notes)
 
 
+def _benefits(
+    lay: Layout,
+    year: int,
+    _today: date,
+    ov: Overrides,
+    pj: magi.Projection | None = None,
+) -> Section:
+    """Unit 5a: the benefits screen on the year's projection."""
+    from planner import benefits
+
+    out = benefits.build(lay, year, ov, pj)
+    return Section("benefits", True, out.lines(), out.notes)
+
+
 BUILDERS: dict[str, Callable[[Layout, int, date, Overrides], Section]] = {
     "needed": _needed,
     "magi": _magi,
@@ -507,6 +522,7 @@ BUILDERS: dict[str, Callable[[Layout, int, date, Overrides], Section]] = {
     "goals": _goals,
     "placement": _placement,
     "yearend": _yearend,
+    "benefits": _benefits,
 }
 
 
@@ -603,6 +619,9 @@ def assemble(
         "cash": cash,
         "magi": lambda lay_, y, t, o: _magi(lay_, y, t, o, shared_magi(lay_, y, o)),
         "goals": goals,
+        "benefits": lambda lay_, y, t, o: _benefits(
+            lay_, y, t, o, shared_magi(lay_, y, o)
+        ),
     }
     plan = YearPlan(year, today.isoformat())
     for name in SECTIONS:
