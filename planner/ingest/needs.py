@@ -41,6 +41,7 @@ from planner.taxprep import (
     k1,
     refund,
     sche,
+    schedule_ai,
     schf,
     statereturn,
 )
@@ -84,7 +85,7 @@ class Need:
     source: str  # the document that supplies it, with where to get it
     kind: str  # date | int | money | fraction | enum | monthly | dependents |
     # education | rentals | k1s | farms | annuities | ira_basis | early_exception |
-    # symbols | sales | str
+    # periods | symbols | sales | str
     scope: str = YEAR
     # (form, box) ledger lookups, summed; a "-" before the box subtracts it
     boxes: tuple[tuple[str, str], ...] = ()
@@ -409,6 +410,15 @@ def _early_settled(owner: str) -> Callable[..., tuple[Any, str] | None]:
         return None
 
     return settled
+
+
+def _periods_even(
+    config: Path, conn: sqlite3.Connection, year: int, values: dict[str, Any]
+) -> tuple[Any, str]:
+    """Untyped, each income line is taken as received evenly through the year
+    (the annualized method then gains nothing but a planned year-end item)."""
+    del config, conn, year, values
+    return {}, "not typed: each income line taken as received evenly"
 
 
 def _qcd_code(
@@ -2083,6 +2093,34 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("Roth conversion", "Levers", "Draft 1040"),
     ),
     Need(
+        schedule_ai.KEY,
+        "Income from January 1 through March, May and August, for income that "
+        "came unevenly (or none)",
+        "Form 2210 Schedule AI: the annualized method can cut the required "
+        "installments, and the underpayment penalty, for income that came late "
+        "in the year",
+        "your books, pay stubs and brokerage statements: each income line that "
+        "did not come evenly, then its total from January 1 through the end of "
+        "March, May and August, separated by semicolons. Example: "
+        + schedule_ai.EXAMPLE
+        + ". A line not typed is taken as received evenly",
+        "periods",
+        derive_text=_periods_even,
+        asked=lambda s: any(
+            float(s.get(k) or 0) != 0
+            for k in (
+                "se_income",
+                "short_term_gains",
+                "long_term_gains",
+                "ira_distributions",
+                "roth_conversion",
+                "other_income",
+                "stock_option_income",
+            )
+        ),
+        unlocks=("Estimated tax",),
+    ),
+    Need(
         "traditional_ira_contribution",
         "Traditional IRA contribution",
         "the IRA deduction",
@@ -2803,6 +2841,8 @@ def parse_value(need: Need, text: str) -> Any:
         return f8606.parse(need.key, s)
     if need.kind == "early_exception":
         return f5329.parse(need.key, s)
+    if need.kind == "periods":
+        return schedule_ai.parse(need.key, s)
     if need.kind == "symbols":
         return _symbols(need.key, s)
     if need.kind == "sales":
