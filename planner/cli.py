@@ -1203,6 +1203,33 @@ def forecast(
 
 
 @app.command()
+def classify(
+    key: str = typer.Argument(
+        None, help="a symbol (VTSAX), or account:<number> for a typed balance"
+    ),
+    cls: str = typer.Argument(
+        None, metavar="CLASS", help="stocks, bonds, cash, real_estate or other"
+    ),
+    remove: bool = typer.Option(False, "--remove", help="drop the typed class"),
+) -> None:
+    """Type a holding's asset class for the target mix; with none, list them."""
+    from planner import goals
+
+    lay = layout()
+    if key is None:
+        typed = goals.load(lay).classes
+        for k, v in sorted(typed.items()):
+            typer.echo(f"{k:20} {v}")
+        if not typed:
+            typer.echo("no classes typed")
+        return
+    if not remove and cls is None:
+        typer.echo("refused: give a class, or --remove", err=True)
+        raise typer.Exit(code=2)
+    _goals_done(lambda: goals.save_class(lay, key, None if remove else cls))
+
+
+@app.command()
 def convert(
     date_: str = typer.Argument(..., metavar="DATE", help="YYYY-MM-DD"),
     amount: str = typer.Argument(..., help="dollars converted"),
@@ -1630,6 +1657,40 @@ def washsales(
 
 
 LOT = typer.Option(None, help="sell this lot first: ACCOUNT:SYMBOL:YYYY-MM-DD (repeat)")
+
+
+@app.command()
+def place(
+    year: int = typer.Option(..., help="plan year", min=1990, max=2100),
+    as_of: str | None = AS_OF,
+    q4_dividends: float = Q4,
+    sales_st: float = ST,
+    sales_lt: float = LT,
+    conversion: float = CONV,
+    hsa: float | None = HSA,
+) -> None:
+    """Moves toward the target mix, the cheapest in tax first: inside the
+    tax-advantaged accounts, spare cash, taxable loss lots, then gain lots;
+    the sales' tax effect is priced through the engine."""
+    from datetime import date
+
+    from planner import goals
+    from planner.plan import placement
+
+    try:
+        pl = placement.plan(
+            layout(),
+            year,
+            date.fromisoformat(as_of) if as_of else None,
+            _overrides(q4_dividends, sales_st, sales_lt, conversion, hsa),
+        )
+    except goals.GoalsError as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for line in pl.lines():
+        typer.echo(line)
+    for note in pl.notes:
+        typer.echo(f"note: {note}")
 
 
 @app.command()

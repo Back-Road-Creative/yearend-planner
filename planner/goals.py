@@ -13,6 +13,9 @@ Four parts, each optional:
   such as the ACA 400% cliff or the IRMAA first tier.
 * ``target_mix``: the household's own split across asset classes. The planner
   never picks one; with none chosen it proposes no rebalancing.
+* ``classes``: which asset class each holding is (``VTSAX: stocks``), or a
+  whole account typed as a balance (``account:<number>: bonds``). The planner
+  never guesses one; a cash account is cash unless typed otherwise.
 """
 
 from __future__ import annotations
@@ -46,7 +49,7 @@ PROTECT = {
 }
 GOAL_FIELDS = ("name", "amount", "date", "rank", "owner", "flexibility", "kind")
 DEBT_FIELDS = ("name", "balance", "rate", "payment", "owner")
-TOP = ("goals", "debts", "protect", "target_mix")
+TOP = ("goals", "debts", "protect", "target_mix", "classes")
 MIX_TOTAL = 100.0
 NEAR_MONTHS = 12  # goals dated inside a year (the reserve rule reads them)
 
@@ -94,6 +97,7 @@ class Goals:
     protect: list[str] = field(default_factory=list)
     target_mix: dict[str, float] | None = None
     notes: list[str] = field(default_factory=list)
+    classes: dict[str, str] = field(default_factory=dict)  # symbol: asset class
 
     def ranked(self) -> list[Goal]:
         return sorted(self.goals, key=lambda g: (g.rank, g.name))
@@ -216,6 +220,20 @@ def _mix(raw: Any) -> dict[str, float] | None:
     return mix
 
 
+def _classes(raw: Any) -> dict[str, str]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise GoalsError("classes: expected symbol: asset class")
+    out: dict[str, str] = {}
+    for k, v in raw.items():
+        key = str(k).strip()
+        if not key:
+            raise GoalsError("classes: a symbol is blank")
+        out[key] = _choice("classes", key, v, ASSET_CLASSES)
+    return out
+
+
 def parse(data: dict[str, Any]) -> Goals:
     """Check a goals mapping; anything malformed is refused, never guessed."""
     unknown = sorted(set(data) - set(TOP))
@@ -230,6 +248,7 @@ def parse(data: dict[str, Any]) -> Goals:
         [_debt(d, i) for i, d in enumerate(rows["debts"])],
         [str(p) for p in rows["protect"]],
         _mix(data.get("target_mix")),
+        classes=_classes(data.get("classes")),
     )
     for kind, names in (
         ("goal", [g.name for g in out.goals]),
@@ -338,6 +357,20 @@ def save_protect(lay: Layout, keys: list[str]) -> Goals:
 def save_mix(lay: Layout, mix: dict[str, float] | None) -> Goals:
     data = _raw(lay)
     data["target_mix"] = mix
+    return _save(lay, data)
+
+
+def save_class(lay: Layout, key: str, cls: str | None) -> Goals:
+    """Type one holding's asset class (``None`` drops it)."""
+    data = _raw(lay)
+    classes = dict(data.get("classes") or {})
+    if cls is None:
+        if key not in classes:
+            raise GoalsError(f"no class typed for {key}")
+        classes.pop(key)
+    else:
+        classes[key] = cls
+    data["classes"] = classes or None
     return _save(lay, data)
 
 
