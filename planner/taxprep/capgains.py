@@ -58,7 +58,7 @@ from planner.taxprep import f4797, k1
 
 FORM = "SCH-D"
 ISSUER = "planner"
-NOT_REPORTED = ("trad_ira", "inherited_ira", "roth", "hsa")
+NOT_REPORTED = ("trad_ira", "simple_ira", "inherited_ira", "roth", "hsa", "gov_457b")
 LABELS = {
     "1a": "Short-term, 1099-B basis reported, no adjustments",
     "1b": "Short-term, Form 8949 box A or G",

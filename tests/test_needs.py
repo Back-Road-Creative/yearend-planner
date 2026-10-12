@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from planner.cli import app
 from planner.ingest import ingest
 from planner.ingest.needs import (
+    ACCOUNT_FOLLOW,
     DOCS,
     NEEDS,
     OUTPUTS,
@@ -342,7 +343,8 @@ def test_a_refinanced_loan_counts_only_the_current_lender(lay: Layout) -> None:
 
 
 def test_every_need_names_its_outputs_and_a_known_document() -> None:
-    for n in (*NEEDS, account_need("X1"), account_need("X1", death=True)):
+    follow = [account_need("X1", tail) for tail in ACCOUNT_FOLLOW]
+    for n in (*NEEDS, account_need("X1"), *follow):
         assert n.unlocks, n.key
         assert set(n.unlocks) <= set(OUTPUTS), (n.key, n.unlocks)
         assert n.doc == "" or n.doc in DOCS, (n.key, n.doc)

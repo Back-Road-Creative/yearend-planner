@@ -243,8 +243,8 @@ csv_bank:
 ledger_accounts_balances_lots:
   status: verified
   evidence: implemented
-  tests: ["tests/test_portfolio.py"]
-  note: "planner account / status"
+  tests: ["tests/test_portfolio.py", "tests/test_account_types.py"]
+  note: "planner account / status; SIMPLE IRA 2-year window gates conversion (IRC 72(t)(6), 408(d)(3)(G)); governmental 457(b) accessible after separation less rolled-in money before 59 1/2 (Pub. 575, IRC 457(d)(1)(A)). Not handled: RMDs on the owner's own accounts, a 457(b) in-service withdrawal at 59 1/2 (plan terms), non-governmental 457(b)"
 roth_conversion_clock:
   status: verified
   evidence: implemented

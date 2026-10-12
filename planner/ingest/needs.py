@@ -52,7 +52,7 @@ YEAR = "year"
 TYPED = "Typed answers"  # the group of items no document supplies
 MANUAL_VALUES = "values"
 MANUAL_DONT_HAVE = "dont_have"
-ACCOUNT = "account:"  # dynamic keys: account:<number>, account:<number>:death
+ACCOUNT = "account:"  # dynamic keys: account:<number>, account:<number>:<tail>
 SCHEDULE_B_OVER = 1500.0  # interest or ordinary dividends over this need Schedule B
 FILING = (
     "single",
@@ -2541,25 +2541,68 @@ def load_profile(lay: Layout) -> dict[str, Any]:
     return load_assumptions(path)
 
 
-def account_need(number: str, death: bool = False) -> Need:
-    """The two items an export cannot answer about an account it names: what
-    kind of account it is, and for an inherited IRA, when the clock started."""
-    if death:
+# the follow-up items one account type needs: tail -> (type, accounts.yaml
+# field, label, why, where, kind)
+ACCOUNT_FOLLOW = {
+    "death": (
+        "inherited_ira",
+        "date_of_death",
+        "Date of death for inherited IRA {n}",
+        "the 10-year emptying deadline",
+        "the inheritance paperwork or the custodian's beneficiary letter",
+        "date",
+    ),
+    "simple": (
+        "simple_ira",
+        "first_contribution",
+        "First contribution date for SIMPLE IRA {n}",
+        "for 2 years from it the account cannot convert or roll to a traditional "
+        "IRA, and a withdrawal before 59 1/2 owes 25%",
+        "the custodian's first statement or the employer's SIMPLE plan notice",
+        "date",
+    ),
+    "separated": (
+        "gov_457b",
+        "separated",
+        "Have you left the employer of 457(b) {n}? (yes or no)",
+        "a governmental 457(b) pays out on leaving the employer, without the 10% "
+        "additional tax",
+        "your employment records",
+        "enum",
+    ),
+    "rolled": (
+        "gov_457b",
+        "rolled_in",
+        "Money rolled into 457(b) {n} from another plan or an IRA ($)",
+        "that part keeps the 10% additional tax before 59 1/2",
+        "the plan's statement (rollover contributions)",
+        "money",
+    ),
+}
+
+
+def account_need(number: str, tail: str = "") -> Need:
+    """The items an export cannot answer about an account it names: what kind
+    of account it is, and the follow-ups that kind needs (``ACCOUNT_FOLLOW``)."""
+    if tail:
+        _, _, label, why, where, kind = ACCOUNT_FOLLOW[tail]
         return Need(
-            f"{ACCOUNT}{number}:death",
-            f"Date of death for inherited IRA {number}",
-            "the 10-year emptying deadline",
-            "the inheritance paperwork or the custodian's beneficiary letter",
-            "date",
+            f"{ACCOUNT}{number}:{tail}",
+            label.format(n=number),
+            why,
+            where,
+            kind,
             PROFILE,
-            unlocks=("Withdrawal plan", "Glide path"),
+            choices=("yes", "no") if kind == "enum" else (),
+            unlocks=("Withdrawal plan", "Roth conversion", "Glide path"),
         )
     return Need(
         f"{ACCOUNT}{number}",
         f"Account type for {number}",
         "which balances are spendable, locked or convertible",
         "the account's statement header: brokerage = taxable, traditional IRA, "
-        "inherited IRA, Roth IRA, HSA, or a bank account = cash",
+        "SIMPLE IRA, inherited IRA, Roth IRA, HSA, governmental 457(b), or a bank "
+        "account = cash",
         "enum",
         PROFILE,
         choices=portfolio.TYPES,
@@ -2573,8 +2616,8 @@ def need_for(key: str) -> Need:
             return n
     if key.startswith(ACCOUNT):
         number, _, tail = key[len(ACCOUNT) :].partition(":")
-        if number and tail in ("", "death"):
-            return account_need(number, death=tail == "death")
+        if number and (tail == "" or tail in ACCOUNT_FOLLOW):
+            return account_need(number, tail)
     raise KeyError(f"no such item: {key}")
 
 
@@ -2820,7 +2863,7 @@ def enter(lay: Layout, year: int, key: str, text: str) -> Any:
     if key.startswith(ACCOUNT):
         number, _, tail = key[len(ACCOUNT) :].partition(":")
         portfolio.save_account(
-            lay, number, **{"date_of_death" if tail else "type": value}
+            lay, number, **{ACCOUNT_FOLLOW[tail][1] if tail else "type": value}
         )
     elif need.scope == PROFILE:
         path = profile_path(lay)
@@ -3060,18 +3103,24 @@ def _needed(conn: sqlite3.Connection, lay: Layout, year: int) -> NeedsReport:
         else:
             state = "dont_have" if need.key in profile_dh else "missing"
             report.items.append(Status(need, state))
-        if entry.get("type") == "inherited_ira":
-            need = account_need(number, death=True)
-            death = entry.get("date_of_death")
+        for tail, (kind, name, *_) in ACCOUNT_FOLLOW.items():
+            if entry.get("type") != kind:
+                continue
+            if tail == "rolled" and entry.get("separated") is not True:
+                continue  # only matters once the money can be paid out
+            need = account_need(number, tail)
+            given = entry.get(name)
             state = (
                 "actual"
-                if death
+                if given is not None
                 else "dont_have"
                 if need.key in profile_dh
                 else "missing"
             )
+            if isinstance(given, bool):
+                given = "yes" if given else "no"
             report.items.append(
-                Status(need, state, death, "accounts.yaml" if death else "")
+                Status(need, state, given, "accounts.yaml" if given is not None else "")
             )
     return report
 

@@ -943,7 +943,10 @@ def account(
         None, help="account number as the export spells it"
     ),
     type: str | None = typer.Option(
-        None, help="taxable, trad_ira, inherited_ira, roth, hsa or cash"
+        None,
+        help=(
+            "taxable, trad_ira, simple_ira, inherited_ira, roth, hsa, gov_457b or cash"
+        ),
     ),
     name: str | None = typer.Option(None, help="a label for the status page"),
     date_of_death: str | None = typer.Option(None, help="inherited IRA: YYYY-MM-DD"),
@@ -951,6 +954,17 @@ def account(
         None,
         "--annual-rmd/--no-annual-rmd",
         help="inherited IRA: the owner had begun RMDs, so yearly RMDs apply",
+    ),
+    first_contribution: str | None = typer.Option(
+        None, help="SIMPLE IRA: YYYY-MM-DD of the first deposit (starts 2 years)"
+    ),
+    separated: bool | None = typer.Option(
+        None,
+        "--separated/--not-separated",
+        help="governmental 457(b): you have left that employer",
+    ),
+    rolled_in: str | None = typer.Option(
+        None, help="governmental 457(b): dollars rolled in from another plan or IRA"
     ),
     balance: str | None = typer.Option(
         None, help="typed balance for an account no export covers"
@@ -960,7 +974,7 @@ def account(
     data/profile/accounts.yaml; with no arguments, list them."""
     from datetime import date
 
-    from planner.ingest.needs import parse_value
+    from planner.ingest.needs import account_need, parse_value
     from planner.ledger import portfolio
 
     lay = layout()
@@ -973,7 +987,11 @@ def account(
         "name": name,
         "date_of_death": date_of_death,
         "annual_rmd": annual_rmd,
+        "first_contribution": first_contribution,
+        "separated": separated,
     }
+    if rolled_in is not None:
+        fields["rolled_in"] = parse_value(account_need(number, "rolled"), rolled_in)
     if balance is not None:
         need = portfolio.account_balance_need(number)
         fields["balance"] = parse_value(need, balance)
@@ -1088,16 +1106,29 @@ def convert(
             err=True,
         )
         raise typer.Exit(code=2)
-    if kind != "trad_ira":
+    if kind not in portfolio.CONVERTIBLE:
         typer.echo(
-            f"refused: {from_account} is {kind or 'untyped'}; only a traditional IRA "
-            f"converts (planner account {from_account} --type trad_ira)",
+            f"refused: {from_account} is {kind or 'untyped'}; only a traditional or "
+            f"SIMPLE IRA converts (planner account {from_account} --type trad_ira)",
             err=True,
         )
         raise typer.Exit(code=2)
     money = need_for("roth_conversion")
     try:
         when = date.fromisoformat(date_)
+        if kind == "simple_ira":
+            free = portfolio.simple_free(entry)
+            if free is None or when < free:
+                raise ValueError(
+                    f"{from_account} is a SIMPLE IRA "
+                    + (
+                        "with no first contribution date (planner account "
+                        f"{from_account} --first-contribution YYYY-MM-DD)"
+                        if free is None
+                        else f"inside its 2-year window until {free.isoformat()}"
+                    )
+                    + "; it converts only after those 2 years"
+                )
         cents = db.to_cents(parse_value(money, amount))
         taxable_cents = (
             cents if taxable is None else db.to_cents(parse_value(money, taxable))
