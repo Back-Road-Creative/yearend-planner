@@ -28,6 +28,7 @@ from planner.ledger import db
 from planner.paths import Layout
 from planner.plan import esttax, inputs
 from planner.taxprep import (
+    annuity,
     capgains,
     d400,
     f1116,
@@ -1018,8 +1019,13 @@ def build(lay: Layout, year: int) -> Draft:
         "5b",
         "Pensions and annuities, taxable",
         l5b,
-        origin("pension_income"),
+        origin("pension_income")
+        + ("; Simplified Method Worksheet line 9" if inp.annuities else ""),
     )
+    for i, w in enumerate(inp.annuities, 1):
+        form = annuity.FORM if len(inp.annuities) == 1 else f"{annuity.FORM} {i}"
+        for ln, amount in w.lines.items():
+            add(form, ln, annuity.LABELS[ln], amount, f"annuities ({w.who})")
     add(
         f,
         "6a",
@@ -2701,6 +2707,8 @@ ORDER = (
     f8582.FORM,
     f1116.FORM,
     f1116.W18,
+    annuity.FORM,
+    *(f"{annuity.FORM} {i}" for i in range(1, 10)),
     "2441",
     "8863",
     "8880",
@@ -2729,6 +2737,11 @@ HEADINGS = {
     f1116.FORM: "Form 1116 (foreign tax credit), passive category income",
     f1116.W18: "Form 1116 Worksheet for Line 18",
     f8582.FORM: "Form 8582 (passive activity loss limitations)",
+    annuity.FORM: "Simplified Method Worksheet (Form 1040 lines 5a and 5b)",
+    **{
+        f"{annuity.FORM} {i}": f"Simplified Method Worksheet {i} (lines 5a and 5b)"
+        for i in range(1, 10)
+    },
 }
 # The capability row behind each form's tag; any other form is draft_return's.
 FORM_CAPABILITY = {
@@ -2741,6 +2754,8 @@ FORM_CAPABILITY = {
     f6251.FORM: "equity_pay",
     f1116.FORM: "foreign_tax_credit",
     f1116.W18: "foreign_tax_credit",
+    annuity.FORM: "pensions_and_qcd",
+    **{f"{annuity.FORM} {i}": "pensions_and_qcd" for i in range(1, 10)},
     "Sch SE": "self_employment_tax",
     SCH_SE_SPOUSE: "self_employment_tax",
     "8889": "form_8889",
