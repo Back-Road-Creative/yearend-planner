@@ -268,6 +268,11 @@ glide_path_and_monthly_cash:
   status: verified
   evidence: implemented
   tests: ["tests/test_spending.py::test_glide_path_table_stresses_and_monthly_cash"]
+social_security_household:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_socialsec.py"]
+  note: "Social Security in the glide path (unit 3f-4, planner/plan/socialsec.py), pinned to the worked examples in 20 CFR 404.313 and 404.410: full retirement age by 404.409(a) (the engine's table) and the widow(er)'s by 404.409(b), a January 1 birth read as the year before (404.102); the PIA from the SSA statement (the age-67 figure, less its delayed credits when full retirement age is under 67; else the age-62 or age-70 figure undone); each person's own benefit at a whole-year claim age (the statement's figure at its own age, else the PIA reduced 5/9 then 5/12 of 1% a month or credited by the engine's delayed-credit rate to 70); a joint spouse's own record and claim age (spouse_ss_estimate_62/67/70, spouse_ss_claim_age); a spouse's benefit on the other's record, half the PIA less the own PIA, from the later of the two claims, reduced 25/36 then 5/12 of 1% a month, no delayed credits (404.333, 404.407, 404.410(b), 404.623); the survivor's check, the larger of their own and the deceased's benefit with the 82.5% floor, unreduced from the survivor's full retirement age and at 60 (404.338, 404.410(c)), as notes; this year's earnings test for anyone drawing under full retirement age, from their wages and self-employment, 1/2 over the lower exempt amount or 1/3 over the higher for the months before full retirement age (404.430, the engine's amounts), off this year's row. Not handled, named: the family maximum (404.403), child-in-care and mother's or father's benefits, divorced-spouse benefits, the windfall and government pension offsets (repealed for benefits after 2023 by P.L. 118-273, not modeled), the grace-year monthly test (404.435), the test's reduction of a spouse's benefit for the worker's earnings (404.415(b)), the recomputation at full retirement age for withheld months (404.412), a deceased worker who had not yet claimed, partial-year months in the claim year, and SSA's rounding to the dime and the dollar"
 glide_cash_line_estimated_tax:
   status: verified
   evidence: implemented

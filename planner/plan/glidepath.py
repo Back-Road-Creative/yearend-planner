@@ -1,5 +1,7 @@
 """The glide path: the age/year table from the current balance under the
-planning return (real and nominal dollars, Social Security from the claim age),
+planning return (real and nominal dollars, the household's Social Security from
+each claim age, a spouse's benefit on the other's record, this year's earnings
+test),
 the accessible-bucket floor through the IRA access age, the comfort-floor line
 beside the on-track line, three stress rows, and
 a month-by-month cash line for this year and next so the bridge to 59½ is
@@ -24,12 +26,11 @@ from planner.ingest.derive import _classify_income
 from planner.ingest.needs import load_profile
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.plan import calendar, esttax, spending, withdraw
+from planner.plan import calendar, esttax, inputs, socialsec, spending, withdraw
 from planner.plan.inputs import Overrides, age_at_year_end
 from planner.taxprep import schedule_c
 
 HORIZON_AGE = 95
-SS_AGES = (62, 67, 70)
 STRESS_DROP = 0.30
 STRESS_INFLATION = 0.05
 MONTHLY = ("mortgage_monthly", "premium_monthly")  # typed costs on the cash line
@@ -122,20 +123,6 @@ def band_name(sp: spending.Spending) -> str:
     return "inside the band"
 
 
-def ss_monthly(profile: dict[str, Any], claim_age: int) -> tuple[float, str | None]:
-    """The SSA statement figure for the claim age, else the nearest lower age."""
-    for age in sorted(SS_AGES, reverse=True):
-        est = profile.get(f"ss_estimate_{age}")
-        if age <= claim_age and est is not None:
-            note = (
-                None
-                if age == claim_age
-                else f"ss_estimate_{age} stands in for {claim_age}"
-            )
-            return float(est), note
-    return 0.0, f"no SSA estimate at or below claim age {claim_age}"
-
-
 def run(
     year: int,
     age: int,
@@ -145,36 +132,35 @@ def run(
     ceiling: float,
     ret: float,
     inflation: float,
-    ss_annual: float,
-    claim_age: int | None,
+    ss: dict[int, float],
     drop_year1: float = 0.0,
     horizon: int = HORIZON_AGE,
     peak: float | None = None,
 ) -> list[YearRow]:
-    """Real-dollar path: spend at the start of the year (SS first, the portfolio
-    for the rest), grow what is left; the drawdown rule holds spending at the
-    floor while the balance sits under 90% of its peak. ``peak`` is the
-    inflation-adjusted all-time peak the spending panel uses; a starting balance
-    above it is the peak."""
+    """Real-dollar path: spend at the start of the year (Social Security first,
+    ``ss`` by age, the portfolio for the rest), grow what is left; the drawdown
+    rule holds spending at the floor while the balance sits under 90% of its
+    peak. ``peak`` is the inflation-adjusted all-time peak the spending panel
+    uses; a starting balance above it is the peak."""
     rows: list[YearRow] = []
     bal = balance * (1 - drop_year1)
     peak = balance if peak is None else max(peak, balance)
     for i in range(max(horizon - age + 1, 1)):
         a = age + i
-        ss = ss_annual if claim_age is not None and a >= claim_age else 0.0
+        benefit = ss.get(a, 0.0)
         spend = (
             floor
             if bal < spending.DRAWDOWN * peak
             else spending.clamp(rate, bal, floor, ceiling)
         )
-        withdrawal = min(max(spend - ss, 0.0), bal)
+        withdrawal = min(max(spend - benefit, 0.0), bal)
         rows.append(
             YearRow(
                 year + i,
                 a,
                 r(bal),
                 r(bal * (1 + inflation) ** i),
-                r(ss),
+                r(benefit),
                 r(spend),
                 r(withdrawal),
             )
@@ -494,6 +480,34 @@ def months(
     return rows
 
 
+def _earnings_tests(
+    lay: Layout,
+    year: int,
+    overrides: Overrides | None,
+    head: socialsec.Person,
+    spouse: socialsec.Person | None,
+) -> list[socialsec.EarningsTest]:
+    """This year's earnings test for each person drawing benefits under full
+    retirement age, from their wages and self-employment on the return."""
+    people = [p for p in (head, spouse) if p is not None and p.own]
+    due = [p for p in people if socialsec.earnings_test(p, p.own, 1e12, year)]
+    if not due:
+        return []
+    try:
+        hh = inputs.build(lay, year, overrides).household
+    except (MissingInputError, ValueError):
+        return []
+    out = []
+    for p in due:
+        who = hh if p is head else hh.spouse
+        if who is None:
+            continue
+        test = socialsec.earnings_test(p, p.own, float(who.wages + who.se_income), year)
+        if test is not None:
+            out.append(test)
+    return out
+
+
 def glide(
     lay: Layout,
     year: int,
@@ -527,18 +541,14 @@ def glide(
         spending=sp.spending,
         band=band_name(sp),
     )
-    claim_age = profile.get("ss_claim_age")
-    ss_annual = 0.0
-    if claim_age is not None:
-        monthly, note = ss_monthly(profile, int(claim_age))
-        ss_annual = monthly * 12
-        if note:
-            g.notes.append(note)
-    else:
-        g.notes.append("ss_claim_age not set: no Social Security in the table")
+    head, spouse, ss_notes = socialsec.household(profile, year)
+    g.notes += ss_notes
+    ss = socialsec.schedule(head, spouse, year, HORIZON_AGE)
+    for test in _earnings_tests(lay, year, overrides, head, spouse):
+        g.notes.append(test.note)
+        ss[age] = max(ss.get(age, 0.0) - test.withheld, 0.0)
     inflation = float(profile["inflation"])
     ret_track = float(profile["return_track"])
-    claim = int(claim_age) if claim_age is not None else None
     g.rows = run(
         year,
         age,
@@ -548,8 +558,7 @@ def glide(
         sp.ceiling,
         ret_track,
         inflation,
-        ss_annual,
-        claim,
+        ss,
         peak=sp.peak_adjusted,
     )
     for name, ret, drop in (
@@ -566,8 +575,7 @@ def glide(
             sp.ceiling,
             ret,
             inflation,
-            ss_annual,
-            claim,
+            ss,
             drop,
             peak=sp.peak_adjusted,
         )

@@ -34,6 +34,10 @@ ASSUMPTION_FIELDS = (
     "ss_estimate_70",
     "ira_access_age",
     "ss_claim_age",
+    "spouse_ss_estimate_62",  # a joint spouse's own record (unit 3f-4)
+    "spouse_ss_estimate_67",
+    "spouse_ss_estimate_70",
+    "spouse_ss_claim_age",
     "conversion_margin",
     "conversion_cap",
     "conversion_objective",
