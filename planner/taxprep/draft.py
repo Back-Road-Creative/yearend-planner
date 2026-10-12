@@ -33,6 +33,7 @@ from planner.taxprep import (
     d400,
     f1116,
     f4797,
+    f5329,
     f6251,
     f8582,
     f8606,
@@ -924,6 +925,27 @@ def build(lay: Layout, year: int) -> Draft:
         v["net_investment_income_tax"],
         "engine net_investment_income_tax",
     )
+    s2_8 = 0.0
+    for e5 in inp.f5329:  # each spouse's own Form 5329, Part I
+        form = f5329.FORM if e5.who == "you" else f5329.SPOUSE_FORM
+        for ln, amount in e5.lines.items():
+            label = f5329.LABELS[ln] + (
+                f" (exception {e5.number})" if ln == "2" else ""
+            )
+            add(form, ln, label, amount, f"1099-R box 7 codes 1 and S ({e5.who})")
+        s2_8 += e5.tax
+    if s2_8:
+        s2_8 = add(
+            "Sch 2",
+            "8",
+            "Additional tax on early distributions (Form 5329 line 4)",
+            s2_8,
+            " + ".join(
+                (f5329.FORM if e5.who == "you" else f5329.SPOUSE_FORM) + " line 4"
+                for e5 in inp.f5329
+                if e5.tax
+            ),
+        )
     s2_18 = 0.0
     if hsa_sum("17b"):
         add(
@@ -938,8 +960,8 @@ def build(lay: Layout, year: int) -> Draft:
         "Sch 2",
         "21",
         "Total other taxes",
-        s2_4 + s2_11 + s2_12 + s2_18,
-        "4 + 11 + 12 + 18" if s2_18 else "4 + 11 + 12",
+        s2_4 + s2_8 + s2_11 + s2_12 + s2_18,
+        "4" + (" + 8" if s2_8 else "") + " + 11 + 12" + (" + 18" if s2_18 else ""),
     )
 
     # Form 1040 income
@@ -2724,6 +2746,8 @@ ORDER = (
     *(f"{annuity.FORM} {i}" for i in range(1, 10)),
     f8606.FORM,
     f8606.SPOUSE_FORM,
+    f5329.FORM,
+    f5329.SPOUSE_FORM,
     "2441",
     "8863",
     "8880",
@@ -2759,6 +2783,10 @@ HEADINGS = {
     },
     f8606.FORM: "Form 8606 (nondeductible IRAs)",
     f8606.SPOUSE_FORM: "Form 8606 (nondeductible IRAs), the spouse's",
+    f5329.FORM: "Form 5329 (additional tax on early distributions)",
+    f5329.SPOUSE_FORM: (
+        "Form 5329 (additional tax on early distributions), the spouse's"
+    ),
 }
 # The capability row behind each form's tag; any other form is draft_return's.
 FORM_CAPABILITY = {
@@ -2775,6 +2803,8 @@ FORM_CAPABILITY = {
     **{f"{annuity.FORM} {i}": "pensions_and_qcd" for i in range(1, 10)},
     f8606.FORM: "ira_basis",
     f8606.SPOUSE_FORM: "ira_basis",
+    f5329.FORM: "early_distributions",
+    f5329.SPOUSE_FORM: "early_distributions",
     "Sch SE": "self_employment_tax",
     SCH_SE_SPOUSE: "self_employment_tax",
     "8889": "form_8889",
