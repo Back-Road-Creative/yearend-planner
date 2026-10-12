@@ -496,14 +496,14 @@ def _yearend(lay: Layout, year: int, today: date, ov: Overrides) -> Section:
 def _benefits(
     lay: Layout,
     year: int,
-    _today: date,
+    today: date,
     ov: Overrides,
     pj: magi.Projection | None = None,
 ) -> Section:
-    """Unit 5a: the benefits screen on the year's projection."""
+    """Units 5a-5b: the benefits screen on the year's projection."""
     from planner import benefits
 
-    out = benefits.build(lay, year, ov, pj)
+    out = benefits.build(lay, year, ov, pj, today)
     return Section("benefits", True, out.lines(), out.notes)
 
 

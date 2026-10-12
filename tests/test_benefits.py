@@ -1,7 +1,9 @@
-"""Master plan unit 5a: the benefits registry and its three-way screen. The
-rule tests build Facts by hand; the engine tests use synthetic households
-(single filers at 18,000 of wages in NC and TX, a head of household with one
-child, a 67-year-old on a 15,000 pension) and the synthetic layout of
+"""Master plan units 5a and 5b: the benefits registry and its three-way
+screen. The rule tests build Facts by hand; the engine tests use synthetic
+households (single filers at 18,000 of wages in NC and TX, a head of household
+with one child, a 67-year-old on a 15,000 pension, 67-year-olds on 12,000,
+18,000, 20,500 and 22,000 of Social Security, a 63-year-old on 150,000 of
+wages, a couple of 70 and 66 on a 250,000 pension) and the synthetic layout of
 test_spending."""
 
 from __future__ import annotations
@@ -13,7 +15,8 @@ from typer.testing import CliRunner
 
 from planner import benefits as bn
 from planner.cli import app
-from planner.engine.household import Dependent, Household
+from planner.engine.household import Dependent, Household, Person
+from planner.engine.tax import irmaa
 from planner.paths import Layout
 from planner.plan import year
 from tests.test_spending import AS_OF, lay  # noqa: F401
@@ -50,6 +53,9 @@ def test_csr_ends_past_250_and_the_credit_past_400_in_a_capped_year() -> None:
         "aca_csr": bn.NOT,
         "medicaid": bn.NOT,
         "chip": bn.NOT,
+        "medicare_irmaa": bn.NOT,
+        "msp": bn.NOT,
+        "extra_help": bn.NOT,
     }
 
 
@@ -88,7 +94,15 @@ def test_chip_needs_a_child_outside_medicaid() -> None:
 
 
 def test_every_program_fills_every_registry_field() -> None:
-    assert [p.key for p in bn.REGISTRY] == ["aca_ptc", "aca_csr", "medicaid", "chip"]
+    assert [p.key for p in bn.REGISTRY] == [
+        "aca_ptc",
+        "aca_csr",
+        "medicaid",
+        "chip",
+        "medicare_irmaa",
+        "msp",
+        "extra_help",
+    ]
     for p in bn.REGISTRY:
         for f in fields(p):
             assert getattr(p, f.name), (p.key, f.name)
@@ -97,10 +111,105 @@ def test_every_program_fills_every_registry_field() -> None:
     for label in ("place", "who", "dates", "look-back", "assets", "sources"):
         assert text.count(f"  {label}: ") == len(bn.REGISTRY)
     assert "45 CFR 156.420(a)(1)-(3)" in text and "42 CFR 457.310(b)" in text
+    assert "20 CFR 418.1115" in text and "SSA POMS HI 03030.025" in text
     res = runner.invoke(app, ["benefits", "--programs"])
     assert res.exit_code == 0 and "Premium tax credit (marketplace) [aca_ptc]" in (
         res.output
     )
+
+
+OLD = bn.Member("you", 67, medicaid=False, chip=False, medicare=True, msp="QMB")
+MEDICARE = replace(
+    BASE,
+    members=(OLD,),
+    msp_income=12_000.0,
+    msp_fpg=15_960.0,
+    fpg=15_960.0,
+    msp_limit=9_950.0,
+)
+
+
+def test_savings_programs_test_resources_where_the_state_does() -> None:
+    assert bn.msp(MEDICARE).status == bn.UNKNOWN
+    got = bn.msp(replace(MEDICARE, resources=9_950.0))
+    assert got.status == bn.POSSIBLE and got.why[0].startswith("you: QMB at 75%")
+    assert got.amount == round(irmaa(2026, "SINGLE", 0.0).base * 12, 2)
+    over = bn.msp(replace(MEDICARE, resources=9_950.01))
+    assert over.status == bn.NOT and over.amount is None
+    waived = bn.msp(replace(MEDICARE, msp_limit=None))
+    assert waived.status == bn.POSSIBLE and "no asset test" in waived.why[-1]
+    none = bn.msp(replace(MEDICARE, members=(replace(OLD, msp=""),)))
+    assert none.status == bn.NOT and "over QI's 135%" in none.why[0]
+    assert bn.msp(BASE).status == bn.NOT
+
+
+def test_extra_help_is_deemed_by_a_savings_program_or_tested() -> None:
+    deemed = bn.screen(replace(MEDICARE, resources=1_000.0))
+    assert [x.status for x in deemed[5:]] == [bn.POSSIBLE, bn.POSSIBLE]
+    assert "423.773(c)(1)(iii)" in deemed[6].why[0]
+    # over the savings programs' limit; Extra Help's is higher (with burial)
+    rich = replace(MEDICARE, resources=18_090.0)
+    assert bn.msp(rich).status == bn.NOT
+    assert bn.extra_help(rich, bn.msp(rich)).status == bn.POSSIBLE
+    past = replace(rich, resources=18_090.01)
+    assert bn.extra_help(past, bn.msp(past)).status == bn.NOT
+    couple = replace(rich, filing_status="JOINT", resources=36_100.0)
+    assert bn.extra_help(couple, bn.msp(couple)).status == bn.POSSIBLE
+    edge = replace(MEDICARE, members=(replace(OLD, msp=""),), msp_income=23_940.0)
+    got = bn.extra_help(edge, bn.msp(edge))
+    assert got.status == bn.NOT and "at or over 150%" in got.why[0]
+    unknown = replace(edge, msp_income=20_000.0)
+    assert bn.extra_help(unknown, bn.msp(unknown)).status == bn.UNKNOWN
+    later = replace(unknown, year=2031, resources=0.0)
+    got = bn.extra_help(later, bn.msp(later))
+    assert got.status == bn.UNKNOWN and "not in the registry" in got.why[-1]
+
+
+def test_the_premium_reads_this_years_income_two_years_on() -> None:
+    young = bn.premium(BASE)
+    assert young.status == bn.NOT and "65 by 2028" in young.why[0]
+    at63 = replace(BASE, members=(replace(ADULT, age=63),))
+    plain = bn.premium(replace(at63, irmaa_magi=100_000.0))
+    assert plain.status == bn.POSSIBLE and plain.amount is None
+    assert "at the 2026 brackets" in plain.why[1]
+    high = bn.premium(replace(at63, irmaa_magi=150_000.0))
+    assert high.status == bn.NOT and high.amount and high.amount > 0
+    assert "SSA-44" in high.why[-1]
+
+
+@pytest.mark.engine
+def test_engine_medicare_screen_on_synthetic_households() -> None:
+    def run(resources: float | None = None, **kw: object) -> dict[str, bn.Result]:
+        hh = Household(**kw)  # type: ignore[arg-type]
+        return {x.key: x for x in bn.assess(2026, hh, resources=resources).results}
+
+    qmb = run(5_000, age=67, filing_status="SINGLE", state="NC", social_security=12_000)
+    assert qmb["msp"].status == bn.POSSIBLE and "QMB" in qmb["msp"].why[0]
+    assert qmb["extra_help"].status == bn.POSSIBLE
+    assert qmb["medicare_irmaa"].status == bn.POSSIBLE
+    slmb = run(
+        50_000, age=67, filing_status="SINGLE", state="NC", social_security=18_000
+    )
+    assert "SLMB" in slmb["msp"].why[0] and slmb["msp"].status == bn.NOT
+    assert slmb["extra_help"].status == bn.NOT
+    qi = run(age=67, filing_status="SINGLE", state="AL", social_security=20_500)
+    assert qi["msp"].status == bn.POSSIBLE and "QI" in qi["msp"].why[0]
+    tx = run(10_000, age=67, filing_status="SINGLE", state="TX", social_security=22_000)
+    assert tx["msp"].status == bn.NOT and tx["extra_help"].status == bn.POSSIBLE
+    work = run(age=63, filing_status="SINGLE", state="NC", wages=150_000)
+    assert work["medicare_irmaa"].status == bn.NOT
+    assert work["msp"].status == bn.NOT
+    pair = run(
+        age=70,
+        filing_status="JOINT",
+        state="NC",
+        pension_income=250_000,
+        spouse=Person(age=66),
+    )
+    got = pair["medicare_irmaa"]
+    assert got.status == bn.NOT and "for you, spouse" in got.why[0]
+    one = irmaa(2028, "JOINT", 250_000.0)
+    assert got.amount == round((one.part_b + one.part_d) * 24, 2)
 
 
 @pytest.mark.engine
