@@ -13,6 +13,7 @@ stay on the page. The source is a traditional IRA only.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from datetime import date
 from typing import Any
 
 from planner.engine.household import MissingInputError
@@ -20,7 +21,7 @@ from planner.engine.tax import compute, compute_sweep, r, thresholds
 from planner.ingest.needs import load_profile
 from planner.ledger import portfolio
 from planner.paths import Layout
-from planner.plan import feasible
+from planner.plan import feasible, reserve
 from planner.plan.inputs import OverrideError, Overrides
 from planner.plan.magi import CLIFF_FPL, MEDICAID_FPL, Projection, project
 
@@ -79,7 +80,7 @@ class Sizing:
 
 
 def resolve(
-    lay: Layout, year: int, overrides: Overrides
+    lay: Layout, year: int, overrides: Overrides, as_of: date | None = None
 ) -> tuple[Overrides, Sizing | None]:
     """``conversion_target=auto``: the overrides with the recommended
     conversion adopted as the year's planned conversion (the recommendation
@@ -95,7 +96,7 @@ def resolve(
             "planned conversion or auto, not both"
         )
     try:
-        sz = size(lay, year, overrides)
+        sz = size(lay, year, overrides, as_of=as_of)
     except (MissingInputError, OverrideError):
         return overrides, None
     rec = sz.recommendation
@@ -124,10 +125,15 @@ def size(
     year: int,
     overrides: Overrides | None = None,
     step: int = 500,
+    as_of: date | None = None,
+    rs: reserve.Reserve | None = None,
 ) -> Sizing:
+    """``rs`` is the reserve the tax must stay above (default figured here)."""
     base = project(lay, year, overrides)
     hh = base.inputs.household
     profile = load_profile(lay)
+    if rs is None:
+        rs = reserve.load(lay, year, as_of or date.today(), profile, overrides, base)
     st = portfolio.status(lay, year)
     trad = [p.value for p in st.positions if p.type in portfolio.CONVERTIBLE]
     balance = st.convertible if trad else None
@@ -190,7 +196,7 @@ def size(
         ),
         "cap": rows[-1],
     }
-    funds = feasible.funds(st, profile)
+    funds = feasible.funds(st, rs)
     if (unchecked := feasible.unchecked(funds)) is not None:
         sizing.notes.append(unchecked)
 

@@ -26,7 +26,15 @@ from planner.ingest.derive import _classify_income
 from planner.ingest.needs import load_profile
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.plan import calendar, esttax, inputs, socialsec, spending, withdraw
+from planner.plan import (
+    calendar,
+    esttax,
+    inputs,
+    reserve,
+    socialsec,
+    spending,
+    withdraw,
+)
 from planner.plan.inputs import Overrides, age_at_year_end
 from planner.taxprep import schedule_c
 
@@ -103,6 +111,7 @@ class Glide:
     rows: list[YearRow] = field(default_factory=list)
     stresses: list[Stress] = field(default_factory=list)
     months: list[MonthRow] = field(default_factory=list)
+    target: float = 0.0  # the reserve the monthly line is held against
     first_short_month: str | None = None
     notes: list[str] = field(default_factory=list)
     # the comfort-floor line: the same spending rule run at the pessimistic
@@ -607,7 +616,7 @@ def glide(
         g.notes,
         since,
     )
-    target = float(profile.get("cash_target") or 0)
+    target = g.target = reserve.load(lay, year, today, profile, overrides).amount
     for row in g.months:
         if row.cash < target:
             g.first_short_month = f"{row.year}-{row.month:02d}"

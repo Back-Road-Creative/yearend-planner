@@ -10,7 +10,9 @@ dependents: null          # [{birth_date: YYYY-MM-DD, student: false, disabled: 
 spending_floor: null      # annual, dollars: the lowest the household can run on
 spending_ceiling: null    # annual, dollars: comfortable spending
 withdrawal_rate: null     # fraction of investable assets per year, e.g. 0.035
-cash_target: null         # dollars of cash buffer to hold
+cash_target: null         # dollars of cash buffer to hold; typed, it wins over the rule below
+reserve_months: null      # the reserve rule: months of the spending floor to keep in cash
+reserve_deductibles: null # the reserve rule: health, home and car deductibles, dollars
 mortgage_monthly: null    # P&I plus escrow per month, for the cash line
 premium_monthly: null     # health premium per month net of the advance credit
 irregular: null           # e.g. [{label: property tax, month: 9, amount: 2400}]; add year: 2026 for a one-off

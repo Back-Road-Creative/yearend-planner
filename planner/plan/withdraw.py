@@ -12,9 +12,10 @@ from datetime import date, timedelta
 from planner.engine.tax import r
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.plan import washsale
+from planner.plan import reserve, washsale
 from planner.plan.inputs import Overrides
 from planner.plan.magi import project
+from planner.plan.reserve import Reserve
 
 SELLABLE = ("taxable",)
 
@@ -52,12 +53,7 @@ class Withdrawal:
     tax_before: float = 0.0
     tax_after: float = 0.0
     notes: list[str] = field(default_factory=list)
-
-
-def _cash_target(lay: Layout) -> float:
-    from planner.ingest.needs import load_profile
-
-    return float(load_profile(lay).get("cash_target") or 0)
+    reserve: Reserve | None = None  # None: the target was typed
 
 
 def _key(lot: portfolio.Lot) -> str:
@@ -143,15 +139,21 @@ def pick(
     specific: list[str] | None = None,
     overrides: Overrides | None = None,
 ) -> Withdrawal:
-    """Raise ``target`` (default the profile's cash_target) with at most
+    """Raise ``target`` (default the reserve: planner.plan.reserve) with at most
     ``budget`` dollars of realized gain (default unlimited)."""
     today = as_of or date.today()
     st = portfolio.status(lay, year, today)
     base = project(lay, year, overrides)
-    want = float(target) if target is not None else _cash_target(lay)
+    rs = (
+        None
+        if target is not None
+        else reserve.load(lay, year, today, None, overrides, base)
+    )
+    want = rs.amount if rs is not None else float(target or 0)
     cash = r(sum(p.value for p in st.positions if p.type == "cash"))
     need = r(max(want - cash, 0.0))
     w = Withdrawal(year, today.isoformat(), want, cash, need, r(min(cash, want)))
+    w.reserve = rs
     lots = sellable(st)
     conn = db.connect(lay.data / "ledger" / "planner.db")
     try:

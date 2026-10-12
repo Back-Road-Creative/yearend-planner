@@ -43,7 +43,9 @@ def test_cash_counts_deposits_and_the_tax_against_the_reserve() -> None:
     assert feasible.check(f, {"hsa": feasible.Need(cash=4_000.0)}, tax=-900.0).ok
     unset = feasible.Funds(cash=3_000.0, reserve=0.0, reserve_set=False)
     text = feasible.check(unset, {"hsa": feasible.Need(cash=4_000.0)}).cash
-    assert text is not None and text.endswith("(cash_target not set: no reserve)")
+    assert text is not None and text.endswith(
+        "(no reserve: cash_target not typed and the reserve rule has nothing entered)"
+    )
 
 
 def test_no_cash_account_is_not_checked_and_says_so() -> None:
