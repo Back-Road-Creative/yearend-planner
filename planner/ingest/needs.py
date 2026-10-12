@@ -33,7 +33,16 @@ from planner.ingest.derive import county_from_zip
 from planner.ingest.pdf import base_issuer
 from planner.ledger import db, portfolio
 from planner.paths import Layout
-from planner.taxprep import annuity, f4797, k1, refund, sche, schf, statereturn
+from planner.taxprep import (
+    annuity,
+    f4797,
+    f8606,
+    k1,
+    refund,
+    sche,
+    schf,
+    statereturn,
+)
 
 PROFILE = "profile"
 PRIOR = "prior"  # the year before the plan year (the filed return)
@@ -73,7 +82,8 @@ class Need:
     why: str
     source: str  # the document that supplies it, with where to get it
     kind: str  # date | int | money | fraction | enum | monthly | dependents |
-    # education | rentals | k1s | farms | annuities | symbols | sales | str
+    # education | rentals | k1s | farms | annuities | ira_basis | symbols | sales |
+    # str
     scope: str = YEAR
     # (form, box) ledger lookups, summed; a "-" before the box subtracts it
     boxes: tuple[tuple[str, str], ...] = ()
@@ -396,6 +406,20 @@ def _qcd_code(
         f"the 1099-R from {', '.join(payers)} is coded Y (a QCD): type the amount "
         "paid straight to charity"
     )
+
+
+# What makes Form 8606 matter for one person (unit 3f-3)
+BASIS_TRIGGERS = (
+    "ira_distributions",
+    "roth_conversion",
+    "traditional_ira_contribution",
+)
+
+
+def _basis_asked(s: dict[str, Any], prefix: str = "") -> bool:
+    """Asked when the person has an IRA distribution, a conversion or a
+    traditional IRA contribution."""
+    return any(float(s.get(prefix + k) or 0) > 0 for k in BASIS_TRIGGERS)
 
 
 def _qcd_asked(s: dict[str, Any]) -> bool:
@@ -2037,6 +2061,24 @@ NEEDS: tuple[Need, ...] = (
         unlocks=("Levers", "MAGI headroom"),
     ),
     Need(
+        "ira_basis",
+        "Basis in traditional IRAs (Form 8606), or none",
+        "Form 8606: nondeductible contributions were taxed going in, so a share "
+        "of each traditional IRA distribution and Roth conversion comes back tax "
+        "free (Pub. 590-B, Are Distributions Taxable?)",
+        "last year's Form 8606 line 14, the December 31 value of all your "
+        "traditional, SEP and SIMPLE IRAs (Form 5498 box 5, plus any outstanding "
+        "rollover) and this year's nondeductible contributions. Words: basis "
+        "(line 2, 0 the first year), value (line 6), nondeductible (line 1, this "
+        "year's, which comes off the IRA deduction) and late (the part of "
+        "nondeductible paid after December 31, line 4). Example: "
+        + f8606.EXAMPLE
+        + ". Type none if every contribution was deducted",
+        "ira_basis",
+        asked=_basis_asked,
+        unlocks=("MAGI headroom", "Roth conversion", "Draft 1040"),
+    ),
+    Need(
         "roth_ira_contribution",
         "Roth IRA contributions for the year (and ABLE contributions as the beneficiary)",
         "Form 8880 line 1, the saver's credit, with the traditional IRA contribution",
@@ -2215,6 +2257,9 @@ PERSON_HSA = (
 )
 
 
+TWINS = ("qcd", "ira_basis")  # typed per person, outside the lists above
+
+
 def _spouse_asked(
     head: Callable[[dict[str, Any]], bool] | None, key: str
 ) -> Callable[[dict[str, Any]], bool]:
@@ -2227,6 +2272,8 @@ def _spouse_asked(
             return _saves(s, SPOUSE)
         if key == "qcd":  # from the spouse's own IRA
             return float(s.get(SPOUSE + "ira_distributions") or 0) > 0
+        if key == "ira_basis":  # the spouse's own Form 8606
+            return _basis_asked(s, SPOUSE)
         return head is None or head(s)
 
     return asked
@@ -2238,7 +2285,7 @@ def _with_spouse(needs: tuple[Need, ...]) -> tuple[Need, ...]:
     (``data/inbox/spouse/``, or ``planner owner``)."""
     out: list[Need] = []
     for n in needs:
-        if n.key not in (*PERSON_INPUTS, *PERSON_HSA, *PERSON_8880, "qcd"):
+        if n.key not in (*PERSON_INPUTS, *PERSON_HSA, *PERSON_8880, *TWINS):
             out.append(n)
             continue
         out.append(replace(n, owner="you"))
@@ -2642,6 +2689,8 @@ def parse_value(need: Need, text: str) -> Any:
         return schf.parse(need.key, s)
     if need.kind == "annuities":
         return annuity.parse(need.key, s)
+    if need.kind == "ira_basis":
+        return f8606.parse(need.key, s)
     if need.kind == "symbols":
         return _symbols(need.key, s)
     if need.kind == "sales":

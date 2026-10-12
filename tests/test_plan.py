@@ -65,7 +65,11 @@ def test_inputs_mirror_the_needed_panel_and_the_recorded_conversions(
     )
     assert inp.origins["roth_conversion"] == "conversions recorded this year"
     assert "wages" in inp.unknown and "qualified_dividends" not in inp.unknown
-    assert inp.notes == []
+    # the recorded conversion with no Form 8606 basis typed is taxed in full
+    assert inp.notes == [
+        "ira_basis not given: your IRA distributions and conversions are taxed in "
+        "full, as if there were no basis (type none when there is none)"
+    ]
     # unknown qualified dividends: priced as ordinary, and said so
     from planner.ingest.needs import _write, load_manual, manual_path
 
