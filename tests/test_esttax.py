@@ -64,7 +64,9 @@ def test_safe_harbor_and_installments(lay: Layout) -> None:  # noqa: F811
     assert (fed.next_due, fed.next_amount) == ("2026-09-15", 4_800.0)
     assert (nc.next_due, nc.next_amount) == ("2026-09-15", 800.0)
     assert fed.penalty is not None and fed.penalty > 0
-    assert nc.penalty is None and any("not computed" in n for n in nc.notes)
+    # D-422 interest on the April and June shortfalls the plan cures
+    assert nc.penalty is not None and nc.penalty > 0
+    assert any("Form D-422 interest" in n for n in nc.notes)
     assert any("were short" in n for n in fed.notes)
     # 110% leg over 150k prior AGI; de minimis under 1,000
     assert esttax.safe_harbor("fed", 100_000.0, 20_000.0, 160_000.0) == (
@@ -157,9 +159,9 @@ def test_cash_line_matches_esttax_installments(lay: Layout) -> None:  # noqa: F8
     want = round(0.9 * (fed.current_tax + nc.current_tax) / 4, 2)
     assert nxt == pytest.approx([want] * 3, abs=0.02)
     # what the installments leave unpaid falls due with the return
-    # (and the Form 2210 penalty on the April and June shortfalls)
+    # (and each agency's penalty or interest on the April and June shortfalls)
     owed = sum(ag.current_tax - ag.withheld - ag.required for ag in (fed, nc))
-    owed += fed.penalty or 0.0
+    owed += (fed.penalty or 0.0) + (nc.penalty or 0.0)
     assert row[(2027, 4)].balance_due == pytest.approx(owed, abs=0.02)
     assert sum(m.balance_due for m in g.months) == row[(2027, 4)].balance_due
     # the net of each month counts the payment and the balance due

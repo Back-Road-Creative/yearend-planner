@@ -113,7 +113,7 @@ def test_leap_year_days_over_366() -> None:
     assert pen.amount == round(want, 2)
 
 
-def test_estimate_charges_the_federal_penalty_and_names_the_state_gap(
+def test_estimate_charges_the_federal_penalty_and_the_states_own(
     lay: Layout,  # noqa: F811
 ) -> None:
     enter(lay, 2026, "se_income", "80,000")
@@ -129,11 +129,13 @@ def test_estimate_charges_the_federal_penalty_and_names_the_state_gap(
     assert fed.penalty == round(want, 2)
     assert any("Form 2210 penalty" in n and "regular method" in n for n in fed.notes)
     assert not any("unavailable" in n for n in fed.notes)
-    assert nc.penalty is None
-    assert any("underpayment penalty not computed" in n for n in nc.notes)
+    # North Carolina's D-422 interest on its own shortfalls, not unavailable
+    assert nc.penalty is not None and nc.penalty > 0
+    assert not any("not computed" in n for n in nc.notes)
     r = runner.invoke(app, ["esttax", "--year", "2026", "--as-of", "2026-07-10"])
     assert r.exit_code == 0, r.output
     assert f"Form 2210 penalty {fed.penalty:,.2f}" in r.output
+    assert f"Form D-422 interest {nc.penalty:,.2f}" in r.output
     # nothing short, nothing charged
     enter(lay, 2026, "fed_withheld", "8,000")
     clean = esttax.estimate(lay, 2026, date(2026, 7, 10)).agencies[0]
