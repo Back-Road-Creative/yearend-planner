@@ -465,8 +465,17 @@ last year's draft when one was carried over). Each is asked only
 for the state it belongs to, and the state itself is typed as its two-letter
 code.
 Income with over half in one quarter, or a planned year-end lump, raises the
-annualized-method flag (Schedule AI is not computed). The Form 2210 penalty is
-reported as unavailable.
+annualized-method flag (Schedule AI is not computed). The federal Form 2210
+penalty is figured on the regular method: a quarter of the required annual
+payment due on each date, withholding counted a quarter on each date, a payment
+on the business day after a weekend or holiday due date on time, each payment
+applied to the earliest shortfall first, and each shortfall charged the IRS
+underpayment rate of each calendar quarter it stays unpaid, to April 15 (a
+quarter not yet published takes the last published rate, and says so). The
+payments made count on their dates and the plan's later installments on their
+due dates, so the figure is what the shortfalls so far cost if the plan is
+followed; it rides with the balance due on the cash line. The states'
+underpayment penalties are reported as unavailable.
 
 ## The plan on one page (Phase 4e)
 

@@ -311,10 +311,10 @@ state_estimated_tax_rules:
   tests: ["tests/test_state_estimates.py", "tests/test_states.py::test_a_state_without_its_own_rules_is_estimated_on_federal_ones"]
   note: "CA NY PA IL OH GA NC MI NJ VA on their own 2026 rules (dates, shares, de minimis, safe harbor); every other taxing state on the federal ones, marked Estimated; a state's AGI is the federal AGI; GA's income test and NYC/Yonkers tax are not applied"
 underpayment_penalty:
-  status: unsupported
+  status: partial
   evidence: implemented
-  tests: []
-  note: "the planner computes the safe harbor and installments (estimated_tax); the Form 2210 penalty is not computed (planner esttax names it unavailable)"
+  tests: ["tests/test_underpayment.py"]
+  note: "the federal Form 2210 penalty on the regular method (unit 3g-1, 2025 Form 2210 Part III and its penalty worksheet, pinned to the instructions' Example 3 and Table 2): a quarter of line 9 due on each date, withholding a quarter on each, weekend and holiday dates moved, payments to the earliest shortfall first, the IRC 6621 rate of each calendar quarter (unpublished quarters at the last published rate, named) over 365 or 366 days, to April 15; payments made plus the plan's later installments; on the esttax command, the plan page and the cash line's balance due. Not handled, named: the annualized method (Schedule AI), withholding on its actual dates (box D), waivers, the January 31 filing exception, a prior-year overpayment applied, and the states' penalties"
 deadline_calendar:
   status: verified
   evidence: implemented

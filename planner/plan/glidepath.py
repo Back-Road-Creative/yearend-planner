@@ -340,9 +340,8 @@ def _tax_by_month(
     for f in flows:
         when = date.fromisoformat(f.when)
         if when.year in (year, year + 1):
-            out[(when.year, when.month)][1 if f.kind == "balance due" else 0] += (
-                f.amount
-            )
+            due_now = f.kind in ("balance due", "penalty")
+            out[(when.year, when.month)][1 if due_now else 0] += f.amount
     total = sum(ag.current_tax for ag in et.agencies)
     due = sum(f.amount for f in flows if f.kind == "balance due")
     notes.append(
@@ -351,6 +350,12 @@ def _tax_by_month(
         "next year's at 90% of this year's tax less withholding; "
         f"{due:,.2f} of the projected {total:,.2f} falls due with the return"
     )
+    penalty = sum(f.amount for f in flows if f.kind == "penalty")
+    if penalty:
+        notes.append(
+            f"the balance due with the return carries the {penalty:,.2f} Form "
+            "2210 penalty"
+        )
     notes.extend(flow_notes)
     notes.extend(n for ag in et.agencies for n in ag.notes if "were short" in n)
     ov = overrides or Overrides()

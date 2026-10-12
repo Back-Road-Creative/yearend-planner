@@ -5,15 +5,18 @@ the dates, shares, de minimis and safe harbor from the state's instructions;
 a state without its own rules in the planner is on the federal ones, and says
 so). A payment is
 credited to the installment whose window it falls in, so a late payment never
-cures an earlier shortfall. The Form 2210 penalty itself is reported as
+cures an earlier shortfall. The federal Form 2210 penalty is the regular
+method (``penalty``) on the payments made plus the plan's later installments;
+the annualized method and the states' own penalties are reported as
 unavailable."""
 
 from __future__ import annotations
 
+import calendar
 import re
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from planner import states
@@ -29,6 +32,27 @@ PAYMENTS = "payments"  # top-level list in the year's manual file
 FED = "fed"
 FED_PAYEE = re.compile(r"IRS|USATAXPYMT|US TREASURY|EFTPS", re.I)
 LUMPY_SHARE = 0.50
+# IRC 6621(a)(2) underpayment rate for each calendar quarter as the IRS
+# publishes it (irs.gov/payments/quarterly-interest-rates; IRB 2023-49,
+# 2024-10, 2024-24, 2024-37, 2024-49, 2025-13, 2025-23, 2025-37, 2025-48,
+# 2026-08, 2026-22 and 2026-36). IRC 6654(a) charges the rate of each quarter
+# the underpayment is outstanding, so a Form 2210 rate period that spans a
+# change (2025's January 1-April 15, 2026, printed at 7% before April's 6%
+# was set) is split at the quarter.
+UNDERPAYMENT_RATES: dict[tuple[int, int], float] = {
+    (2024, 1): 0.08,
+    (2024, 2): 0.08,
+    (2024, 3): 0.08,
+    (2024, 4): 0.08,
+    (2025, 1): 0.07,
+    (2025, 2): 0.07,
+    (2025, 3): 0.07,
+    (2025, 4): 0.07,
+    (2026, 1): 0.07,
+    (2026, 2): 0.06,
+    (2026, 3): 0.07,
+    (2026, 4): 0.07,
+}
 
 
 def agencies(state: str) -> tuple[str, ...]:
@@ -120,7 +144,7 @@ class Agency:
     installments: list[Installment] = field(default_factory=list)
     next_due: str | None = None
     next_amount: float = 0.0
-    penalty: float | None = None  # Form 2210: unavailable
+    penalty: float | None = None  # Form 2210 (federal); None: unavailable
     notes: list[str] = field(default_factory=list)
     separate: bool = False  # married filing separately: the halved AGI lines
 
@@ -229,6 +253,125 @@ def safe_harbor(
     return cur, pct
 
 
+@dataclass(frozen=True)
+class Penalty:
+    amount: float
+    underpaid: list[float]  # Form 2210 line 17, each installment
+    notes: list[str]
+
+
+def _interest(
+    amount: float, start: date, end: date, missing: set[tuple[int, int]]
+) -> float:
+    """``amount`` unpaid from ``start`` to ``end`` at each calendar quarter's
+    rate, its days counted from the later of ``start`` and the day before the
+    quarter to the earlier of ``end`` and the quarter's last day, over the
+    calendar year's 365 or 366 (the penalty worksheet's lines 3-13). A quarter
+    the IRS has not published takes the last published rate, added to
+    ``missing``."""
+    total = 0.0
+    y, q = start.year, (start.month - 1) // 3 + 1
+    while True:
+        first = date(y, 3 * q - 2, 1)
+        last = (date(y + 1, 1, 1) if q == 4 else date(y, 3 * q + 1, 1)) - timedelta(
+            days=1
+        )
+        days = (min(end, last) - max(start, first - timedelta(days=1))).days
+        if days > 0:
+            rate = UNDERPAYMENT_RATES.get((y, q))
+            if rate is None:
+                missing.add((y, q))
+                rate = UNDERPAYMENT_RATES[max(UNDERPAYMENT_RATES)]
+            total += amount * rate * days / (366 if calendar.isleap(y) else 365)
+        if end <= last:
+            return total
+        y, q = (y + 1, 1) if q == 4 else (y, q + 1)
+
+
+def _settle(
+    amount: float,
+    when: date,
+    shortfalls: list[list[Any]],
+    end: date,
+    missing: set[tuple[int, int]],
+) -> tuple[float, float]:
+    """Apply a payment to the earliest open shortfalls first: (what is left of
+    it, the penalty on what it paid off)."""
+    owed = 0.0
+    for item in shortfalls:
+        if amount <= 0:
+            break
+        pay = min(item[1], amount)
+        if pay > 0:
+            owed += _interest(pay, item[0], min(when, end), missing)
+            item[1] -= pay
+            amount -= pay
+    shortfalls[:] = [s for s in shortfalls if s[1] > 0.005]
+    return amount, owed
+
+
+def penalty(
+    year: int,
+    agency: str,
+    annual: float,
+    withheld: float,
+    paid: list[tuple[date, float]],
+) -> Penalty:
+    """The Form 2210 penalty on the regular method (Part III and the penalty
+    worksheet): each installment owes its share of ``annual`` (line 9; a
+    quarter each federally), withholding counts the same share on each due
+    date, a payment on the business day a weekend or holiday moved the date
+    to is on time, a payment first pays off the earliest open shortfall and
+    what is left carries forward, and each shortfall is charged from its due
+    date until paid or the 15th of the following April (IRC 6654(a), (b))."""
+    rule = rules(agency)[0]
+    dated = schedule(year, agency)
+    nominal = [date(year + off, m, d) for _, (off, m, d), _ in rule.installments()]
+    shares = [share for _, _, share in dated]
+    parts = [b - a for a, b in zip([0.0, *shares[:-1]], shares, strict=True)]
+    end = date(year + 1, 4, 15)
+    credits: list[tuple[date, float]] = []
+    for when, amount in paid:
+        for due, (_, moved, _) in zip(nominal, dated, strict=True):
+            if due < when <= moved:
+                when = due
+                break
+        credits.append((when, amount))
+    for due, part in zip(nominal, parts, strict=True):
+        credits.append((due, withheld * part))
+    credits.sort(key=lambda c: c[0])
+    shortfalls: list[list[Any]] = []
+    missing: set[tuple[int, int]] = set()
+    pool = owed = 0.0
+    underpaid: list[float] = []
+    i = 0
+    for due, part in zip(nominal, parts, strict=True):
+        while i < len(credits) and credits[i][0] <= due:
+            left, cost = _settle(credits[i][1], credits[i][0], shortfalls, end, missing)
+            pool += left
+            owed += cost
+            i += 1
+        required = annual * part
+        short = max(required - pool, 0.0)
+        pool = max(pool - required, 0.0)
+        underpaid.append(r(short))
+        if short > 0.005:
+            shortfalls.append([due, short])
+    for when, amount in credits[i:]:
+        owed += _settle(amount, when, shortfalls, end, missing)[1]
+    for start, amount in shortfalls:
+        owed += _interest(amount, start, end, missing)
+    notes = []
+    if missing:
+        quarters = ", ".join(f"{y} Q{q}" for y, q in sorted(missing))
+        last = UNDERPAYMENT_RATES[max(UNDERPAYMENT_RATES)]
+        notes.append(
+            f"the IRS has not published the underpayment rate for {quarters}; "
+            f"the last published {last:.0%} stands in"
+        )
+    return Penalty(r(owed), underpaid, notes)
+
+
 def _quarters(conn: sqlite3.Connection, year: int) -> list[float]:
     """Bank deposits by quarter: the lumpiness test for the annualized flag."""
     q = [0, 0, 0, 0]
@@ -299,9 +442,35 @@ def _agency(
             f"{name}: installment(s) {', '.join(str(i.n) for i in missed)} were short "
             "on their due dates; a later payment does not cure that"
         )
-    ag.notes.append(
-        f"{name}: Form 2210 underpayment penalty not computed (unavailable)"
-    )
+    if name == FED:
+        # the payments made, then the plan's own later installments on their
+        # due dates (what cash_flows pays); the balance with the return is
+        # paid on the April date the penalty stops at anyway
+        credits = [(date.fromisoformat(p.date), p.amount) for p in ag.payments]
+        running = total_paid
+        for inst in ag.installments:
+            if date.fromisoformat(inst.due) >= as_of:
+                need = r(max(inst.required - running, 0.0))
+                running = r(running + need)
+                if need:
+                    credits.append((date.fromisoformat(inst.due), need))
+        pen = penalty(year, name, 0.0 if small else annual, withheld, credits)
+        ag.penalty = pen.amount
+        ag.notes.extend(f"{name}: {note}" for note in pen.notes)
+        if pen.amount:
+            ag.notes.append(
+                f"{name}: Form 2210 penalty {pen.amount:,.2f} (regular method: a "
+                "quarter of the required annual payment due on each date, "
+                "withholding counted a quarter on each, a later payment applied "
+                "to the earliest shortfall first; the remaining installments "
+                "paid in full on their due dates)"
+            )
+        else:
+            ag.notes.append(f"{name}: no Form 2210 penalty (regular method)")
+    else:
+        ag.notes.append(
+            f"{name}: the state's underpayment penalty not computed (unavailable)"
+        )
     return ag
 
 
@@ -314,6 +483,7 @@ class Flow:
     amount: float
     kind: (
         str  # "paid" | "installment <n>" | "next year installment <n>" | "balance due"
+        # | "penalty"
     )
 
 
@@ -367,6 +537,14 @@ def cash_flows(et: EstTax) -> tuple[list[Flow], list[str]]:
             )
         else:
             flows.append(Flow(filing.isoformat(), ag.name, owed, "balance due"))
+        if ag.penalty:
+            if owed < 0:
+                notes.append(
+                    f"{ag.name}: the Form 2210 penalty {ag.penalty:,.2f} comes "
+                    "out of the refund"
+                )
+            else:
+                flows.append(Flow(filing.isoformat(), ag.name, ag.penalty, "penalty"))
         required = next_year_required(ag, et.agi)
         before = 0.0
         rule = rules(ag.name)[0]
