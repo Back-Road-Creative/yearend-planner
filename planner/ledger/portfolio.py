@@ -62,7 +62,9 @@ ACCOUNT_FIELDS = (
     "rolled_in",
     "balance",
     "balance_date",
+    "owner",  # self or spouse: whose age sets the RMDs and the access age
 )
+OWNERS = ("self", "spouse")
 YES = {"yes": True, "y": True, "true": True, "no": False, "n": False, "false": False}
 YTD_INCOME = (
     "dividends",
@@ -97,6 +99,8 @@ def save_account(lay: Layout, number: str, **fields: Any) -> dict[str, Any]:
         raise ValueError(f"account {number}: unknown field(s) {', '.join(unknown)}")
     if fields.get("type") is not None and fields["type"] not in TYPES:
         raise ValueError(f"account {number}: type must be one of {', '.join(TYPES)}")
+    if fields.get("owner") is not None and fields["owner"] not in OWNERS:
+        raise ValueError(f"account {number}: owner must be self or spouse")
     for flag in ("annual_rmd", "separated"):
         said = fields.get(flag)
         if said is not None and not isinstance(said, bool):

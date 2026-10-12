@@ -22,6 +22,7 @@ from planner.plan import (
     glidepath,
     inputs,
     levers,
+    longterm,
     magi,
     spending,
     washsale,
@@ -235,40 +236,21 @@ def _glide(
         + (f"SHORT by {g.floor_shortfall:,.2f}" if g.floor_shortfall else "covered"),
         f"band: {g.band} (spending {g.spending:,.2f})",
     ]
-    for s in g.stresses:
-        end = f"runs out at {s.runs_out_age}" if s.runs_out_age else "lasts"
-        lines.append(f"stress {s.name:22} {end}")
+    path = longterm.path(
+        lay, year, today, ov, {rw.age: rw.ss for rw in g.rows}, glidepath.HORIZON_AGE
+    )
+    lines += path.lines()
     if g.first_short_month:
         lines.append(f"cash line falls under the target in {g.first_short_month}")
+    rows = longterm.table_rows(path)
+    span = f"{path.rows[0].year} to {path.rows[-1].year}, " if path.rows else ""
     table = Table(
-        f"Age and year table, {g.rows[0].year} to {g.rows[-1].year} "
+        f"Age and year table, {span}per account in today's dollars "
         "(on-track line beside the comfort-floor line)",
-        [
-            "year",
-            "age",
-            "on-track real",
-            "on-track nominal",
-            "SS",
-            "spend",
-            "withdraw",
-            "comfort-floor real",
-            "comfort-floor spend",
-        ],
-        [
-            [
-                str(rw.year),
-                str(rw.age),
-                f"{rw.balance_real:,.2f}",
-                f"{rw.balance_nominal:,.2f}",
-                f"{rw.ss:,.2f}",
-                f"{rw.spend:,.2f}",
-                f"{rw.withdrawal:,.2f}",
-                f"{fl.balance_real:,.2f}",
-                f"{fl.spend:,.2f}",
-            ]
-            for rw, fl in zip(g.rows, g.floor_rows, strict=True)
-        ],
+        list(longterm.HEADERS),
+        rows,
     )
+    g.notes += path.notes
     return Section("glide", True, lines, list(g.notes), [table])
 
 
