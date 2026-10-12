@@ -6,7 +6,9 @@ its layout covers, the words that identify a page, and one regex per box with
 default; the pattern's group is a dollar figure), ``text`` (the group is
 kept as words, optionally only when it is one of ``allowed``) or ``check``
 (``options`` maps a value to the label printed beside its check box; the value
-whose box carries a mark is the answer, and two marks are an error). A page is
+whose box carries a mark is the answer, and two marks are an error; ``mark:
+either`` also takes a mark printed after the label, and ``blank`` is the value
+when the label is on the page with no mark beside it). A page is
 accepted only when every required box parses; otherwise the file is unmatched
 with the reason. Nothing is inferred.
 """
@@ -28,6 +30,8 @@ KINDS = ("amount", "text", "check")
 # A check box that is marked, as text extraction renders it: a ballot-box glyph,
 # a check mark, a bracketed or parenthesised X, or a bare X not inside a word.
 MARK = r"(?:\[\s*[xX✓✔]\s*\]|\(\s*[xX]\s*\)|[☒☑✓✔✗]|(?<!\w)[xX](?=[ \t]))"
+# The same mark after its label, where it may end the line.
+MARK_AFTER = r"(?:\[\s*[xX✓✔]\s*\]|\(\s*[xX]\s*\)|[☒☑✓✔✗]|(?<!\w)[xX](?!\w))"
 
 
 class Unmatched(ValueError):
@@ -48,6 +52,8 @@ class Box:
     kind: str = "amount"
     options: tuple[tuple[str, re.Pattern[str]], ...] = ()  # check: value -> label
     allowed: tuple[str, ...] = ()  # text: the only words accepted
+    blank: str | None = None  # check: the value when a label shows, unmarked
+    labels: tuple[re.Pattern[str], ...] = ()  # check: each label, unmarked
 
     def read(self, text: str) -> Value | None:
         """The box's value on this page, or None when it is not there."""
@@ -57,7 +63,10 @@ class Box:
                 raise Unmatched(
                     f"more than one {self.label.lower()} checked: {', '.join(marked)}"
                 )
-            return marked[0] if marked else None
+            if marked:
+                return marked[0]
+            seen = self.blank is not None and any(p.search(text) for p in self.labels)
+            return self.blank if seen else None
         m = self.pattern.search(text)
         if m is None:
             return None
@@ -75,6 +84,9 @@ class Box:
             for _, pat in self.options:
                 m = pat.search(text)
                 if m:
+                    return m.start()
+            for pat in self.labels if self.blank is not None else ():
+                if m := pat.search(text):
                     return m.start()
             return None
         m = self.pattern.search(text)
@@ -183,19 +195,30 @@ def _box(path: Path, name: object, spec: dict[str, Any]) -> Box:
     if kind not in KINDS:
         raise ValueError(f"{path.name} box {name}: kind must be one of {KINDS}")
     options: tuple[tuple[str, re.Pattern[str]], ...] = ()
+    labels: tuple[re.Pattern[str], ...] = ()
     if kind == "check":
         if not spec.get("options"):
             raise ValueError(f"{path.name} box {name}: a check box needs options")
+        either = spec.get("mark", "before") == "either"
+        words = {
+            str(value): r"\s+".join(
+                re.escape(w).replace("/", r"/\s*") for w in str(label).split()
+            )
+            for value, label in spec["options"].items()
+        }
         options = tuple(
             (
-                str(value),
+                value,
                 re.compile(
-                    MARK + r"[ \t]*" + r"\s+".join(map(re.escape, str(label).split())),
+                    rf"(?:{MARK}[ \t]*{w}|{w}[ \t]*{MARK_AFTER})"
+                    if either
+                    else MARK + r"[ \t]*" + w,
                     re.IGNORECASE,
                 ),
             )
-            for value, label in spec["options"].items()
+            for value, w in words.items()
         )
+        labels = tuple(re.compile(w, re.IGNORECASE) for w in words.values())
     elif "pattern" not in spec:
         raise ValueError(f"{path.name} box {name}: a pattern is required")
     return Box(
@@ -207,6 +230,8 @@ def _box(path: Path, name: object, spec: dict[str, Any]) -> Box:
         kind=kind,
         options=options,
         allowed=tuple(str(a) for a in spec.get("allowed", ())),
+        blank=None if spec.get("blank") is None else str(spec["blank"]),
+        labels=labels,
     )
 
 

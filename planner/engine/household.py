@@ -34,6 +34,8 @@ PERSON_INPUTS = {
     "se_income": "self_employment_income",
     "ira_distributions": "taxable_ira_distributions",
     "roth_conversion": "taxable_roth_conversions",
+    # Form 1040 line 5b: a plan's or annuity's 1099-R (unit 3f-1)
+    "pension_income": "taxable_private_pension_income",
     "social_security": "social_security",
     "traditional_ira_contribution": "traditional_ira_contributions",
     "qualified_tips": "tip_income",
@@ -60,6 +62,7 @@ class Person:
     se_income: int = 0
     ira_distributions: int = 0
     roth_conversion: int = 0
+    pension_income: int = 0
     social_security: int = 0
     traditional_ira_contribution: int = 0
     qualified_tips: int = 0
@@ -187,6 +190,7 @@ class Household:
     long_term_gains: int = 0
     ira_distributions: int = 0
     roth_conversion: int = 0
+    pension_income: int = 0
     social_security: int = 0
     traditional_ira_contribution: int = 0
     # Premiums for the year's self-employed health plan, before any premium tax
@@ -317,6 +321,7 @@ class Household:
             "long_term_capital_gains": {y: self.long_term_gains},
             "taxable_ira_distributions": {y: self.ira_distributions},
             "taxable_roth_conversions": {y: self.roth_conversion},
+            "taxable_private_pension_income": {y: self.pension_income},
             "social_security": {y: self.social_security},
             "traditional_ira_contributions": {y: self.traditional_ira_contribution},
             "self_employed_health_insurance_premiums": {y: self.se_health_premiums},
@@ -401,9 +406,9 @@ class Household:
             for flag in EDUCATION_CREDITS[st.credit]:
                 people[st.who][flag] = {y: True}
         savers = [("p", self), *((("s", self.spouse),) if self.spouse else ())]
-        # Line 4 holds at least the year's own IRA distributions, both spouses'
-        # on a joint return (Form 8880 line 4); conversions are not on it.
-        floor = sum(x.ira_distributions for _, x in savers)
+        # Line 4 holds at least the year's own IRA and plan distributions, both
+        # spouses' on a joint return (Form 8880 line 4); conversions are not on it.
+        floor = sum(x.ira_distributions + x.pension_income for _, x in savers)
         for who, x in savers:
             if who == "p" and {
                 "traditional_ira_contributions",

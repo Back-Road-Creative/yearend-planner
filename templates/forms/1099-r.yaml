@@ -1,6 +1,11 @@
-# Form 1099-R. Box 7 is the distribution code, kept as printed: a number, letters
-# or both ("7", "G", "1J", "7D"; Instructions for Forms 1099-R and 5498, Box 7).
-# It is optional: a missing code never unmatches the amounts.
+# Form 1099-R. Box 7 (7a from 2026) is the distribution code, kept as printed: a
+# number, letters or both ("7", "G", "1J", "7D", "Y7"; Instructions for Forms
+# 1099-R and 5498, Box 7a). It is optional: a missing code never unmatches the
+# amounts. The 2026 form renamed box 7 "7a Dist. code(s)" and moved the
+# IRA/SEP/SIMPLE checkbox, printed beside box 7 before, to box 7b; both
+# layouts read here. 7b is "yes" with a mark beside the label, "no" when the
+# label shows unmarked, and missing when the label is not on the page: the
+# planner then cannot tell an IRA from a pension (planner.ingest.needs).
 form: 1099-R
 years: [2024, 2025, 2026]
 match: ["1099-R"]
@@ -8,5 +13,6 @@ boxes:
   "1": {label: "Gross distribution", pattern: "\\b1 Gross distribution\\s+AMOUNT", required: true}
   "2a": {label: "Taxable amount", pattern: "\\b2a Taxable amount\\s+AMOUNT", required: true}
   "4": {label: "Federal income tax withheld", pattern: "\\b4 Federal income tax withheld\\s+AMOUNT"}
-  "7": {label: "Distribution code", kind: text, pattern: "\\b7 Distribution code\\(?s?\\)?[ \\t]+(?-i:([1-9][A-Z]{0,2}|[A-Z]{1,2}))(?=\\s|$)"}
+  "7": {label: "Distribution code", kind: text, pattern: "\\b7a?[ \\t]+Dist(?:ribution|\\.)[ \\t]*code\\(?s?\\)?[ \\t]+(?-i:([1-9][A-Z]{0,2}|[A-Z][1-9]|[A-Z]{1,2}))(?=\\s|$)"}
+  "7b": {label: "IRA/SEP/SIMPLE", kind: check, mark: either, blank: "no", options: {"yes": "IRA/SEP/SIMPLE"}}
   "14": {label: "State tax withheld", pattern: "\\b14 State tax withheld\\s+AMOUNT"}

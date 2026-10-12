@@ -121,7 +121,9 @@ def _documented(lay: Layout, year: int) -> dict[str, dict[str, float]]:
                     sign, key = (-1.0, key[1:]) if key.startswith("-") else (1.0, key)
                     need = by_key[key]
                     hit = (
-                        _sum_boxes(conn, need.boxes, year, who) if need.boxes else None
+                        _sum_boxes(conn, need.boxes, year, who, need.docs)
+                        if need.boxes
+                        else None
                     )
                     total += sign * (hit[0] if hit else 0.0)
                 out[name][who] = total
