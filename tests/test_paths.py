@@ -249,3 +249,84 @@ def test_windows_branch_locks_the_first_byte(
     with pytest.raises(WriterBusyError):
         lay.lock().acquire()
     assert paths._HELD == {}
+
+
+def _deep_release(root: Path, depth: int) -> str:
+    """A release-like folder whose recorded deepest file is ``depth`` characters."""
+    rel = "python\\Lib\\" + "x" * (depth - len("python\\Lib\\"))
+    (root / "python").mkdir(parents=True, exist_ok=True)
+    (root / paths.LONGEST_FILE).write_text(rel + "\n", encoding="utf-8")
+    return rel
+
+
+def test_too_deep_for_windows_is_refused_only_with_long_paths_off(
+    tmp_path: Path,
+) -> None:
+    """Phase 10, unit 7f: past 259 characters with long paths off (the Windows
+    default) a file cannot be opened, so the planner names the limit and a
+    shorter folder before any step can fail half way."""
+    paths.refuse_too_long(tmp_path, enabled=False)  # a checkout records nothing
+    room = paths.MAX_PATH - 1 - len(str(tmp_path))
+    _deep_release(tmp_path, room)
+    paths.refuse_too_long(tmp_path, enabled=False)  # exactly at the limit
+    _deep_release(tmp_path, room + 1)
+    with pytest.raises(paths.PathTooLongError) as exc:
+        paths.refuse_too_long(tmp_path, enabled=False)
+    msg = str(exc.value)
+    assert "too deep for Windows" in msg and f"{paths.MAX_PATH + 1}-character" in msg
+    assert f"at most {len(str(tmp_path)) - 1} characters" in msg
+    paths.refuse_too_long(tmp_path, enabled=True)
+    if sys.platform != "win32":
+        assert paths.long_paths_enabled()
+        paths.refuse_too_long(tmp_path)
+
+
+def test_long_paths_setting_is_read_from_the_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class Key:
+        def __enter__(self) -> Key:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+    def open_key(*args: object) -> Key:
+        calls.append(args)
+        return Key()
+
+    value = {"v": 1}
+    reg = types.SimpleNamespace(
+        HKEY_LOCAL_MACHINE="HKLM",
+        OpenKey=open_key,
+        QueryValueEx=lambda key, name: (value["v"], 4),
+    )
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setitem(sys.modules, "winreg", reg)
+    assert paths.long_paths_enabled()
+    assert calls == [("HKLM", r"SYSTEM\CurrentControlSet\Control\FileSystem")]
+    value["v"] = 0
+    assert not paths.long_paths_enabled()
+
+    def missing(*args: object) -> Key:
+        raise FileNotFoundError(args)
+
+    monkeypatch.setattr(reg, "OpenKey", missing)
+    assert not paths.long_paths_enabled()
+
+
+def test_cli_refuses_a_too_deep_folder_but_still_says_its_version(
+    planner_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = layout().root
+    _deep_release(root, paths.MAX_PATH - len(str(root)))
+    monkeypatch.setattr(paths, "long_paths_enabled", lambda: False)
+    for args in (["selfcheck"], ["run", "--quiet"], ["check-config"]):
+        res = runner.invoke(cli.app, args)
+        assert res.exit_code == 2, (args, res.output)
+        assert "refused:" in res.output and "too deep for Windows" in res.output
+    assert runner.invoke(cli.app, ["version"]).exit_code == 0
+    monkeypatch.setattr(paths, "long_paths_enabled", lambda: True)
+    assert runner.invoke(cli.app, ["check-config"]).exit_code == 0
