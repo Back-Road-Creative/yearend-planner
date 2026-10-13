@@ -217,20 +217,51 @@ def _move(src: Path, dst: Path) -> None:
         shutil.move(str(src), str(dst))
 
 
-def swap_in(cand: Path, root: Path) -> None:
-    """candidate -> live, live -> previous. Data folders are never touched."""
+# VERSION parks first: once any live item is parked, python-previous/VERSION
+# is there, so planner update --rollback can put back a swap cut off part way.
+PARK_ORDER = ("VERSION", *SWAPPED_DIRS, *(f for f in SWAPPED_FILES if f != "VERSION"))
+
+
+def cut_off(root: Path) -> bool:
+    """A swap stopped part way: an item parked in python-previous/ has no live
+    counterpart (a finished swap leaves a full set on each side)."""
     prev = root / PREVIOUS
+    return any((prev / n).exists() and not (root / n).exists() for n in PARK_ORDER)
+
+
+def swap_in(cand: Path, root: Path) -> None:
+    """candidate -> live, live -> previous. Data folders are never touched. A
+    move that fails (disk full, a file in use) puts back every move before it,
+    as swap.cmd does; a swap killed part way is undone by :func:`rollback`."""
+    prev = root / PREVIOUS
+    if cut_off(root):
+        raise UpdateError(
+            "an earlier update was cut off part way: run planner update "
+            "--rollback first (python-previous/ holds the release it replaced)"
+        )
     if prev.exists():
         shutil.rmtree(prev)
     prev.mkdir()
-    for name in SWAPPED_DIRS + SWAPPED_FILES:
-        _move(root / name, prev / name)
-    for name in SWAPPED_DIRS + SWAPPED_FILES:
-        _move(cand / name, root / name)
+    done: list[tuple[Path, Path]] = []
+    try:
+        for name in PARK_ORDER:
+            if (root / name).exists():
+                _move(root / name, prev / name)
+                done.append((root / name, prev / name))
+        for name in PARK_ORDER:
+            if (cand / name).exists():
+                _move(cand / name, root / name)
+                done.append((cand / name, root / name))
+    except BaseException:
+        for src, dst in reversed(done):
+            _move(dst, src)
+        raise
     shutil.rmtree(cand, ignore_errors=True)
 
 
 def rollback(root: Path) -> str:
+    """previous -> live. Only the items parked in python-previous/ move back,
+    so a swap cut off before it parked them all still comes back whole."""
     prev = root / PREVIOUS
     if not (prev / "VERSION").exists():
         raise UpdateError("nothing to roll back to (no python-previous/VERSION)")
@@ -238,9 +269,10 @@ def rollback(root: Path) -> str:
     if broken.exists():
         shutil.rmtree(broken)
     broken.mkdir()
-    for name in SWAPPED_DIRS + SWAPPED_FILES:
+    parked = [n for n in PARK_ORDER if (prev / n).exists()]
+    for name in parked:
         _move(root / name, broken / name)
-    for name in SWAPPED_DIRS + SWAPPED_FILES:
+    for name in parked:
         _move(prev / name, root / name)
     shutil.rmtree(prev, ignore_errors=True)
     shutil.rmtree(broken, ignore_errors=True)

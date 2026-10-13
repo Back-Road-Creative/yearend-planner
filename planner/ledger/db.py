@@ -215,9 +215,14 @@ def connect(path: Path) -> sqlite3.Connection:
     if found is not None and found < SCHEMA_VERSION:
         backup = path.with_name(f"{path.name}.schema{found}.bak")
         if not backup.exists():
-            with sqlite3.connect(backup) as copy:
+            # copied whole under another name first: a copy cut off part way
+            # must not stand as the backup the next run then skips making
+            part = backup.with_name(backup.name + ".part")
+            part.unlink(missing_ok=True)
+            with sqlite3.connect(part) as copy:
                 conn.backup(copy)
             copy.close()
+            part.replace(backup)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
     for step in range(found if found is not None else SCHEMA_VERSION, SCHEMA_VERSION):

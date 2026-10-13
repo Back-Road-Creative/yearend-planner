@@ -1561,6 +1561,20 @@ dashboard's too).
 | Decision readiness | the dashboard's "Ready to act" is yes; its "Ready to plan" is shown beside it. |
 | Tax-pack readiness | the dashboard's "Ready for a preparer" is yes. During the year this stays `attention`, because the year's final forms arrive in January. |
 
+## Cut off part way: what the next run does (unit 7b)
+
+A step that writes can be stopped at any point: a power cut, Task Manager, a full disk.
+Each one is built so the next run finds your data whole.
+
+| Step | If it stops part way |
+|---|---|
+| `planner restore` | It writes `restore-pending.json` before it moves `data/`. The next command that writes reads how far the restore got before it does anything else. If the backup was unpacked and checked, it finishes the restore and says so; your old data stays in `data-previous/` until the next launch, and `planner restore --undo` still works. If `data/` never moved, nothing changed and it says to restore again. If `data/` moved and the unpacked copy is gone, it puts your data back. `data-previous/` is never deleted while that file exists. |
+| Ledger upgrade | The copy kept before a schema upgrade (`planner.db.schemaN.bak`) is written under a temporary name and renamed when whole, so a copy cut off part way is never kept as the backup. The upgrade itself runs again from where it stopped. |
+| `planner ingest` | A file whose import was saved in the ledger but not yet moved to `archive/` is moved on the next run and listed as `recovered`, not called a duplicate; the year's totals are worked out again. |
+| `planner update` | The release in use moves into `python-previous/` with its `VERSION` first. A move that fails puts every earlier move back. A swap killed part way is refused by the next `planner update` until `planner update --rollback` puts the old release back whole. |
+| `planner taxpack` | The pack is built in `out/tax-<year>.partial/` and takes the old pack's place only when every file is written, so `out/tax-<year>/` is always one whole run. |
+| `planner rollover` | Nothing is recorded as rolled until the last step, so the next run rolls the year again as the same version. |
+
 ## Limits kept current on each launch (Phase 6a)
 
 Each `planner run` and `planner dashboard` first refreshes the year's limits

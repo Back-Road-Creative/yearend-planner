@@ -73,6 +73,11 @@ def _single_writer(ctx: typer.Context) -> None:
     except WriterBusyError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=BUSY_EXIT) from exc
+    from planner import backup as bk
+
+    recovered = bk.recover(layout())
+    if recovered:
+        typer.echo(recovered, err=True)
     _refuse_newer_ledger()
 
 
@@ -429,6 +434,8 @@ def ingest() -> None:
         )
     for name in report.duplicates:
         typer.echo(f"duplicate {name} (already in the ledger; archived)")
+    for name in report.recovered:
+        typer.echo(f"recovered {name} (imported before an interruption; archived now)")
     for name, reason in report.unmatched:
         typer.echo(f"UNMATCHED {name}: {reason}")
     for name, note in report.notes:
