@@ -32,7 +32,10 @@ from typing import Any
 
 from planner.config import safe_load
 
-AMOUNT = r"(\(?-?\$?\s*[\d,]*\d(?:\.\d{1,2})?\)?)"
+# A scan may read a thousands comma as a stop ("8.450.00"); a figure with
+# cents and stops every three digits before them reads as the comma it was.
+DIGITS = r"(?:\d{1,3}(?:\.\d{3})+(?=\.\d\d)|[\d,]*\d)"
+AMOUNT = rf"(\(?-?\$?\s*{DIGITS}(?:\.\d{{1,2}})?\)?)"
 # The year a form prints after its OMB number, where it has no year box (the
 # 1099-R and 1098-T print it there, above the form number).
 OMB_YEAR = r"OMB\s+No\.\s*[\d-]+\s+"
@@ -252,6 +255,9 @@ def parse_amount(raw: str) -> float:
     s = raw.strip()
     negative = s.startswith("(") or s.startswith("-") or s.startswith("$-")
     digits = re.sub(r"[^\d.]", "", s)
+    whole, stop, cents = digits.rpartition(".")
+    if "." in whole:  # stops read for thousands commas ("8.450.00")
+        digits = whole.replace(".", "") + stop + cents
     value = float(digits) if digits else 0.0
     return -value if negative else value
 
