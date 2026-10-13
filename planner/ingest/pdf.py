@@ -32,7 +32,10 @@ from typing import Any
 
 from planner.config import safe_load
 
-AMOUNT = r"(\(?-?\$?\s*[\d,]*\d(?:\.\d{1,2})?\)?)"
+# A scan may read a thousands comma as a stop ("8.450.00"); a figure with
+# cents and stops every three digits before them reads as the comma it was.
+DIGITS = r"(?:\d{1,3}(?:\.\d{3})+(?=\.\d\d)|[\d,]*\d)"
+AMOUNT = rf"(\(?-?\$?\s*{DIGITS}(?:\.\d{{1,2}})?\)?)"
 # The year a form prints after its OMB number, where it has no year box (the
 # 1099-R and 1098-T print it there, above the form number).
 OMB_YEAR = r"OMB\s+No\.\s*[\d-]+\s+"
@@ -243,6 +246,9 @@ def parse_amount(raw: str) -> float:
     s = raw.strip()
     negative = s.startswith("(") or s.startswith("-") or s.startswith("$-")
     digits = re.sub(r"[^\d.]", "", s)
+    whole, stop, cents = digits.rpartition(".")
+    if "." in whole:  # stops read for thousands commas ("8.450.00")
+        digits = whole.replace(".", "") + stop + cents
     value = float(digits) if digits else 0.0
     return -value if negative else value
 
@@ -340,17 +346,6 @@ def label_phrases(tpl: Template) -> tuple[str, ...]:
         patterns += [b.pattern, *b.labels, *(p for _v, p in b.options)]
     words = {_literal(p.pattern) for p in patterns}
     return tuple(sorted(w for w in words if len(_key(w)) >= 6))
-
-
-# A figure whose thousands commas the engine read as points: "8.450.00".
-OCR_POINT_GROUPS = re.compile(r"(?<![\d.])(\d{1,3})((?:\.\d{3})+)(?=[.,]\d{2}(?!\d))")
-
-
-def thousands(text: str) -> str:
-    """An OCR'd page with each point the engine read for a thousands comma put
-    back as a comma. A point before three digits that another point or comma
-    and two cents digits follow cannot be a decimal point, so only those move."""
-    return OCR_POINT_GROUPS.sub(lambda m: m[1] + m[2].replace(".", ","), text)
 
 
 # How like a label the start of an OCR'd box must read; a short label may
@@ -823,7 +818,7 @@ def _read_page(
         if not tpl.matches(text):
             continue
         tpl = loosened(tpl) if ocr else tpl
-        page = thousands(repaired(text, label_phrases(tpl))) if ocr else text
+        page = repaired(text, label_phrases(tpl)) if ocr else text
         year = tpl.find_year(page)
         if year is None:
             raise Unmatched(f"page {page_no}: {tpl.form} found but no tax year")
