@@ -342,6 +342,17 @@ def label_phrases(tpl: Template) -> tuple[str, ...]:
     return tuple(sorted(w for w in words if len(_key(w)) >= 6))
 
 
+# A figure whose thousands commas the engine read as points: "8.450.00".
+OCR_POINT_GROUPS = re.compile(r"(?<![\d.])(\d{1,3})((?:\.\d{3})+)(?=[.,]\d{2}(?!\d))")
+
+
+def thousands(text: str) -> str:
+    """An OCR'd page with each point the engine read for a thousands comma put
+    back as a comma. A point before three digits that another point or comma
+    and two cents digits follow cannot be a decimal point, so only those move."""
+    return OCR_POINT_GROUPS.sub(lambda m: m[1] + m[2].replace(".", ","), text)
+
+
 # How like a label the start of an OCR'd box must read; a short label may
 # have one letter wrong.
 REPAIR_RATIO = 0.85
@@ -812,7 +823,7 @@ def _read_page(
         if not tpl.matches(text):
             continue
         tpl = loosened(tpl) if ocr else tpl
-        page = repaired(text, label_phrases(tpl)) if ocr else text
+        page = thousands(repaired(text, label_phrases(tpl))) if ocr else text
         year = tpl.find_year(page)
         if year is None:
             raise Unmatched(f"page {page_no}: {tpl.form} found but no tax year")

@@ -117,13 +117,29 @@ def test_a_spot_in_the_plain_text_counts_on_past_the_cells() -> None:
     assert shifted.spots == {k: (p, n + 1) for k, (p, n) in alone.spots.items()}
 
 
+def test_a_thousands_comma_the_scan_read_as_a_point_counts_as_a_comma() -> None:
+    # Windows CI's scan of "8,450.00" read back "8.450.00"; a point before three
+    # digits that another point and two digits follow can only be a comma.
+    page = "\n".join(INT_2025).replace("1,234.56", "1.234.56")
+    (got,) = parse_texts([page], TEMPLATES, ocr=True)
+    assert got.boxes["1"][1] == 1234.56
+    read = "$ 12.000.00 and 1.234.567.89"
+    assert pdf.thousands(read) == "$ 12,000.00 and 1,234,567.89"
+    # a text layer is not touched, and nothing that is not a grouped figure is
+    left = "1.25 and 2025.10.13 and 1.5.00"
+    assert pdf.thousands(left) == left
+
+
 @needs_engine
 @pytest.mark.parametrize("entry", FORMS, ids=[e["name"] for e in FORMS])
 def test_a_scan_of_a_real_form_reads_back_its_synthetic_values(
     entry: dict[str, Any], tmp_path: Path
 ) -> None:
     scan = real_forms.scan(REAL / f"{entry['name']}.pdf", tmp_path / "scan.pdf")
-    (got,) = parse_texts(list(ocr.page_texts(scan)), TEMPLATES, ocr=True)
+    pages = list(ocr.page_texts(scan))
+    # what the engine read, in the failure report: it differs by platform
+    print("\n\n".join(str(p) for p in pages))
+    (got,) = parse_texts(pages, TEMPLATES, ocr=True)
     want = entry["expect"]
     assert (got.form, got.tax_year, got.issuer, got.ocr) == (
         want["form"],
