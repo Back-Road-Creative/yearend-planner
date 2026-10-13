@@ -24,7 +24,7 @@ from planner.ingest.needs import needed
 from planner.ledger import db, portfolio
 from planner.paths import Layout
 from planner.plan import esttax
-from planner.taxprep import capgains, close, draft, expected, schedule_c
+from planner.taxprep import capgains, carries, close, draft, expected, schedule_c
 
 FILES = {
     "cover.txt": "the cover sheet: scope, readiness, documents, estimates, "
@@ -34,7 +34,8 @@ FILES = {
     "form-8949.csv": "Form 8949 rows, columns (a)-(h) by box",
     "schedule-c.txt": "Schedule C summary and any uncategorised bank rows",
     "schedule-b.csv": "Schedule B rows by part, line and payer (when required)",
-    "carryforward.csv": "what carries to next year: capital losses",
+    "carryforward.csv": "what carries to next year, the line it comes from and "
+    "the answer next year reads it from",
     "basis.csv": "cost basis of the open lots, and each Roth conversion",
     "estimated-payments.csv": "federal and state estimated payments, with origin",
     "forms.csv": "the expected forms, which arrived, and their source files",
@@ -305,13 +306,20 @@ def build(lay: Layout, year: int, as_of: date | None = None) -> Pack:
         pack.notes.extend(n for n in d.notes if n.startswith("Schedule B is not"))
     _csv(
         folder / "carryforward.csv",
-        ("item", "amount", "source"),
+        ("item", "amount", "line", "next year", "by hand", "source"),
         [
-            (ln.label, _money(ln.value), ln.source)
-            for ln in d.lines
-            if ln.form == "Carryover"
+            (
+                c.item,
+                _money(c.amount),
+                c.line,
+                c.next,
+                "yes" if c.hand else "",
+                c.source,
+            )
+            for c in d.carries
         ],
     )
+    carries.record(lay, year, d.carries, today)
     _csv(
         folder / "basis.csv",
         ("kind", "account", "item", "date", "quantity", "basis", "value", "note"),

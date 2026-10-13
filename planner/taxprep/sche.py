@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from planner.taxprep import f8582
+from planner.taxprep import carries, f8582
 
 FORM = "Sch E"
 EXAMPLE = (
@@ -217,6 +217,7 @@ class Result:
     lines: list[tuple[str, str, float, str]]  # (line, label, value, source)
     total: float  # line 26, onto Schedule 1 line 5 (or line 41)
     notes: list[str]
+    carries: list[carries.Carry] = field(default_factory=list)  # unit 6c
 
 
 LABELS = {
@@ -254,6 +255,7 @@ def schedule(cols: list[Column], allowed: dict[str, float]) -> Result:
     allows (planner.taxprep.f8582.Result.allowed), by its name."""
     notes: list[str] = []
     lines: list[tuple[str, str, float, str]] = []
+    out: list[carries.Carry] = []
     total_in = total_out = 0.0
     for c in cols:
         if c.excluded:
@@ -295,6 +297,19 @@ def schedule(cols: list[Column], allowed: dict[str, float]) -> Result:
             total_out += c.net  # a royalty loss goes straight to line 25
     for c in cols:
         if any(c.carry):
+            for amount, ln, word in zip(
+                c.carry, ("7a", "7b"), ("carryover", "carrydep"), strict=True
+            ):
+                if amount:
+                    out.append(
+                        carries.Carry(
+                            f"Worksheet 5-1 line {ln}, property {c.letter}",
+                            round(amount, 2),
+                            f"Pub. 527 Worksheet 5-1 line {ln}",
+                            f"rental {c.letter} word {word}",
+                            "Pub. 527 chapter 5",
+                        )
+                    )
             notes.append(
                 f"Schedule E property {c.letter}: carry {c.carry[0]:,.2f} of "
                 f"operating expenses and {c.carry[1]:,.2f} of depreciation to next "
@@ -339,4 +354,4 @@ def schedule(cols: list[Column], allowed: dict[str, float]) -> Result:
         notes.append(
             "Schedule E: properties past C go on a second page (lines 1-22 only)"
         )
-    return Result(lines, total, notes)
+    return Result(lines, total, notes, out)
