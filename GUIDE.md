@@ -1734,6 +1734,28 @@ the backed-up `thresholds.yaml` that the current one lacks are copied over.
 If a planner window has `data/` open, the restore stops and asks you to
 close it.
 
+### Rehearsing a restore (unit 7c)
+
+A backup is only proved by restoring it. `planner backup --rehearse` makes the
+backup, then restores it into a throwaway folder set up as a clean machine with
+this release would be: this release's `config/`, the backup's typed limits
+carried in, an older ledger brought up to date. It works out the same figures
+there and on a copy of your live folder, and lists any that differ:
+
+- the ledger: documents, and facts and rows per year with their totals;
+- the Needed list: each item's state and value per year;
+- the draft return: every line per year, or what it waits on.
+
+Your `data/` is only read, and both throwaway folders are deleted. The tax
+engine runs, so it takes about as long as `planner taxpack`. The command exits
+1 when a figure differs. The result is kept beside the zip
+(`<zip>.rehearsal.json`), and `planner health` shows when the newest backup was
+rehearsed, or that it never was. A failed rehearsal is a health problem.
+
+`planner restore <zip> --rehearse` rehearses an older zip without restoring it.
+It compares with `data/` as it is now, so anything changed since that backup
+shows as a difference. A damaged zip is refused, as a restore would refuse it.
+
 ## Typed answers are checked; old data is flagged (Phase 8b)
 
 Every typed answer is checked before it is stored, on the Needed panel and in

@@ -349,9 +349,15 @@ def backup(
     encrypt: bool = typer.Option(
         True, "--encrypt/--plain", help="ask for a password (AES-256)"
     ),
+    rehearse: bool = typer.Option(
+        False,
+        "--rehearse",
+        help="then restore it on a throwaway folder and check the figures match",
+    ),
 ) -> None:
     """Zip data/ and config/ into one file you can copy to a USB drive. With a
-    password (asked twice, never shown) it is AES-256; --plain skips it."""
+    password (asked twice, never shown) it is AES-256; --plain skips it.
+    --rehearse proves the zip gives back the same figures (the tax engine runs)."""
     from planner import backup as bk
 
     password = ""
@@ -372,6 +378,22 @@ def backup(
         if password
         else "NOT encrypted: anyone with this file can read your figures"
     )
+    if rehearse:
+        _rehearse(lay, path, password)
+
+
+def _rehearse(lay: Layout, src: Path, password: str) -> None:
+    from planner import backup as bk
+    from planner import rehearsal
+
+    try:
+        res = rehearsal.rehearse(lay, src, password)
+    except bk.BackupError as exc:
+        typer.echo(f"rehearsal refused: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(rehearsal.render(res), nl=False)
+    if not res.ok:
+        raise typer.Exit(code=1)
 
 
 @app.command()
@@ -379,6 +401,11 @@ def restore(
     src: Path | None = typer.Argument(None, help="a zip made by planner backup"),
     undo: bool = typer.Option(
         False, "--undo", help="put data-previous/ back (before the next run)"
+    ),
+    rehearse: bool = typer.Option(
+        False,
+        "--rehearse",
+        help="restore on a throwaway folder only and compare figures; data/ untouched",
     ),
 ) -> None:
     """Check a backup (paths, size, every file against its manifest), then swap
@@ -401,6 +428,13 @@ def restore(
         password = ""
         if bk.encrypted(src):
             password = typer.prompt("Backup password", hide_input=True)
+        if rehearse:
+            typer.echo(
+                "compared with data/ as it is now: changes made since the backup "
+                "show as differences"
+            )
+            _rehearse(lay, src, password)
+            return
         res = bk.restore(lay, src, password)
     except bk.BackupError as exc:
         typer.echo(f"restore refused: {exc}", err=True)

@@ -98,7 +98,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | Command | What it does |
 |---|---|
 | `account` | Describe one account (type, name, date of death, yearly RMDs, typed balance) in data/profile/accounts.yaml; with no arguments, list them. |
-| `backup` | Zip data/ and config/ into one file you can copy to a USB drive. |
+| `backup` | Zip data/ and config/ into one file you can copy to a USB drive; --rehearse then restores it on a throwaway clean folder and checks every ledger total, Needed item and draft line matches. |
 | `categorize` | Schedule C from the bank rows: categorise them by a rule (a piece of the description) or one row at a time, then see the lines and what is left. |
 | `check-config` | Load config/ and report; exit non-zero on a malformed file. |
 | `close` | Close the year from the filed return: every filed line beside the draft's, and the filed figures kept as the year's record. |
@@ -127,7 +127,7 @@ The full guide is [GUIDE.md](GUIDE.md), which ships in the zip.
 | `paid` | Record an estimated payment the bank export does not show. |
 | `paths` | Show where this planner keeps its folders, creating data/ and out/. |
 | `plan` | The year-end plan on one page: the Needed panel, projected MAGI against every line, the conversion, the spending band with its return-band table, the glide path with its age/year table, cash to raise with the monthly cash line, estimated tax, wash sales and the deadline calendar. From a terminal it first asks for total income, Q4 dividends, planned sales and the conversion target (`--total-income`, `--q4-dividends`, `--sales-st`, `--sales-lt`, `--conversion-target manual\|auto`; `--no-ask` skips the questions). |
-| `restore` | Check a backup (paths, size, every file against its manifest), then swap its data/ in. |
+| `restore` | Check a backup (paths, size, every file against its manifest), then swap its data/ in; --rehearse compares its figures on a throwaway folder and leaves data/ alone. |
 | `rollover` | Roll the year that ended into the next: carry AGI, total tax, NC tax (another state's is asked) and the capital loss carryforward (filed figures once closed, else the draft's), keep a snapshot of the ledger and the year's dashboard, make next year the active one, refresh its limits, report next year's spending band and glide path, print the checklist (with each carry to type: IRA basis, passive losses, annuity cost, foreign tax, rental and farm carryovers) and ask for next year's figures (last year's actual spending included); keep the year's basis history. |
 | `rows` | List imported CSV rows (holdings, lots, transactions, income, bank lines). |
 | `run` | The one command: read the inbox, run every planner and the draft return, write out/index.html, then serve the page on this computer and open it. |
