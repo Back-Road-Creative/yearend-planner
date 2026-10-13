@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3", "pytest-cov>=6.0", "ruff>=0.12", "mypy>=1.15", "types-PyYAML"]
+dev = ["pytest>=8.3", "pytest-cov>=6.0", "ruff>=0.12", "mypy>=1.15", "types-PyYAML", "playwright==1.63.0"]
 
 [project.scripts]
 planner = "planner.cli:app"
@@ -51,4 +51,7 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
-markers = ["engine: runs the tax engine (slow, ~1 min cold)"]
+markers = [
+    "engine: runs the tax engine (slow, ~1 min cold)",
+    "browser: drives the page in headless Chromium (Playwright)",
+]

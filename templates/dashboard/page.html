@@ -6,9 +6,9 @@
 <title>Year-end planner {{ p.year }}</title>
 <style>
 :root { --ink:#1d2329; --muted:#5b6670; --line:#d5dbe0; --bg:#f7f8f9; --card:#fff;
-  --actual:#1b6e3a; --estimate:#8a5a00; --unavailable:#a12a2a; --accent:#1f5f9e; }
+  --actual:#1b6e3a; --estimate:#8a5a00; --unavailable:#a12a2a; --accent:#1f5f9e; --on-accent:#fff; }
 @media (prefers-color-scheme: dark) { :root { --ink:#e6e9ec; --muted:#9aa5ae; --line:#38414a;
-  --bg:#15191d; --card:#1d2328; --actual:#5cc485; --estimate:#e0ad4c; --unavailable:#f07b7b; --accent:#7db4ea; } }
+  --bg:#15191d; --card:#1d2328; --actual:#5cc485; --estimate:#e0ad4c; --unavailable:#f07b7b; --accent:#7db4ea; --on-accent:#10161c; } }
 * { box-sizing: border-box; }
 body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui, sans-serif; }
 header { padding:16px; border-bottom:1px solid var(--line); background:var(--card); }
@@ -18,7 +18,7 @@ main { max-width:1100px; margin:0 auto; padding:16px; }
 section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 16px; margin:0 0 14px; }
 section h2 { margin:0 0 8px; font-size:16px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .tag { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; padding:1px 6px; border-radius:4px; border:1px solid currentColor; }
-.cov { font-size:11px; padding:1px 6px; border-radius:4px; background:var(--line); } .cov.not-handled { color:var(--unavailable); font-weight:600; }
+.cov { font-size:11px; padding:1px 6px; border-radius:4px; background:var(--line); } .cov.not-handled { color:var(--unavailable); font-weight:600; background:transparent; border:1px solid currentColor; }
 .tag.actual { color:var(--actual); } .tag.estimate { color:var(--estimate); } .tag.unavailable { color:var(--unavailable); }
 pre { margin:0; white-space:pre-wrap; word-break:break-word; font:13px/1.4 ui-monospace, Consolas, monospace; }
 ul.ready { list-style:none; margin:.5rem 0; padding:0; }
@@ -35,7 +35,9 @@ td.crop img { display:block; max-width:100%; height:auto; border:1px solid var(-
 form.confirm .inline { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
 form.inline { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
 input, select, button { font:inherit; padding:4px 8px; border:1px solid var(--line); border-radius:4px; background:var(--bg); color:var(--ink); }
-button { cursor:pointer; background:var(--accent); color:#fff; border-color:var(--accent); }
+button { cursor:pointer; background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
+a { color:var(--accent); }
+:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
 button.plain { background:transparent; color:var(--accent); }
 #drop { border:2px dashed var(--line); border-radius:8px; padding:14px; text-align:center; color:var(--muted); margin:0 0 14px; }
 #drop.over { border-color:var(--accent); color:var(--accent); }
@@ -68,7 +70,7 @@ tr.under td { color:var(--unavailable); font-weight:600; }
 <div id="drop">
   <form method="post" action="/upload?token={{ token }}" enctype="multipart/form-data" class="inline" style="justify-content:center">
     <span>Drop your tax and account documents anywhere on this page, or</span>
-    <input type="file" name="file" multiple>
+    <input type="file" name="file" multiple aria-label="documents to add">
     <button type="submit">Add</button>
   </form>
 </div>
@@ -100,7 +102,7 @@ tr.under td { color:var(--unavailable); font-weight:600; }
       <form method="post" action="/enter?token={{ token }}" class="inline">
         <input type="hidden" name="key" value="{{ st.need.key }}">
         {% if st.need.choices %}
-        <select name="value">{% for c in st.need.choices %}<option>{{ c }}</option>{% endfor %}</select>
+        <select name="value" aria-label="{{ st.need.label }}">{% for c in st.need.choices %}<option>{{ c }}</option>{% endfor %}</select>
         {% else %}
         <input name="value" placeholder="{{ st.need.kind }}" aria-label="{{ st.need.label }}">
         {% endif %}
@@ -304,7 +306,9 @@ tr.under td { color:var(--unavailable); font-weight:600; }
     var body = new FormData();
     for (var i = 0; i < files.length; i++) { body.append("file", files[i]); }
     zone.textContent = "Reading " + files.length + " file(s)...";
-    fetch(url, { method: "POST", body: body }).then(function () { window.location.reload(); });
+    // the 303 is not followed here: following it would render the page, and
+    // use up its one-time "Last action" message, before the reload shows it
+    fetch(url, { method: "POST", body: body, redirect: "manual" }).then(function () { window.location.reload(); });
   });
 })();
 </script>
