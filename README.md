@@ -175,6 +175,7 @@ uv sync --frozen --extra dev
 uv run playwright install chromium   # once: the browser tests (tests/test_browser.py)
 uv run pytest            # add -m "not engine" to skip the ~1 min engine case
 uv run ruff check . && uv run ruff format --check . && uv run mypy planner tests
+uv run mypy --platform win32 planner tests   # the Windows branches, as CI checks them
 uv run --no-project python scripts/build_release.py   # dist/yearend-planner-<v>-win64.zip
 uv run --no-project python scripts/refresh_zip_county.py   # rebuild config/zip_county.csv.gz from the Census file
 ```
