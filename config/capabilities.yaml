@@ -210,6 +210,11 @@ pdf_mixed_text_and_scanned_pages:
   evidence: implemented
   tests: ["tests/test_ocr.py::test_mixed_pdf_ocrs_scanned_pages"]
   note: "text pages accepted from the text layer, bare pages OCR'd and pending; without an engine the file imports with a note naming the unread pages"
+ocr_real_form_scans:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_scans.py"]
+  note: "each official real-layout form, scanned crooked and speckled, reads back its synthetic values: ruled boxes and check squares from the image, misread labels repaired from the template, an upside-down page turned"
 zip_subfolders_nested_corrupt:
   status: verified
   evidence: implemented

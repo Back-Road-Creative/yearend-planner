@@ -49,12 +49,12 @@ def fake_engine(
     """An engine double: one 20-pixel-tall box per line, ``step`` pixels apart,
     in the pixel space of whatever image it is handed."""
 
-    def engine(_array: object) -> tuple[list[list[object]], list[float]]:
+    def engine(_array: object, **_kw: object) -> tuple[list[list[object]], list[float]]:
         return [
             [
                 [[10, y], [410, y], [410, y + 20], [10, y + 20]],
                 text,
-                0.9,
+                0.98,
             ]
             for i, text in enumerate(lines)
             for y in [top + i * step]
