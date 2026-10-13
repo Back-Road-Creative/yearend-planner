@@ -1545,6 +1545,70 @@ Repeat until the Needed list is empty. Press Ctrl+C in the window to stop.
     `schtasks`; `planner schedule --remove` deletes it. Off Windows it prints the
     `schtasks` command and changes nothing.
 
+### Speed budgets (unit 7e)
+
+`planner run` puts the page up before it does anything slow. The browser
+first shows the last page written, under a line naming the step that is
+running (a short page on the first run in a folder). The page reloads itself
+every two seconds, and actions wait until the refresh is done. The console
+prints each step with its time, then `done in N s`. A first run in a new
+folder with the made-up household (step 1 also records the engine baseline):
+
+```
+serving http://127.0.0.1:43885/?token=…  (Ctrl+C to stop)
+[1/6] engine baseline (0 s)
+engine baseline recorded for policyengine-us 2.21.0: 280 values from 10 reference cases (…)
+delta from the filed return:
+  reference cases: 41/41 lines within $1.00
+[2/6] update check (78 s)
+[3/6] inbox (78 s)
+inbox: 0 imported, 0 awaiting confirm, 0 duplicate, 0 not read
+[4/6] closing and new year (79 s)
+[5/6] snapshots and limits (79 s)
+snapshot: 2024 reconciled actual recorded
+snapshot: 2025 provisional actual recorded
+limits: 2025 config + engine projection; 2026 config
+[6/6] page (90 s)
+written …/out/index.html
+79 needed, 4 alert(s)
+done in 99 s
+```
+
+The page was up, showing step 1, 14 s into that run. The computer was
+running two test suites at the time, so these times are slower than normal.
+
+Most of a run is the tax engine loading from disk, once per run. On the
+live page, a reload with nothing new reuses the page already gathered. Any
+action, or any file changed under `data/` or `config/`, gathers it again.
+
+| Measure | What is timed | Budget |
+|---|---|---|
+| first screen | from starting `planner run` to the first page in the browser | 3 s |
+| refresh | a reload of the live page, gathered afresh with the engine loaded | 15 s |
+| cold run | `planner run --quiet` in a new process, engine baseline already recorded | 90 s |
+| first run | the first run in a folder, which also records the engine baseline (again only when the engine changes) | none |
+
+`planner timing` measures all four on your computer, with a made-up household
+in a throwaway folder; nothing of yours is read. It takes a few minutes,
+prints each measure against its budget, adds a row per measure to
+`data/timing.csv` (date, computer, measure, seconds, budget) and exits 1 when
+one is over.
+
+Measured on 2026-10-07 with `planner timing`, on a laptop with an AMD Ryzen 7
+7435HS (12 threads) and 31 GB of memory, running Linux under WSL2. Other work
+kept it busy the whole time (load average 37 to 44 on 12 threads), so a quiet
+computer should do better:
+
+| Measure | Seconds | Budget |
+|---|---|---|
+| first screen | 1.0 | 3 |
+| refresh | 0.0 | 15 |
+| cold run | 70.1 | 90 |
+| first run (records the engine baseline) | 88.7 | none |
+
+Here, refresh means a reload with nothing changed, so the page cache answers it.
+A reload after an import or an answer builds the page again.
+
 ## Health: five separate answers (unit 7a)
 
 `planner health [--year Y] [--as-of YYYY-MM-DD]` prints five answers, each `ok` or
