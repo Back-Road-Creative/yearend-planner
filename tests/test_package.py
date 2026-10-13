@@ -303,3 +303,61 @@ def test_no_claim_of_an_import_into_preparer_software() -> None:
         for m in claim.finditer(p.read_text("utf-8"))
     ]
     assert not hits
+
+
+def test_four_snapshots_kept_apart_and_compared(lay: Layout) -> None:
+    """Unit 6b: forecast while the year is open, provisional with forms to come,
+    reconciled once each is in or waived, filed once closed; none replaces
+    another and a repeat with the same figures adds nothing."""
+    from planner.taxprep import close, snapshots
+    from tests.test_close import _file, _filed
+
+    got = snapshots.take(lay, 2025, date(2025, 7, 1))
+    assert got.new and got.snapshot and got.snapshot.kind == snapshots.FORECAST
+    assert set(got.snapshot.figures) == set(snapshots.FIGURES)
+    assert not snapshots.take(lay, 2025, date(2025, 8, 1)).new
+
+    as_of = date(2026, 3, 1)
+    inv = expected.inventory(lay, 2025, as_of)
+    assert inv.outstanding, "the fixture should leave a form to come"
+    assert snapshots.kind_now(lay, 2025, as_of) == snapshots.PROVISIONAL
+    prov = snapshots.take(lay, 2025, as_of).snapshot
+    assert prov and prov.source == "the draft return"
+    for e in inv.outstanding:
+        expected.waive(lay, 2025, e.form, e.issuer, as_of)
+    assert snapshots.kind_now(lay, 2025, as_of) == snapshots.RECONCILED
+    # the same figures as the provisional one, yet a kind of its own
+    assert snapshots.take(lay, 2025, as_of).new
+    d = draft.build(lay, 2025)
+    tax, agi = d.get("1040", "24"), d.get("1040", "11a")
+    assert tax is not None and agi is not None
+    _file(lay, "filed-1040.pdf", _filed(d, total_tax_bump=25.0))
+    close.close(lay, 2025)
+    assert snapshots.kind_now(lay, 2025, as_of) == snapshots.FILED
+    filed = snapshots.take(lay, 2025, as_of).snapshot
+    assert filed and filed.source == "the filed return, version 1"
+    assert filed.figures["federal_tax"] == round(tax + 25.0, 2)
+    assert filed.figures["agi"] == round(agi, 2)
+    assert filed.figures["state_tax"] == prov.figures["state_tax"]
+
+    kinds = [s.kind for s in snapshots.load(lay, 2025)]
+    assert kinds == list(snapshots.KINDS)
+    text = snapshots.lines(lay, 2025)
+    assert text[0] == "Snapshots for 2025"
+    assert any(
+        ln.strip().startswith("filed against reconciled actual: AGI ") for ln in text
+    )
+    res = runner.invoke(app, ["snapshots", "--year", "2025"])
+    assert res.exit_code == 0 and "2025-07-01  forecast: AGI " in res.output
+    # the figures are the user's own: under data/private, never in the repo
+    assert snapshots.path(lay, 2025).is_relative_to(lay.data / "private")
+
+
+def test_run_takes_the_years_snapshots(lay: Layout) -> None:
+    from planner.taxprep import snapshots
+
+    got = snapshots.refresh(lay, 2026, date(2026, 3, 1))
+    assert [g.year for g in got] == [2025, 2026]
+    assert got[1].snapshot and got[1].snapshot.kind == snapshots.FORECAST
+    assert got[0].snapshot and got[0].snapshot.kind == snapshots.PROVISIONAL
+    assert not any(g.new for g in snapshots.refresh(lay, 2026, date(2026, 3, 2)))

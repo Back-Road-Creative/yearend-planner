@@ -1416,6 +1416,26 @@ terminal, `planner ingest` then `planner close --year 2025` does the same.
   - Values read by OCR still waiting for `planner confirm` are named and left
     out of the record.
 
+## Four snapshots of a year (unit 6b)
+
+A tax year's figures change as it goes from plan to filed return. The planner
+keeps four kinds of snapshot apart, each with AGI, taxable income, the federal
+tax and the state tax, the date taken and where the figures came from:
+
+| Kind | When | From |
+|---|---|---|
+| forecast | while the year is open | the year plan's full-year projection |
+| provisional actual | after December 31, forms still to come | the draft return |
+| reconciled actual | every expected form is in or waived | the draft return |
+| filed | once `planner close` recorded the return | the filed return (its latest version) |
+
+`planner run` takes the snapshot each of this year and last year is ready for.
+A kind never replaces another kind; taking the same kind again adds a record
+only when a figure moved, so an amended return adds a second filed record.
+`planner snapshots --year 2025` lists them by kind and shows the change from
+each kind to the next (the latest of each); `--take` takes the one due now.
+The records are your own figures and live in `data/private/snapshots/`.
+
 ## The dashboard page (Phase 5a)
 
 `planner dashboard --year 2026` writes `out/index.html`, one page with the
