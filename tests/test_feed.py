@@ -75,7 +75,19 @@ def lay(planner_home: Path) -> Layout:
     return lay
 
 
+def _stage_ready(root: Path) -> Path:
+    """A staged candidate as stage() leaves it, file list included (write_swap
+    checks the files before writing its script)."""
+    cand = root / upd.CANDIDATE
+    cand.mkdir(exist_ok=True)
+    (cand / "VERSION").write_text("0.2.0\n")
+    ready = {"version": "0.2.0", "selfcheck": "ok", "files": upd.manifest(cand)}
+    (cand / upd.READY).write_text(json.dumps(ready))
+    return cand
+
+
 def test_swap_script_is_crlf_ascii_and_names_its_folders(lay: Layout) -> None:
+    _stage_ready(lay.root)
     script = upd.write_swap(lay.root, "in", rerun=True)
     raw = script.read_bytes()
     assert raw.count(b"\r\n") == raw.count(b"\n") and raw.isascii()
@@ -92,11 +104,11 @@ def test_swap_script_is_crlf_ascii_and_names_its_folders(lay: Layout) -> None:
 def test_finish_reports_and_tidies_after_the_launcher_moved_the_folders(
     lay: Layout,
 ) -> None:
+    cand = _stage_ready(lay.root)
     upd.write_swap(lay.root, "in", rerun=False)
     # what swap.cmd leaves: the new release live, READY.json in the candidate
     (lay.root / "VERSION").write_text("0.2.0\n")
-    cand = lay.root / upd.CANDIDATE
-    cand.mkdir()
+    (cand / "VERSION").unlink()
     ready = {"version": "0.2.0", "selfcheck": "ok", "carried": ["2027.x"]}
     (cand / upd.READY).write_text(json.dumps(ready))
     msg = upd.finish(lay.root)
