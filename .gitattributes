@@ -1,0 +1,2 @@
+# A PDF fixture is a file to compare whole, never a text diff.
+*.pdf binary

@@ -70,6 +70,9 @@ compensation a broker's basis leaves out is a Form 8949 code B row (unit 3e-8).
 Form 1099-DA is read one sale per form: digital asset lots go to Form 8949 boxes G-L and
 Schedule D lines 1b-3 and 8b-10, box 4 is withholding, and the Form 1040 digital assets
 question is derived yes from a 1099-DA or typed (unit 3e-9).
+The official IRS layouts are tested too: 18 blank 1099, 1098, 5498, 3921, 3922 and W-2
+forms filled with synthetic values read back box for box, the one-sale 1099-B and the
+2026 1099-G (state tax in box 12) included (unit 7h).
 The draft works the earned income credit on 1040 line 27a by the EIC worksheet and the
 EIC Table, with Schedule EIC for each qualifying child (unit 3c-4), and Schedule 8812's
 additional child tax credit line by line, Part II-B included (unit 3c-5).

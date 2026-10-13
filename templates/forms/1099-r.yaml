@@ -15,10 +15,10 @@ match: ["1099-R"]
 boxes:
   "1": {label: "Gross distribution", pattern: "\\b1 Gross distribution\\s+AMOUNT", required: true}
   "2a": {label: "Taxable amount", pattern: "\\b2a Taxable amount\\s+AMOUNT(?![\\w%])"}
-  "2b": {label: "Taxable amount not determined", kind: check, mark: either, blank: "no", options: {"yes": "Taxable amount not determined"}}
+  "2b": {label: "Taxable amount not determined", kind: check, mark: either, blank: "no", options: {"yes": ["Taxable amount not determined", "Taxable amount not Total determined"]}}
   "4": {label: "Federal income tax withheld", pattern: "\\b4 Federal income tax withheld\\s+AMOUNT"}
-  "7": {label: "Distribution code", kind: text, pattern: "\\b7a?[ \\t]+Dist(?:ribution|\\.)[ \\t]*code\\(?s?\\)?[ \\t]+(?-i:([1-9][A-Z]{0,2}|[A-Z][1-9]|[A-Z]{1,2}))(?=\\s|$)"}
+  "7": {label: "Distribution code", kind: text, pattern: "\\b7a?[ \\t]+Dist(?:ribution|\\.)(?:[ \\t]*|CONT)code\\(?s?\\)?(?:[ \\t]+|CONT)(?-i:([1-9][A-Z]{0,2}|[A-Z][1-9]|[A-Z]{1,2}))(?=\\s|$)"}
   "7b": {label: "IRA/SEP/SIMPLE", kind: check, mark: either, blank: "no", options: {"yes": "IRA/SEP/SIMPLE"}}
-  "5": {label: "Employee contributions", pattern: "\\b5[ \\t]+Employee contrib[^$\\d\\n]*[ \\t]*AMOUNT(?![\\w%])"}
-  "9b": {label: "Total employee contributions", pattern: "\\b9b[ \\t]+Total employee contrib[^$\\d\\n]*[ \\t]*AMOUNT(?![\\w%])"}
+  "5": {label: "Employee contributions", pattern: "\\b5[ \\t]+Employee contribWRAPAMOUNT(?![\\w%])"}
+  "9b": {label: "Total employee contributions", pattern: "\\b9b[ \\t]+Total employee contribWRAPAMOUNT(?![\\w%])"}
   "14": {label: "State tax withheld", pattern: "\\b14 State tax withheld\\s+AMOUNT"}

@@ -2,13 +2,13 @@
 form: 5498
 years: [2024, 2025, 2026]
 match: ["5498", "IRA Contribution Information"]
-issuer_pattern: "(?:trustee'?s or issuer'?s|trustee'?s|issuer'?s) name:?\\s*([^\\n]+)"
+issuer_pattern: "(?:trustee'?s or issuer'?s|trustee'?s|issuer'?s) nameADDRESS([^\\n]+)"
 boxes:
-  "1": {label: "IRA contributions", pattern: '\b1 IRA contributions[^\n]*?\)\s+AMOUNT'}
+  "1": {label: "IRA contributions", pattern: '\b1 IRA contributions[^)]*\)\s+AMOUNT'}
   "2": {label: "Rollover contributions", pattern: '\b2 Rollover contributions\s+AMOUNT'}
   "3": {label: "Roth IRA conversion amount", pattern: '\b3 Roth IRA conversion amount\s+AMOUNT'}
   "4": {label: "Recharacterized contributions", pattern: '\b4 Recharacterized contributions\s+AMOUNT'}
-  "5": {label: "Fair market value of account", pattern: '\b5 Fair market value of account\s+AMOUNT', required: true}
+  "5": {label: "Fair market value of account", pattern: '\b5 (?:Fair market value|FMV) of account\s+AMOUNT', required: true}
   "8": {label: "SEP contributions", pattern: '\b8 SEP contributions\s+AMOUNT'}
   "9": {label: "SIMPLE contributions", pattern: '\b9 SIMPLE contributions\s+AMOUNT'}
   "10": {label: "Roth IRA contributions", pattern: '\b10 Roth IRA contributions\s+AMOUNT'}

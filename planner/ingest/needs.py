@@ -68,11 +68,13 @@ FILING = (
 # medicaid_work_requirement_start; tests/test_config.py holds them equal).
 MEDICAID_WORK_FROM = 2027
 
-# State withholding: W-2 box 17, 1099-R box 14, 1099-G box 11, 1099-MISC box 16.
+# State withholding: W-2 box 17, 1099-R box 14, 1099-G box 11 (12 on the
+# December 2026 revision), 1099-MISC box 16.
 STATE_WITHHELD = (
     ("W-2", "17"),
     ("1099-R", "14"),
     ("1099-G", "11"),
+    ("1099-G", "12"),
     ("1099-MISC", "16"),
 )
 
