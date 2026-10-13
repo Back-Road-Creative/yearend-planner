@@ -1,10 +1,13 @@
-# Schedule 2 (Form 1040): additional taxes.
+# Schedule 2 (Form 1040): additional taxes. Line 21 is on page 2 of the official
+# form, where 1040-sch2-p2 requires it. The 2025 form moved the excess advance
+# premium tax credit repayment from line 2 to line 1a; box 2 reads either.
 form: 1040-SCH2
 years: [2024, 2025, 2026]
-match: ["Schedule 2 (Form 1040)"]
+match: ["Schedule 2 (Form 1040)", "Additional Taxes"]
 year_pattern: 'Schedule 2 \(Form 1040\)\s*(20\d\d)'
 issuer: self
+return: true
 boxes:
-  "2": {label: "Excess advance premium tax credit repayment", pattern: 'Excess advance premium tax credit repayment[^\n]*?\b2\s+AMOUNT'}
-  "4": {label: "Self-employment tax", pattern: 'Self-employment tax\. Attach Schedule SE[\s.]*4\s+AMOUNT'}
-  "21": {label: "Total other taxes", pattern: 'These are your total other taxes[\s.]*21\s+AMOUNT', required: true}
+  "2": {label: "Excess advance premium tax credit repayment", pattern: 'Excess advance premium tax credit repayment[^\n]*?\b(?:1a|2)\s+AMOUNT'}
+  "4": {label: "Self-employment tax", pattern: 'Self-employment tax\. Attach Schedule SE[^\n]*\n?[^\n]*?\b4\s+AMOUNT'}
+  "21": {label: "Total other taxes", pattern: 'These are your total other taxes[^\n]*\n?[^\n]*?\b21\s+AMOUNT'}

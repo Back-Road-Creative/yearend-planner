@@ -4,7 +4,13 @@ years: [2024, 2025, 2026]
 match: ["Form 1040 (", "Page 2"]
 year_pattern: 'Form 1040(?:-SR)?\s*\((20\d\d)\)'
 issuer: self
+return: true
 boxes:
+  # The 2025 form moved lines 11b-15 to page 2; 11b repeats 11a's AGI.
+  "11": {label: "Adjusted gross income", pattern: 'Amount from line 11a \(adjusted gross income\)[\s.]*11b\s+AMOUNT'}
+  "12": {label: "Standard or itemized deductions", pattern: 'Standard deduction or itemized deductions[^\n]*?\b12e?\s+AMOUNT'}
+  "13": {label: "QBI deduction", pattern: 'Qualified business income deduction[^\n]*?\b13a?\s+AMOUNT'}
+  "15": {label: "Taxable income", pattern: 'This is your taxable income[\s.]*15\s+AMOUNT'}
   "16": {label: "Tax", pattern: '\b16 Tax[^\n]*?\b16\s+AMOUNT'}
   "22": {label: "Tax after nonrefundable credits", pattern: 'Subtract line 21 from line 18[^\n]*?\b22\s+AMOUNT'}
   "23": {label: "Other taxes (Schedule 2)", pattern: 'from Schedule 2, line 21[\s.]*23\s+AMOUNT'}
@@ -12,5 +18,5 @@ boxes:
   "25d": {label: "Federal income tax withheld", pattern: 'Add lines 25a through 25c[\s.]*25d\s+AMOUNT'}
   "26": {label: "Estimated tax payments", pattern: 'estimated tax payments and amount applied from[^\n]*?\b26\s+AMOUNT'}
   "33": {label: "Total payments", pattern: 'These are your total payments[\s.]*33\s+AMOUNT'}
-  "34": {label: "Amount overpaid", pattern: 'This is the amount you overpaid[\s.]*34\s+AMOUNT'}
+  "34": {label: "Amount overpaid", pattern: '\b34 [^\n]*?subtract line 24 from line 33[^\n]*?\b34\s+AMOUNT'}
   "37": {label: "Amount you owe", pattern: 'This is the amount you owe[\s.]*37\s+AMOUNT'}

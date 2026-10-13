@@ -1,0 +1,9 @@
+# Schedule D (Form 1040) page 2 (Part III, summary). Merges with page 1.
+form: 1040-SCHD
+years: [2024, 2025, 2026]
+match: ["Schedule D (Form 1040)", "Combine lines 7 and 15"]
+year_pattern: 'Schedule D \(Form 1040\)\s*(20\d\d)'
+issuer: self
+return: true
+boxes:
+  "16": {label: "Combined gain or loss", pattern: 'Combine lines 7 and 15[^\n]*?\b16\s+AMOUNT', required: true}

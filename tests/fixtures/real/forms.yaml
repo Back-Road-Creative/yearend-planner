@@ -1,7 +1,8 @@
 # Real-layout fixtures (unit 7h): official blank IRS forms with synthetic values
 # printed into their fields by scripts/real_forms.py. url and sha256 pin the
-# blank; page is the recipient's copy (Copy B, from 0); fields maps the end of
-# a field's full name to the value printed there ("X" marks a check box);
+# blank; page is the recipient's copy (Copy B, from 0), or the list of a
+# return's pages; fields maps the end of a field's full name to the value
+# printed there ("X" marks a check box);
 # expect is what the parser must read from the page. Values are synthetic:
 # names carry "(synthetic)", TIN and account fields stay blank. A box the
 # fields leave blank must not appear in expect: it proves a blank box never
@@ -115,3 +116,47 @@ forms:
     page: 3
     fields: {".f2_03[0]": "Example Works Inc (synthetic)\n800 Factory Ln\nAnytown, NC 27000", ".f2_09[0]": "52,400.00", ".f2_10[0]": "6,120.00", ".f2_11[0]": "55,000.00", ".f2_12[0]": "3,410.00", ".f2_13[0]": "55,000.00", ".f2_14[0]": "797.50", ".f2_20[0]": "D", ".f2_21[0]": "2,600.00", ".c2_3[0]": "X", ".f2_31[0]": "NC", ".f2_35[0]": "52,400.00", ".f2_37[0]": "2,100.00"}
     expect: {"form": "W-2", "year": 2026, "issuer": "Example Works Inc (synthetic)", "boxes": {"1": 52400.0, "2": 6120.0, "3": 55000.0, "4": 3410.0, "6": 797.5, "12D": 2600.0, "16": 52400.0, "17": 2100.0}}
+  # A filed return (unit 7h2a): page lists every page printed, the issuer is
+  # "self" and the taxpayer's name carries "(synthetic)" instead.
+  - name: "1040"
+    url: https://www.irs.gov/pub/irs-pdf/f1040.pdf
+    sha256: 3d31c226df0d189ced80e039d01cf0f8820c1019681a0f0ca6264de277b7e982
+    page: [0, 1]
+    fields: {".f1_14[0]": "Alex (synthetic)", ".f1_15[0]": "Sample", ".f1_20[0]": "100 Main St", ".f1_22[0]": "Anytown", ".f1_23[0]": "NC", ".f1_24[0]": "27000", "Checkbox_ReadOrder[0].c1_8[0]": "X", ".f1_47[0]": "52,000.00", ".f1_57[0]": "52,000.00", ".f1_58[0]": "120.00", ".f1_59[0]": "1,235.00", ".f1_60[0]": "1,800.00", ".f1_61[0]": "2,400.00", ".f1_62[0]": "5,000.00", ".f1_63[0]": "5,000.00", ".f1_70[0]": "600.00", ".f1_72[0]": "1,500.00", ".f1_73[0]": "62,735.00", ".f1_74[0]": "2,000.00", ".f1_75[0]": "60,735.00", ".f2_01[0]": "60,735.00", ".f2_02[0]": "15,750.00", ".f2_05[0]": "15,750.00", ".f2_06[0]": "44,985.00", ".f2_08[0]": "5,100.00", ".f2_14[0]": "5,100.00", ".f2_15[0]": "300.00", ".f2_16[0]": "5,400.00", ".f2_17[0]": "6,000.00", ".f2_20[0]": "6,000.00", ".f2_21[0]": "500.00", ".f2_29[0]": "6,500.00", ".f2_30[0]": "1,100.00", ".f2_31[0]": "1,100.00"}
+    expect: {"form": "1040", "year": 2025, "issuer": "self", "boxes": {"filing_status": "single", "state": "NC", "zip": "27000", "1z": 52000.0, "2a": 120.0, "2b": 1235.0, "3a": 1800.0, "3b": 2400.0, "4b": 5000.0, "7": 600.0, "8": 1500.0, "9": 62735.0, "10": 2000.0, "11": 60735.0, "12": 15750.0, "15": 44985.0, "16": 5100.0, "22": 5100.0, "23": 300.0, "24": 5400.0, "25d": 6000.0, "26": 500.0, "33": 6500.0, "34": 1100.0}}
+  - name: "1040-sch1"
+    url: https://www.irs.gov/pub/irs-pdf/f1040s1.pdf
+    sha256: 8dafec719f6a4716c259a2bdaca546d9bb9e262d1eabef885fe116a7327458fa
+    page: [0, 1]
+    fields: {".f1_01[0]": "Alex (synthetic) Sample", ".f1_07[0]": "14,000.00", ".f1_38[0]": "14,000.00", ".f2_05[0]": "989.00", ".f2_06[0]": "2,000.00", ".f2_07[0]": "1,200.00", ".f2_30[0]": "4,189.00"}
+    expect: {"form": "1040-SCH1", "year": 2025, "issuer": "self", "boxes": {"3": 14000.0, "10": 14000.0, "15": 989.0, "16": 2000.0, "17": 1200.0, "26": 4189.0}}
+  - name: "1040-sch2"
+    url: https://www.irs.gov/pub/irs-pdf/f1040s2.pdf
+    sha256: 64d867b683334cfc533993e37ccb0d143449ec29428a78206be2e4de333941e8
+    page: [0, 1]
+    fields: {".f1_01[0]": "Alex (synthetic) Sample", ".f1_03[0]": "300.00", ".f1_15[0]": "1,978.00", ".f2_24[0]": "1,978.00"}
+    expect: {"form": "1040-SCH2", "year": 2025, "issuer": "self", "boxes": {"2": 300.0, "4": 1978.0, "21": 1978.0}}
+  - name: "1040-sch3"
+    url: https://www.irs.gov/pub/irs-pdf/f1040s3.pdf
+    sha256: 008cfd3fe3ebd0860452069b90fd0a3d53dda6dd8a5d870278370aa899a63f82
+    page: 0
+    fields: {".f1_01[0]": "Alex (synthetic) Sample", ".f1_03[0]": "75.00", ".f1_25[0]": "75.00", ".f1_26[0]": "150.00"}
+    expect: {"form": "1040-SCH3", "year": 2025, "issuer": "self", "boxes": {"1": 75.0, "8": 75.0, "9": 150.0}}
+  - name: "1040-schc"
+    url: https://www.irs.gov/pub/irs-pdf/f1040sc.pdf
+    sha256: ddf401dbe060467d39f90ad2abf645df1de31512821a150dc68a3882bbf19716
+    page: 0
+    fields: {".f1_1[0]": "Alex (synthetic) Sample", ".f1_10[0]": "18,000.00", ".f1_16[0]": "18,000.00", ".f1_41[0]": "4,000.00", ".f1_46[0]": "14,000.00"}
+    expect: {"form": "1040-SCHC", "year": 2025, "issuer": "self", "boxes": {"1": 18000.0, "7": 18000.0, "28": 4000.0, "31": 14000.0}}
+  - name: "1040-schd"
+    url: https://www.irs.gov/pub/irs-pdf/f1040sd.pdf
+    sha256: 90564c8b7e49280363612639b804d113ebedb516c2e87c70649f29c844da1d2e
+    page: [0, 1]
+    fields: {".f1_1[0]": "Alex (synthetic) Sample", ".f1_22[0]": "(500.00)", ".f1_43[0]": "2,300.00", ".f2_1[0]": "1,800.00"}
+    expect: {"form": "1040-SCHD", "year": 2025, "issuer": "self", "boxes": {"7": -500.0, "15": 2300.0, "16": 1800.0}}
+  - name: "1040-schse"
+    url: https://www.irs.gov/pub/irs-pdf/f1040sse.pdf
+    sha256: 05bc2b3e1dfca65d8c6fc6d652af4fa3736e953c6575d6e9f82590484677d347
+    page: 0
+    fields: {".f1_1[0]": "Alex (synthetic) Sample", ".f1_21[0]": "1,978.00", ".f1_22[0]": "989.00"}
+    expect: {"form": "1040-SCHSE", "year": 2025, "issuer": "self", "boxes": {"12": 1978.0, "13": 989.0}}

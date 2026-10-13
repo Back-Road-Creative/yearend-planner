@@ -72,7 +72,9 @@ Schedule D lines 1b-3 and 8b-10, box 4 is withholding, and the Form 1040 digital
 question is derived yes from a 1099-DA or typed (unit 3e-9).
 The official IRS layouts are tested too: 18 blank 1099, 1098, 5498, 3921, 3922 and W-2
 forms filled with synthetic values read back box for box, the one-sale 1099-B and the
-2026 1099-G (state tax in box 12) included (unit 7h).
+2026 1099-G (state tax in box 12) included (unit 7h). So are a filed 2025 Form 1040 and
+its Schedules 1, 2, 3, C, D and SE, every page, read as the taxpayer's own return
+(unit 7h2a).
 Scans of the same forms, crooked, speckled or upside down, read back the same values
 through OCR and wait in `confirm` (unit 7h1b).
 The draft works the earned income credit on 1040 line 27a by the EIC worksheet and the
