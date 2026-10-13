@@ -133,6 +133,11 @@ def closed(lay: Layout, year: int) -> dict[str, float] | None:
     return {str(k): float(v) for k, v in versions[-1]["filed"].items()}
 
 
+def history(lay: Layout, year: int) -> list[tuple[int, str]]:
+    """Each closed version of ``year`` and when it closed, oldest first."""
+    return [(int(v["version"]), str(v["closed_at"])) for v in _versions(lay, year)]
+
+
 def latest(lay: Layout, year: int) -> dict[str, Any] | None:
     """The latest closed version of ``year`` as written (its filed figures,
     documents, and the lines that differ from the draft), or None while open."""

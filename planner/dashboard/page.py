@@ -204,26 +204,50 @@ class Page:
     @property
     def readiness(self) -> Readiness:
         """Ready to plan, to act, for a preparer (unit 2a-2)."""
-        return coverage.readiness(
+        return readiness_of(
             self.coverage,
-            open_items=self.needed_count - len(self.coverage),
-            set_aside=[
-                *(coverage.Item(s.need.label, s.need.unlocks) for s in self.dont_have),
-                *(
-                    coverage.Item(f"{e.form} from {e.issuer} (waived)")
-                    for e in self.waived_forms
-                ),
-            ],
-            estimates=[
-                coverage.Item(s.need.label, s.need.unlocks) for s in self.estimates
-            ],
+            needed=self.needed,
+            late=self.late_forms,
+            loose=self.loose_rows,
+            dont_have=self.dont_have,
+            waived=self.waived_forms,
+            estimates=self.estimates,
             year=self.year,
-            year_open=date.fromisoformat(self.as_of) <= date(self.year, 12, 31),
+            as_of=date.fromisoformat(self.as_of),
             draft_blocked=self.draft_blocked,
         )
 
     def panel(self, name: str) -> Panel:
         return next(p for p in self.panels if p.name == name)
+
+
+def readiness_of(
+    gaps: list[coverage.Gap],
+    *,
+    needed: list[Status],
+    late: list[expected.Expected],
+    loose: int,
+    dont_have: list[Status],
+    waived: list[expected.Expected],
+    estimates: list[Status],
+    year: int,
+    as_of: date,
+    draft_blocked: str = "",
+) -> Readiness:
+    """The three answers from the Needed list, the form inventory and the gate:
+    the page's and the tax pack cover sheet's (unit 6a) are one computation."""
+    return coverage.readiness(
+        gaps,
+        open_items=len(needed) + len(late) + (1 if loose else 0),
+        set_aside=[
+            *(coverage.Item(s.need.label, s.need.unlocks) for s in dont_have),
+            *(coverage.Item(f"{e.form} from {e.issuer} (waived)") for e in waived),
+        ],
+        estimates=[coverage.Item(s.need.label, s.need.unlocks) for s in estimates],
+        year=year,
+        year_open=as_of <= date(year, 12, 31),
+        draft_blocked=draft_blocked,
+    )
 
 
 def _tag(section: year_plan.Section, projected: bool) -> str:

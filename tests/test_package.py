@@ -1,10 +1,13 @@
 """Phase 4l: ``planner taxpack`` writes out/tax-<year>/ from synthetic lots, a
 typed carryover, a Roth conversion, an estimated payment and the archived
-original, and every file agrees with the command that already prints it."""
+original, and every file agrees with the command that already prints it.
+Unit 6a: the cover sheet (scope, readiness, documents, estimates, forms not
+handled, questions for the preparer, versions)."""
 
 from __future__ import annotations
 
 import csv
+import re
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -12,8 +15,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from planner import NOTICE
+from planner import NOTICE, __version__
 from planner.cli import app
+from planner.dashboard import page as dash
 from planner.engine.household import MissingInputError
 from planner.ingest import ingest
 from planner.ingest.needs import enter
@@ -209,3 +213,93 @@ def d_has_no_sched_b(pack: package.Pack) -> bool:
         not (pack.folder / "schedule-b.csv").exists()
         and "schedule-b.csv" not in pack.written
     )
+
+
+COVER = (
+    "Scope",
+    "Readiness",
+    "Documents",
+    "Estimates",
+    "Not handled",
+    "Questions for the preparer",
+    "Versions",
+)
+
+
+def _section(cover: str, name: str) -> list[str]:
+    lines = cover.splitlines()
+    start = lines.index(name) + 1
+    end = next((i for i in range(start, len(lines)) if lines[i] in COVER), len(lines))
+    return [ln.strip() for ln in lines[start:end] if ln.strip()]
+
+
+def test_cover_sheet_heads_the_pack_with_the_dashboards_readiness(
+    lay: Layout,
+) -> None:
+    as_of = date(2026, 3, 1)
+    pack = package.build(lay, 2025, as_of)
+    assert pack.written[0] == "cover.txt"
+    cover = (pack.folder / "cover.txt").read_text(encoding="utf-8")
+    lines = cover.splitlines()
+    assert lines[:2] == ["Tax pack cover sheet for 2025", NOTICE]
+    assert [ln for ln in lines if ln in COVER] == list(COVER)
+    # the same three-way answer the dashboard gives, every reason listed
+    answer = dash.gather(lay, 2025, as_of).readiness[2]
+    ready = _section(cover, "Readiness")
+    assert ready[0] == f"{answer.question}: {'yes' if answer.ready else 'no'}"
+    assert ready[1:] == [f"- {b}" for b in answer.blockers]
+    assert package.render(pack).splitlines()[2] == f"  {ready[0]}"
+    d = draft.build(lay, 2025)
+    versions = _section(cover, "Versions")
+    assert versions[:3] == [
+        f"planner {__version__}",
+        f"tax engine policyengine-us {d.engine_version}",
+        "built 2026-03-01",
+    ]
+    assert "not closed: no filed return recorded for 2025" in versions
+    scope = _section(cover, "Scope")
+    assert scope[0].startswith("drafted here: Form 1040")
+    assert "NC Form D-400" in scope[0]
+    assert any("not an import file for tax software" in ln for ln in scope)
+    assert _section(cover, "Not handled") == ["none"]
+    questions = _section(cover, "Questions for the preparer")
+    asks = [n for n in d.notes if n.startswith("CHECK")]
+    asks += [
+        f"{k}: not known; left out of the draft, never counted as 0" for k in d.unknown
+    ]
+    assert questions == ([f"- {c}" for c in asks] or ["none"])
+
+
+def test_cover_sheet_lists_waived_and_outstanding_forms_and_gaps(
+    lay: Layout,
+) -> None:
+    as_of = date(2026, 12, 1)
+    inv = expected.inventory(lay, 2025, as_of)
+    target = inv.late[0]
+    expected.waive(lay, 2025, target.form, target.issuer, as_of)
+    enter(lay, 2025, "filing_status", "married_joint")
+    pack = package.build(lay, 2025, as_of)
+    cover = (pack.folder / "cover.txt").read_text(encoding="utf-8")
+    docs = _section(cover, "Documents")
+    assert f"- waived: {target.form} from {target.issuer}" in docs
+    left = expected.inventory(lay, 2025, as_of).outstanding
+    for e in left:
+        assert f"- still to come: {e.form} from {e.issuer} (due {e.due})" in docs
+    gaps = _section(cover, "Not handled")
+    assert any("spouse" in g for g in gaps)
+    assert _section(cover, "Readiness")[0] == "Ready for a preparer: no"
+
+
+def test_no_claim_of_an_import_into_preparer_software() -> None:
+    """No preparer-software import claim until it is checked in that software
+    (master plan stage 6): the docs and the code never promise one."""
+    brands = r"TurboTax|H&R Block|TaxAct|Drake|Lacerte|ProSeries|UltraTax|TaxSlayer"
+    claim = re.compile(rf"import\w*\b[^.\n]{{0,40}}\b(?:{brands})", re.I)
+    root = Path(__file__).resolve().parents[1]
+    files = [root / "README.md", root / "GUIDE.md", *root.glob("planner/**/*.py")]
+    hits = [
+        f"{p.name}: {m.group(0)}"
+        for p in files
+        for m in claim.finditer(p.read_text("utf-8"))
+    ]
+    assert not hits
