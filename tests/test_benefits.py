@@ -1,11 +1,13 @@
-"""Master plan units 5a-5c: the benefits registry and its three-way
+"""Master plan units 5a-5d: the benefits registry and its three-way
 screen. The rule tests build Facts by hand; the engine tests use synthetic
 households (single filers at 18,000 of wages in NC and TX, a head of household
 with one child, a 67-year-old on a 15,000 pension, 67-year-olds on 12,000,
 18,000, 20,500 and 22,000 of Social Security, a 63-year-old on 150,000 of
 wages, a couple of 70 and 66 on a 250,000 pension; for food and cash, heads of
 household on 25,000 with children of 3 and 8 in NC and CA, one on 50,000 with
-a child of 8 in TX, a 70-year-old on 10,000 of Social Security) and the
+a child of 8 in TX, a 70-year-old on 10,000 of Social Security; for the
+utility and state rows, the NY family, a single filer on 40,000 in NC, a
+70-year-old in MN on 30,000 with 3,000 of property taxes) and the
 synthetic layout of test_spending."""
 
 from __future__ import annotations
@@ -63,6 +65,11 @@ def test_csr_ends_past_250_and_the_credit_past_400_in_a_capped_year() -> None:
         "school_meals": bn.NOT,
         "tanf": bn.NOT,
         "ssi": bn.NOT,
+        "lifeline": bn.NOT,
+        "liheap": bn.POSSIBLE,  # no income on file: under 110%
+        "state_eitc": bn.NOT,
+        "state_ctc": bn.NOT,
+        "property_tax_relief": bn.NOT,
     }
 
 
@@ -114,6 +121,11 @@ def test_every_program_fills_every_registry_field() -> None:
         "school_meals",
         "tanf",
         "ssi",
+        "lifeline",
+        "liheap",
+        "state_eitc",
+        "state_ctc",
+        "property_tax_relief",
     ]
     for p in bn.REGISTRY:
         for f in fields(p):
@@ -125,6 +137,7 @@ def test_every_program_fills_every_registry_field() -> None:
     assert "45 CFR 156.420(a)(1)-(3)" in text and "42 CFR 457.310(b)" in text
     assert "20 CFR 418.1115" in text and "SSA POMS HI 03030.025" in text
     assert "7 USC 2014(g)(7)" in text and "20 CFR 416.1205" in text
+    assert "47 CFR 54.409(a), (c)" in text and "42 USC 8624(b)(2)" in text
     res = runner.invoke(app, ["benefits", "--programs"])
     assert res.exit_code == 0 and "Premium tax credit (marketplace) [aca_ptc]" in (
         res.output
@@ -319,6 +332,44 @@ def test_ssi_tests_resources_against_one_or_a_couple() -> None:
     assert bn.snap_limit(2026, [61]) == 4_500.0
 
 
+def test_lifeline_and_liheap_read_programs_then_income() -> None:
+    assert bn.lifeline(BASE).status == bn.NOT
+    got = bn.lifeline(replace(BASE, lifeline=True, lifeline_year=111.0))
+    assert got.status == bn.POSSIBLE and got.amount == 111.0
+    f = replace(BASE, state="MN", fpg=15_960.0, smi=70_000.0)
+    food = bn.Result("snap", bn.POSSIBLE, ())
+    via = bn.liheap(replace(f, gross=60_000.0), [food])
+    assert via.status == bn.POSSIBLE and "SNAP (food assistance)" in via.why[0]
+    floor = 1.10 * 15_960
+    assert bn.liheap(replace(f, gross=floor), []).status == bn.POSSIBLE
+    assert bn.liheap(replace(f, gross=floor + 1), []).status == bn.UNKNOWN
+    top = max(1.50 * 15_960, 0.60 * 70_000)  # 60% of the state median here
+    assert bn.liheap(replace(f, gross=top), []).status == bn.UNKNOWN
+    over = bn.liheap(replace(f, gross=top + 1), [])
+    assert over.status == bn.NOT and "42,000" in over.why[0]
+
+
+def test_state_credits_tell_none_in_the_state_from_none_at_this_income() -> None:
+    f = replace(BASE, state="NY", eitc_programs=("ny_eitc",))
+    assert "NY has no child tax credit" in bn.screen(f)[15].why[0]
+    assert (
+        bn.screen(f)[14].why[0]
+        == "NY's earned income credit is 0 at this income and family"
+    )
+    got = bn.screen(replace(f, state_eitc=500.0))[14]
+    assert got.status == bn.POSSIBLE and got.amount == 500.0
+    rel = replace(BASE, state="MN", property_programs=("mn_renters_credit",))
+    assert bn.property_relief(rel).status == bn.UNKNOWN  # rent is not asked
+    paid = bn.property_relief(replace(rel, property_taxes=3_000.0))
+    assert paid.status == bn.NOT and "3,000 of property taxes" in paid.why[0]
+    assert bn.property_relief(replace(rel, property_credit=900.0)).amount == 900.0
+    assert bn.state_programs(2026, "MN", "state_property_tax_credits") == (
+        "mn_homestead_credit_refund",
+        "mn_renters_credit",
+    )
+    assert bn.state_programs(2026, "TX", "state_eitcs") == ()
+
+
 @pytest.mark.engine
 def test_engine_food_and_cash_screen_on_synthetic_households() -> None:
     def run(**kw: object) -> dict[str, bn.Result]:
@@ -359,6 +410,41 @@ def test_engine_food_and_cash_screen_on_synthetic_households() -> None:
     old = run(age=70, filing_status="SINGLE", state="NC", social_security=10_000)
     assert old["ssi"].status == bn.UNKNOWN and "about" in old["ssi"].why[0]
     assert old["snap"].status == bn.POSSIBLE
+
+
+@pytest.mark.engine
+def test_engine_utility_and_state_rows_on_synthetic_households() -> None:
+    def run(**kw: object) -> dict[str, bn.Result]:
+        hh = Household(**kw)  # type: ignore[arg-type]
+        return {x.key: x for x in bn.assess(2026, hh).results}
+
+    ny = run(
+        age=30,
+        filing_status="HEAD_OF_HOUSEHOLD",
+        state="NY",
+        wages=25_000,
+        dependents=(Dependent(age=3), Dependent(age=8)),
+    )
+    assert [
+        ny[k].status for k in ("lifeline", "liheap", "state_eitc", "state_ctc")
+    ] == [bn.POSSIBLE] * 4
+    assert (ny["state_eitc"].amount or 0) > 0 and (ny["state_ctc"].amount or 0) > 0
+    assert ny["property_tax_relief"].status == bn.UNKNOWN
+    nc = run(age=40, filing_status="SINGLE", state="NC", wages=40_000)
+    assert [nc[k].status for k in ("lifeline", "liheap", "state_eitc")] == [bn.NOT] * 3
+    mn = run(
+        age=70,
+        filing_status="SINGLE",
+        state="MN",
+        social_security=20_000,
+        pension_income=10_000,
+        real_estate_taxes=3_000,
+    )
+    assert (
+        mn["liheap"].status == bn.UNKNOWN and "MN's line decides" in mn["liheap"].why[0]
+    )
+    assert mn["property_tax_relief"].status == bn.POSSIBLE
+    assert (mn["property_tax_relief"].amount or 0) > 0
 
 
 @pytest.mark.engine

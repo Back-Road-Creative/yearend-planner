@@ -14,7 +14,8 @@ with no network at run time. Unit 5a covers health coverage below Medicare:
 the premium tax credit, cost-sharing reductions, Medicaid and CHIP. Unit 5b
 adds Medicare's costs: the income surcharge (IRMAA) this year's income sets,
 the Medicare Savings Programs and Extra Help. Unit 5c adds food and cash
-help: SNAP, WIC, school meals, TANF and SSI.
+help: SNAP, WIC, school meals, TANF and SSI. Unit 5d adds Lifeline, LIHEAP
+and the state's earned income, child and property-tax or renter credits.
 
 Sources, read 2026-10-07:
 - IRC 36B(c)(1)(A): household income from 100 to 400 percent of the poverty
@@ -76,6 +77,17 @@ Sources, read 2026-10-07:
   416.1100 countable income; 416.1205 resources to 2,000 (3,000 a couple,
   the engine's ``gov.ssa.ssi.eligibility.resources.limit``); POMS SI
   01120.210 counts a retirement account the owner can withdraw.
+- 47 CFR 54.409(a): Lifeline at income to 135 percent of the guideline or
+  through SNAP, Medicaid, SSI, federal public housing aid or the Veterans
+  Pension; 54.403(a) the support amount (the engine's
+  ``gov.fcc.lifeline.amount``); 54.409(c) one per household.
+- 42 USC 8624(b)(2): LIHEAP to households in SNAP, SSI or TANF, or with income
+  up to the greater of 150 percent of the guideline and 60 percent of the
+  state median income (the engine's ``hhs_smi``); (b)(2)(B) a state may not
+  turn away on income alone a household under 110 percent.
+- The state credits are the engine's lists
+  ``gov.states.household.state_eitcs``, ``state_ctcs`` and
+  ``state_property_tax_credits``, each worked out on the state return.
 """
 
 from __future__ import annotations
@@ -125,6 +137,8 @@ WIC_AGE = 5  # 7 CFR 246.7(c)(1): children to their fifth birthday
 SCHOOL_AGES = range(5, 19)  # school age; the district confirms enrollment
 TANF_AGE = 18  # 42 USC 619(2): a minor child is under 18
 # 7 USC 2014(g)(7)(A): retirement accounts SNAP leaves out
+LIHEAP_FLOOR = 1.10  # 42 USC 8624(b)(2)(B)
+LIHEAP_FPG, LIHEAP_SMI = 1.50, 0.60  # 42 USC 8624(b)(2)(B)(i)-(ii)
 RETIREMENT_TYPES = ("trad_ira", "simple_ira", "inherited_ira", "roth", "gov_457b")
 
 
@@ -398,6 +412,95 @@ REGISTRY: tuple[Program, ...] = (
         "the engine's SSI amount for each member 65 or older; resources "
         "from every account on file against the engine's limit",
     ),
+    Program(
+        "lifeline",
+        "Lifeline (phone or internet discount)",
+        "every state and DC through participating phone and internet "
+        "companies; California and Oregon add their own",
+        "a household with low income or in a qualifying program",
+        "any time of year; recertified every year",
+        "household income to 135% of the guideline (Texas 150%)",
+        "everyone at one address who shares income and expenses; one "
+        "discount per household",
+        "none: current income",
+        "none",
+        "SNAP, Medicaid, SSI, federal public housing aid or the Veterans "
+        "Pension qualifies without the income test",
+        "the National Verifier (lifelinesupport.org) or a participating company",
+        ("47 CFR 54.409(a), (c)", "47 CFR 54.403(a)"),
+        "the engine's Lifeline income and program tests; the amount is the "
+        "standard discount for a year",
+    ),
+    Program(
+        "liheap",
+        "LIHEAP (home energy help)",
+        "every state and DC through the state or local energy assistance "
+        "office; most states take applications in a heating or cooling "
+        "season until funds run out",
+        "a household that pays for heating or cooling",
+        "the state's season; funds are first come, first served",
+        "household income to the state's line: at least to 110% of the "
+        "guideline, at most the greater of 150% of the guideline and 60% of "
+        "the state median income",
+        "everyone living together who buys energy together",
+        "none to a few months, by state",
+        "some states test assets",
+        "SNAP, SSI or TANF qualifies in most states",
+        "the state or local LIHEAP office",
+        ("42 USC 8624(b)(2)",),
+        "a program from SNAP, SSI or TANF, else the engine's gross income "
+        "against 110% and 150% of the guideline and 60% of the engine's "
+        "state median income",
+    ),
+    Program(
+        "state_eitc",
+        "State earned income credit",
+        "the states with one, on the state income tax return",
+        "workers with earned income; some states cover workers the federal "
+        "credit leaves out",
+        "claimed on the year's state return",
+        "the state's rules, most a share of the federal credit",
+        "the tax household on the return",
+        "none: the tax year",
+        "none in most states; the federal investment income limit where the "
+        "state follows it",
+        "a state return; residency",
+        "the state income tax return",
+        ("gov.states.household.state_eitcs (policyengine-us)",),
+        "the engine's state earned income credits for the household",
+    ),
+    Program(
+        "state_ctc",
+        "State child tax credit",
+        "the states with one, on the state income tax return",
+        "families with children, at the state's ages",
+        "claimed on the year's state return",
+        "the state's rules and phase-outs",
+        "the tax household on the return",
+        "none: the tax year",
+        "none",
+        "a state return; residency; the child's age and identification",
+        "the state income tax return",
+        ("gov.states.household.state_ctcs (policyengine-us)",),
+        "the engine's state child credits for the household",
+    ),
+    Program(
+        "property_tax_relief",
+        "State property-tax and renter credits",
+        "the states with one, most on the state return or a separate "
+        "claim; counties add homestead exemptions",
+        "homeowners, renters, or people 65 or older or disabled, by state",
+        "claimed for the year, often by a later filing deadline",
+        "the state's household income, often with Social Security added",
+        "the household at the home",
+        "none: the year",
+        "some states cap the home's value or the household's assets",
+        "property taxes paid or rent; age or disability in some states",
+        "the state return or claim form; the county assessor for homestead exemptions",
+        ("gov.states.household.state_property_tax_credits (policyengine-us)",),
+        "the engine's state property-tax and renter credits on the property "
+        "taxes on file; rent is not asked",
+    ),
 )
 BY_KEY = {p.key: p for p in REGISTRY}
 
@@ -444,6 +547,17 @@ class Facts:
     tanf: float = 0.0  # the engine's TANF, yearly
     tanf_modeled: bool = False  # the engine models this state's TANF
     ssi_limit: float = 0.0  # 20 CFR 416.1205, for one or a couple
+    lifeline: bool = False  # the engine's is_lifeline_eligible
+    lifeline_year: float = 0.0  # the standard discount for 12 months
+    gross: float = 0.0  # the engine's SNAP gross income, yearly (LIHEAP)
+    smi: float = 0.0  # the engine's state median income for the household
+    state_eitc: float = 0.0
+    state_ctc: float = 0.0
+    property_credit: float = 0.0
+    eitc_programs: tuple[str, ...] = ()  # the state's credits in the engine
+    ctc_programs: tuple[str, ...] = ()
+    property_programs: tuple[str, ...] = ()
+    property_taxes: float = 0.0  # real estate taxes on file
 
 
 @dataclass(frozen=True)
@@ -912,9 +1026,98 @@ def ssi(f: Facts) -> Result:
     )
 
 
+def lifeline(f: Facts) -> Result:
+    if not f.lifeline:
+        return Result(
+            "lifeline",
+            NOT,
+            (
+                "income over 135% of the guideline and no SNAP, Medicaid or SSI; "
+                "public housing aid and the Veterans Pension are not asked "
+                "(47 CFR 54.409(a))",
+            ),
+        )
+    why = (
+        "income at most 135% of the guideline, or SNAP, Medicaid or SSI "
+        "(47 CFR 54.409(a)); one discount per household (54.409(c))",
+    )
+    return Result("lifeline", POSSIBLE, why, r(f.lifeline_year))
+
+
+def liheap(f: Facts, programs: list[Result]) -> Result:
+    via = [x.program.name for x in programs if x.status == POSSIBLE]
+    if via:
+        why = (
+            f"through {', '.join(via)} (42 USC 8624(b)(2)(A))",
+            "the state's season and funds decide; it may test assets",
+        )
+        return Result("liheap", POSSIBLE, why)
+    ratio = f.gross / f.fpg if f.fpg else 0.0
+    top = max(LIHEAP_FPG * f.fpg, LIHEAP_SMI * f.smi)
+    if ratio <= LIHEAP_FLOOR:
+        why = (
+            f"gross income {f.gross:,.0f} is {_pct(ratio)} of the guideline, "
+            "under the 110% no state may turn away (42 USC 8624(b)(2)(B))",
+            "the state's season and funds decide; it may test assets",
+        )
+        return Result("liheap", POSSIBLE, why)
+    if f.gross > top:
+        return Result(
+            "liheap",
+            NOT,
+            (
+                f"gross income {f.gross:,.0f} over the most a state may set, "
+                f"{top:,.0f} (42 USC 8624(b)(2)(B))",
+            ),
+        )
+    return Result(
+        "liheap",
+        UNKNOWN,
+        (
+            f"gross income {f.gross:,.0f} is between 110% of the guideline and the "
+            f"most a state may set ({top:,.0f}): {f.state}'s line decides",
+        ),
+    )
+
+
+def _state_credit(
+    key: str, amount: float, programs: tuple[str, ...], state: str, what: str
+) -> Result:
+    if amount > 0:
+        why = (f"{state}'s {what} on the state return, from the engine",)
+        return Result(key, POSSIBLE, why, r(amount))
+    if not programs:
+        return Result(key, NOT, (f"{state} has no {what} in the engine",))
+    return Result(key, NOT, (f"{state}'s {what} is 0 at this income and family",))
+
+
+def property_relief(f: Facts) -> Result:
+    why: tuple[str, ...]
+    if f.property_credit > 0:
+        why = (f"{f.state}'s property-tax or renter credit, from the engine",)
+        return Result("property_tax_relief", POSSIBLE, why, r(f.property_credit))
+    local = "a county homestead exemption is not screened: ask the assessor"
+    if not f.property_programs:
+        why = (f"{f.state} has no property-tax or renter credit in the engine", local)
+        return Result("property_tax_relief", NOT, why)
+    names = ", ".join(f.property_programs)
+    if f.property_taxes:
+        why = (
+            f"{names}: 0 at this income on {f.property_taxes:,.0f} of "
+            "property taxes; rent is not asked",
+            local,
+        )
+        return Result("property_tax_relief", NOT, why)
+    why = (f"{names}: no property taxes on file and rent is not asked", local)
+    return Result("property_tax_relief", UNKNOWN, why)
+
+
 def screen(f: Facts) -> list[Result]:
     credit = ptc(f)
     savings = msp(f)
+    food = snap(f)
+    cash = tanf(f)
+    income = ssi(f)
     return [
         credit,
         csr(f, credit),
@@ -923,12 +1126,28 @@ def screen(f: Facts) -> list[Result]:
         premium(f),
         savings,
         extra_help(f, savings),
-        snap(f),
+        food,
         wic(f),
         meals(f),
-        tanf(f),
-        ssi(f),
+        cash,
+        income,
+        lifeline(f),
+        liheap(f, [food, income, cash]),
+        _state_credit(
+            "state_eitc", f.state_eitc, f.eitc_programs, f.state, "earned income credit"
+        ),
+        _state_credit(
+            "state_ctc", f.state_ctc, f.ctc_programs, f.state, "child tax credit"
+        ),
+        property_relief(f),
     ]
+
+
+def state_programs(year: int, state: str, kind: str) -> tuple[str, ...]:
+    """The state's credits of a kind in the engine's lists."""
+    node = getattr(_system().parameters.gov.states.household, kind)
+    pre = f"{state.lower()}_"
+    return tuple(v for v in node(f"{year}-01-01") if v.startswith(pre))
 
 
 def snap_limit(year: int, ages: list[int]) -> float:
@@ -978,6 +1197,12 @@ UNIT = (  # one figure for the whole household (the engine's SPM unit)
     "reduced_price_school_meals",
     "state_has_universal_free_school_meals",
     "tanf",
+    "is_lifeline_eligible",
+    "snap_gross_income",
+    "hhs_smi",
+    "state_eitc",
+    "state_ctc",
+    "state_property_tax_credit",
 )
 
 
@@ -1042,6 +1267,18 @@ def facts(
         unit["tanf"],
         f"{hh.state.lower()}_tanf" in _system().variables,
         ssi_limit(year, hh.filing_status),
+        bool(unit["is_lifeline_eligible"]),
+        12
+        * float(_system().parameters.gov.fcc.lifeline.amount.standard(f"{year}-01-01")),
+        unit["snap_gross_income"],
+        unit["hhs_smi"],
+        unit["state_eitc"],
+        unit["state_ctc"],
+        unit["state_property_tax_credit"],
+        state_programs(year, hh.state, "state_eitcs"),
+        state_programs(year, hh.state, "state_ctcs"),
+        state_programs(year, hh.state, "state_property_tax_credits"),
+        float(hh.real_estate_taxes),
     )
 
 
