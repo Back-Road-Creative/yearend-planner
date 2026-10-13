@@ -1545,6 +1545,22 @@ Repeat until the Needed list is empty. Press Ctrl+C in the window to stop.
     `schtasks`; `planner schedule --remove` deletes it. Off Windows it prints the
     `schtasks` command and changes nothing.
 
+## Health: five separate answers (unit 7a)
+
+`planner health [--year Y] [--as-of YYYY-MM-DD]` prints five answers, each `ok` or
+`attention`, with what it found and, under `attention`, why. They are never folded into
+one score. It reports only: it imports, fetches and repairs nothing. The one thing it
+records is the portfolio's all-time high, which every read of the portfolio records (the
+dashboard's too).
+
+| Answer | `ok` when |
+|---|---|
+| App | the tax engine publishes the year, the config files load, the data folder can be written, and a backup in `out/backups/` is no older than 30 days. It also lists the planner and engine versions and the last update check. |
+| Data completeness | nothing is open on the Needed list, no expected form is late, no bank row lacks a Schedule C category, and a document was imported in the last 90 days. It also counts the estimates and what was set aside. |
+| Calculation | the engine's one-household self-check returns a positive federal tax and the planner handles every part of the household and state. It also says whether the draft return builds and how many CHECK notes it raised. |
+| Decision readiness | the dashboard's "Ready to act" is yes; its "Ready to plan" is shown beside it. |
+| Tax-pack readiness | the dashboard's "Ready for a preparer" is yes. During the year this stays `attention`, because the year's final forms arrive in January. |
+
 ## Limits kept current on each launch (Phase 6a)
 
 Each `planner run` and `planner dashboard` first refreshes the year's limits
