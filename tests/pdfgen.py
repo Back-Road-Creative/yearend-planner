@@ -6,6 +6,7 @@ Each page is a list of lines, drawn top to bottom in Helvetica 10pt, so
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 
@@ -23,8 +24,9 @@ def _content(lines: list[str]) -> bytes:
     return "\n".join(ops).encode("latin-1")
 
 
-def make_pdf(path: Path, pages: list[list[str]]) -> Path:
-    """Write ``pages`` (lists of text lines) to ``path`` as a one-font PDF."""
+def make_pdf(path: Path, pages: Sequence[list[str] | bytes]) -> Path:
+    """Write ``pages`` (lists of text lines, or a page's own content stream in
+    the font ``/F1``) to ``path`` as a one-font PDF."""
     objs: list[bytes] = []
     # 1 catalog, 2 pages, 3 font, then (page, content) pairs
     n_pages = len(pages)
@@ -34,7 +36,7 @@ def make_pdf(path: Path, pages: list[list[str]]) -> Path:
     objs.append(f"<< /Type /Pages /Kids [{kids}] /Count {n_pages} >>".encode())
     objs.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
     for i, lines in enumerate(pages):
-        content = _content(lines)
+        content = lines if isinstance(lines, bytes) else _content(lines)
         objs.append(
             (
                 f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
