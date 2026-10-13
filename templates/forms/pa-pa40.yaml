@@ -5,10 +5,11 @@
 form: PA-PA40
 years: [2025]
 match: ["PA-40 (EX)", "Total PA Taxable Income"]
-year_pattern: 'Harrisburg, PA 17129\s+(20\d\d)'
+year_pattern: '(?:PA\s+Department\s+of\s+Revenue|Harrisburg,\s+PA\s+17129|MOD\s+\d\d-\d\d\s+\(FI\))\s+(20\d\d)'
 issuer: PA
+return: true
 boxes:
-  "1a": {label: "Gross compensation", pattern: 'qualifying retirement benefits\. See the instructions\.[\s.•]*1a\.\s+AMOUNT'}
+  "1a": {label: "Gross compensation", pattern: 'qualifying retirement benefits\. See the instructions\.[\s.•]*1a\.?\s+AMOUNT'}
   "1b": {label: "Unreimbursed employee business expenses", pattern: 'Unreimbursed Employee Business Expenses[\s.•]*1b\.\s+AMOUNT'}
   "1c": {label: "Net compensation", pattern: 'Subtract Line 1b from Line 1a[\s.•]*1c\.\s+AMOUNT'}
   "2": {label: "Interest income", pattern: 'Complete PA Schedule A if required[\s.•]*2\.\s+AMOUNT'}

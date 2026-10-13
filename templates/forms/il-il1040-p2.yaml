@@ -7,6 +7,7 @@ years: [2025]
 match: ["IL-1040 Back", "Total tax from Page 1, Line 23"]
 year_pattern: 'IL-1040 Back \(R-\d\d/(\d\d)\)'
 issuer: IL
+return: true
 boxes:
   "24": {label: "Total tax from Page 1", pattern: 'Total tax from Page 1, Line 23\.[\s.]*24\s+(?:\*\w+\*\s+)?AMOUNT'}
   "25": {label: "Illinois Income Tax withheld", pattern: 'Illinois Income Tax withheld\. Attach Sch\. IL-WIT\.[\s.]*25\s+AMOUNT'}

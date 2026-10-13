@@ -1,15 +1,20 @@
-# NC Form D-400. Lines 6, 12b, 15 and 20a are the ones the planner relies on; the
-# payment lines (21a, 23, 26a, 28, 34) follow the 2025 D-401 instructions and are optional.
+# NC Form D-400, page 1 (page 2 is nc-d400-p2.yaml). Lines 6, 12b, 15 and 20a are
+# the ones the planner relies on; the payment lines (21a, 23, 26a, 28, 34) follow
+# the 2025 D-401 instructions and are optional. A page carrying every line (as a
+# summary prints them) is read here too. The official form wraps line 12b's label
+# ("Subtract Line 12a from Line 8") around its amount; a scan may read the amount after
+# "Line 12a".
 form: NC-D400
 years: [2024, 2025, 2026]
-match: ["D-400", "Individual Income Tax Return"]
+match: ["D-400", "North Carolina Taxable Income"]
 year_pattern: '(?:calendar year|tax year)\s*:?\s*(20\d\d)'
 issuer: NC
+return: true
 boxes:
   "6": {label: "Federal adjusted gross income", pattern: 'Federal Adjusted Gross Income[\s.]*6\.?\s+AMOUNT'}
-  "12b": {label: "NC taxable income", pattern: 'North Carolina Taxable Income[\s.]*12b\.?\s+AMOUNT'}
+  "12b": {label: "NC taxable income", pattern: '(?:North Carolina Taxable Income[\s.]*12b\.?|\b12b\. Subtract\s+(?:[^\n]*?Line 12a\s+)?)AMOUNT'}
   "15": {label: "NC income tax", pattern: 'North Carolina Income Tax[\s.]*15\.?\s+AMOUNT', required: true}
-  "20a": {label: "NC income tax withheld", pattern: 'North Carolina Income Tax Withheld[\s.]*20a\.?\s+AMOUNT'}
+  "20a": {label: "NC income tax withheld", pattern: 'North Carolina Income Tax Withheld[\s.]*(?:20a\.?)?\s+AMOUNT'}
   "21a": {label: "NC estimated tax paid", pattern: 'Estimated Tax[\s.]*21a\.?\s+AMOUNT'}
   "23": {label: "Total payments", pattern: 'Total Payments[\s.]*23\.?\s+AMOUNT'}
   "26a": {label: "Amount due", pattern: 'Pay This Amount[\s.]*26a\.?\s+AMOUNT'}

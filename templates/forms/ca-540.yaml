@@ -8,8 +8,9 @@ years: [2024, 2025, 2026]
 match: ["Form 540 20", "This is your taxable income"]
 year_pattern: 'Form 540\s+(20\d\d)'
 issuer: CA
+return: true
 boxes:
   "13": {label: "Federal adjusted gross income", pattern: 'Form 1040 or 1040-SR, line 11b?[\s.•]*13\s+AMOUNT'}
   "17": {label: "California adjusted gross income", pattern: 'Combine line 15 and line 16[\s.•]*17\s+AMOUNT'}
-  "19": {label: "Taxable income", pattern: 'This is your taxable income\.?[\s.•]*19\s+AMOUNT'}
+  "19": {label: "Taxable income", pattern: 'This is your taxable income\.?(?:(?: If less than zero, enter -0-)?[\s.•]*19\s+|[ \t]*[O0•]?19[ \t]*\n[ \t]*If less than zero, enter -[0O]-[\s.•]*)AMOUNT'}
   "31": {label: "Tax", pattern: 'FTB 3803[\s.•]*31\s+AMOUNT'}

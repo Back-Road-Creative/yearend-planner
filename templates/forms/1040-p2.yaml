@@ -1,7 +1,8 @@
 # Form 1040 page 2 (tax, payments, balance). Merges with page 1 as form 1040.
 form: 1040
 years: [2024, 2025, 2026]
-match: ["Form 1040 (", "Page 2"]
+# "Form 1040 (20": a state return names "U.S. Form 1040 (see instructions)".
+match: ["Form 1040 (20", "Page 2"]
 year_pattern: 'Form 1040(?:-SR)?\s*\((20\d\d)\)'
 issuer: self
 return: true

@@ -74,7 +74,8 @@ The official IRS layouts are tested too: 18 blank 1099, 1098, 5498, 3921, 3922 a
 forms filled with synthetic values read back box for box, the one-sale 1099-B and the
 2026 1099-G (state tax in box 12) included (unit 7h). So are a filed 2025 Form 1040 and
 its Schedules 1, 2, 3, C, D and SE, every page, read as the taxpayer's own return
-(unit 7h2a).
+(unit 7h2a), and the 2025 returns of ten states (NC, IL, PA, VA, MI, CA, NJ, NY, GA, OH)
+from each revenue department's own blank (unit 7h2b).
 Scans of the same forms, crooked, speckled or upside down, read back the same values
 through OCR and wait in `confirm` (unit 7h1b).
 The draft works the earned income credit on 1040 line 27a by the EIC worksheet and the

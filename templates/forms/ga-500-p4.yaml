@@ -4,8 +4,9 @@
 form: GA-500
 years: [2025]
 match: ["Individual Income Tax Return", "Georgia Income Tax Withheld on Wages and 1099s"]
-year_pattern: 'Georgia Department of Revenue\s*(?:YOUR SOCIAL SECURITY NUMBER)?\s*(20\d\d)'
+year_pattern: 'Georgia\s+Department\s+of\s+Revenue\s*(?:\d{8,}\s*)?(?:YOUR\s+SOCIAL\s+SECURITY\s+NUMBER)?\s*(20\d\d)'
 issuer: GA
+return: true
 boxes:
   "24": {label: "Georgia income tax withheld on wages and 1099s", pattern: 'Withheld on Wages and 1099s[\s.]*24\.\s+AMOUNT'}
   "26": {label: "Estimated tax paid", pattern: 'and Form IT-560[\s.]*26\.\s+AMOUNT'}

@@ -1,0 +1,17 @@
+# NC Form D-400, page 2: the payments and the refund or amount due, by the
+# official form's wording. The page names its year after "D-400 Web-Fill" (the
+# "Tax Year" box beside it is printed apart from it).
+form: NC-D400
+years: [2024, 2025, 2026]
+match: ["D-400", "Amount To Be Refunded"]
+year_pattern: '(?:tax\s+year|Web-Fill)\s*:?\s*(20\d\d)|(20\d\d)\s+Tax\s+Year'
+issuer: NC
+return: true
+boxes:
+  "19": {label: "NC tax and use tax", pattern: '\b19\. Add Lines 17 and 18[\s.]*19\.?\s+AMOUNT'}
+  "20a": {label: "NC income tax withheld", pattern: 'North Carolina Income Tax Withheld\s+AMOUNT'}
+  "21a": {label: "NC estimated tax paid", pattern: 'estimated tax (?:b\. )?Paid with extension[^\n]*\n(?:[^\n]*\n){0,5}?AMOUNT\s'}
+  "23": {label: "Total payments", pattern: '\b23\. Add Lines 20a through 22[\s.]*23\.?\s+AMOUNT'}
+  "26a": {label: "Amount due", pattern: 'Otherwise, go to Line 28\.\s+26a\.?\s+AMOUNT'}
+  "28": {label: "Overpayment", pattern: '\b28\.\s*Overpayment\b[^\n]*?\b28\.?\s+AMOUNT'}
+  "34": {label: "Refund", pattern: 'Amount to be Refunded[\s.]*34\.?\s+AMOUNT'}
