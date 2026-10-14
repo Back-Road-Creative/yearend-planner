@@ -180,10 +180,10 @@ from. A ZIP that spans counties (the Needed panel and `planner needed` list them
 first), is not in the file, or is in another state leaves the county missing with a note
 saying why; type it (`planner enter county Macon --year 2026`) and the planner turns the name into the
 engine's own (`MACON_COUNTY_NC`), refusing a name that fits two counties or none in your
-state. Qualifying
-surviving spouse is not read: type it. How a tax-software PDF renders its check boxes is not
-confirmed on a real return (tests use synthetic marks), so a return with no readable mark
-leaves filing status to be typed. Form 1099-R box 7 is stored as the distribution code
+state. The
+filing-status mark is read from the IRS's own 2025 Form 1040 filled with synthetic values,
+as text and as a scan; a tax-software print that moves the check boxes is not covered, so a
+return with no readable mark, or two, leaves filing status to be typed. Form 1099-R box 7 is stored as the distribution code
 (`7`, `G`, `7D`...). Two consecutive years of Form 1098 from one lender give the mortgage's
 monthly principal and interest: (box 1 interest + the drop in box 2 principal) / 12. The
 Needed panel shows it as an *estimate* (escrow is not on a 1098; type the full payment to
