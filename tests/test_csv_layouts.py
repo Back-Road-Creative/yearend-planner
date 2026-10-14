@@ -6,6 +6,7 @@ employer plan's holdings and transactions as blocks of their own."""
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,8 @@ import yaml
 
 from planner.ingest import CSV_TEMPLATES_DIR
 from planner.ingest.csvfile import load_csv_templates, parse_csv, read_blocks
+from planner.ingest.derive import derive_year
+from planner.ledger import db
 
 LAYOUTS = Path(__file__).parent / "fixtures" / "real" / "csv"
 MANIFEST: dict[str, Any] = yaml.safe_load(
@@ -80,3 +83,68 @@ def test_a_new_header_after_a_blank_line_still_starts_a_block(tmp_path: Path) ->
         ["Date", "Description", "Amount"],
         ["Name", "Note"],
     ]
+
+
+def _rows(name: str) -> list[db.Row]:
+    return parse_csv(LAYOUTS / name, TEMPLATES)
+
+
+def test_a_title_line_names_the_account_and_a_total_is_not_a_row() -> None:
+    rows = _rows("schwab-positions.csv")
+    assert [(r.account, r.symbol, r.amount_cents) for r in rows] == [
+        ("Individual ...321", "VTI", 103340),
+        ("Individual ...321", "BND", 73400),
+        ("Individual ...321", "Cash & Cash Investments", 2520),
+        ("Roth ...432", "BND", 14680),
+        ("Roth ...432", "Cash & Cash Investments", 600),
+    ]
+    (txn,) = {r.account for r in _rows("schwab-transactions.csv")}
+    assert txn == "Individual ...321"
+
+
+def test_a_dash_n_a_or_incomplete_cell_is_no_value_not_zero() -> None:
+    schwab = _rows("schwab-positions.csv")
+    assert (schwab[0].basis_cents, schwab[1].basis_cents) == (None, 70000)
+    assert (schwab[2].quantity, schwab[2].price_cents) == (None, None)
+    fidelity = {r.symbol: r for r in _rows("fidelity-positions.csv")}
+    assert fidelity["SPAXX**"].basis_cents is None
+    assert (fidelity["VTI"].basis_cents, fidelity["VTI"].price_cents) == (250000, 19798)
+
+
+def test_notes_before_and_after_a_block_are_not_rows() -> None:
+    history = _rows("fidelity-history.csv")
+    assert [(r.date, r.amount_cents) for r in history] == [
+        ("2025-01-27", -10000),
+        ("2025-01-23", 125050),
+    ]
+    assert [b.headers[0] for b in read_blocks(LAYOUTS / "fidelity-positions.csv")] == [
+        "Account Number"
+    ]
+
+
+def test_an_as_of_date_is_the_date_the_row_counts_from() -> None:
+    (interest,) = [r for r in _rows("schwab-transactions.csv") if "Interest" in r.type]
+    assert (interest.date, interest.tax_year) == ("2025-12-31", 2025)
+
+
+def test_the_most_specific_template_claims_a_block() -> None:
+    # Schwab's transaction header also holds bank-generic's Date/Description/Amount.
+    assert {r.source for r in _rows("schwab-transactions.csv")} == {
+        "schwab_transactions"
+    }
+
+
+def _ledger(rows: list[db.Row]) -> list[db.LedgerRow]:
+    return [db.LedgerRow(**asdict(r)) for r in rows]
+
+
+def test_each_issuers_dividends_and_interest_reach_the_ytd_facts() -> None:
+    def ytd(name: str) -> dict[str, float]:
+        return {f.box: f.value for f in derive_year(_ledger(_rows(name)), 2025)}
+
+    # Schwab books a reinvested dividend's cash as "Reinvest Dividend".
+    assert ytd("schwab-transactions.csv")["dividends"] == 2.38
+    assert ytd("schwab-transactions.csv")["interest"] == 0.03
+    assert ytd("fidelity-transactions.csv")["dividends"] == 71.30
+    assert ytd("chase-checking.csv") == {"deposits": 2100.0, "withdrawals": 262.0}
+    assert ytd("schwab-checking.csv") == {"deposits": 1.0, "withdrawals": 500.0}

@@ -1,0 +1,14 @@
+# Fidelity "Positions" download (all accounts): one row per position, a
+# trailing unlabelled Type cell, "n/a" where Fidelity has no figure, and notes
+# below the table. Layout cited in tests/fixtures/real/csv/layouts.yaml.
+source: fidelity_positions
+kind: holding
+match: [Account Number, Account Name, Symbol, Description, Quantity, Last Price, Current Value]
+columns:
+  account: Account Number
+  description: Description
+  symbol: Symbol
+  quantity: Quantity
+  price: Last Price
+  amount: Current Value
+  basis: Cost Basis Total

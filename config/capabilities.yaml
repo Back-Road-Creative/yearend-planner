@@ -235,6 +235,11 @@ csv_vanguard_download:
   evidence: implemented
   tests: ["tests/test_csv.py", "tests/test_csv_layouts.py"]
   note: "holdings, transactions, plan holdings and plan transactions blocks, checked against the published download layout (blank-line account groups, trailing commas)"
+csv_fidelity_schwab_chase:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_csv_layouts.py"]
+  note: "Fidelity positions, all-accounts activity and single-account history; Schwab positions, brokerage history and checking; Chase checking; each against its published download layout (titles, notes, total lines, no-figure cells, as-of dates)"
 csv_vanguard_cost_basis_realized_income:
   status: partial
   evidence: partial

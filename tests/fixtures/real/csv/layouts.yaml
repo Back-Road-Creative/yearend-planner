@@ -13,6 +13,48 @@ layouts:
       vanguard_transactions: 3
       vanguard_plan_holdings: 1
       vanguard_plan_transactions: 1
+  - name: fidelity-positions
+    file: fidelity-positions.csv
+    source: https://github.com/bogle-tools/financial-variables/blob/deba40b539520cf91e7719bdad27543774a2a533/data/custodians/fidelity.csv
+    licence: CC0-1.0
+    expect:
+      fidelity_positions: 3
+  - name: fidelity-transactions
+    file: fidelity-transactions.csv
+    source: https://github.com/redstreet/beancount_reds_importers/blob/d752fed39a769e72ba86d8631774e67e6683df8f/beancount_reds_importers/importers/fidelity/tests/fidelity_all_accounts_csv/fidelity_csv_all_accounts_transactions_20251204.csv
+    licence: GPL-3.0 (layout only; no file content copied)
+    expect:
+      fidelity_transactions: 5
+  - name: fidelity-history
+    file: fidelity-history.csv
+    source: https://github.com/redstreet/beancount_reds_importers/blob/d752fed39a769e72ba86d8631774e67e6683df8f/beancount_reds_importers/importers/fidelity/fidelity_cma_csv_examples/History_for_Account_X8YYYYYYY.csv
+    licence: GPL-3.0 (layout only; no file content copied)
+    expect:
+      fidelity_history: 2
+  - name: schwab-positions
+    file: schwab-positions.csv
+    source: https://github.com/bogle-tools/financial-variables/blob/deba40b539520cf91e7719bdad27543774a2a533/data/custodians/schwab.csv
+    licence: CC0-1.0
+    expect:
+      schwab_positions: 5
+  - name: schwab-transactions
+    file: schwab-transactions.csv
+    source: https://github.com/redstreet/beancount_reds_importers/blob/d752fed39a769e72ba86d8631774e67e6683df8f/beancount_reds_importers/importers/schwab/tests/schwab_csv_brokerage/schwab_csv_brokerage_XX876_Transactions_20220731.csv
+    licence: GPL-3.0 (layout only; no file content copied)
+    expect:
+      schwab_transactions: 6
+  - name: schwab-checking
+    file: schwab-checking.csv
+    source: https://github.com/redstreet/beancount_reds_importers/blob/d752fed39a769e72ba86d8631774e67e6683df8f/beancount_reds_importers/importers/schwab/tests/schwab_csv_checking/schwab_XXX234_Checking_Transactions_20220203.csv
+    licence: GPL-3.0 (layout only; no file content copied)
+    expect:
+      schwab_checking: 2
+  - name: chase-checking
+    file: chase-checking.csv
+    source: https://github.com/mtlynch/beancount-chase/blob/36de2543ba9a7ffae788be092c687a1f1b68f6fa/beancount_chase/checking_test.py
+    licence: MIT (layout only; no file content copied)
+    expect:
+      chase_checking: 3
 # No public sample of these exports was found (searched 2026-10-08: issuer help
 # pages, open-source importers, forums). Their column names are the planner's
 # expectation; `planner acceptance` on your own export is the check.

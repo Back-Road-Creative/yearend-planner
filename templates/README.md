@@ -24,6 +24,12 @@ planner's field names (`account`, `date`, `type`, `description`, `symbol`,
 row (a number, amount or date in some cell) carries on the block above, a blank line
 followed by a header row starts a new one. Every template has a real-layout fixture
 in `tests/fixtures/real/csv/` cited in its `layouts.yaml`, or an `unsourced:` entry
-there saying why not. A block no template claims
+there saying why not. A line with one filled cell is a title or a note: the last one
+above a header is the block's `[title]`, usable as a column (`account: "[title]"`), and
+`title:` is an optional regex whose first group is kept ("for account (.+?) as of").
+`skip:` maps a column to values whose rows are totals, not data (`Symbol: [Account
+Total]`). "--", "n/a", "na" and "Incomplete" read as no value. A date "A as of B"
+reads as B. When several templates claim a block, the one with the longest `match`
+wins. A block no template claims
 sends the file to UNMATCHED with the headers it found: add or edit a template,
 drop the file again.

@@ -90,11 +90,13 @@ def gaps(conn: sqlite3.Connection, year: int) -> list[Gap]:
     ]
 
 
-def _classify_income(kind: str, typ: str) -> str | None:
+def _classify_income(kind: str, typ: str, cents: int) -> str | None:
     low = typ.lower()
     if "capital gain" in low:
         return "capital_gain_distributions"
-    if "dividend" in low and "reinvest" not in low:
+    # A reinvestment is the buy, except Schwab's "Reinvest Dividend": the
+    # dividend's cash in, positive, beside its "Reinvest Shares" buy.
+    if "dividend" in low and ("reinvest" not in low or cents > 0):
         return "dividends"
     if "interest" in low:
         return "interest"
@@ -126,7 +128,7 @@ def derive_year(rows: list[db.LedgerRow], year: int) -> list[db.Fact]:
         elif r.kind == "income" or (
             r.kind == "transaction" and not covered & {r.account, ""}
         ):
-            box = _classify_income(r.kind, r.type)
+            box = _classify_income(r.kind, r.type, r.amount_cents)
             if box is not None:
                 cents[(r.source, box)] += r.amount_cents
         elif r.kind == "bank":

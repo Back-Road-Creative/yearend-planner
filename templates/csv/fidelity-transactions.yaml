@@ -1,0 +1,15 @@
+# Fidelity "Activity & Orders" download (all accounts). The kind of
+# transaction ("DIVIDEND RECEIVED ...", "YOU BOUGHT ...") is in Action.
+# Layout cited in tests/fixtures/real/csv/layouts.yaml.
+source: fidelity_transactions
+kind: transaction
+match: [Run Date, Account Number, Action, Amount, Settlement Date]
+columns:
+  account: Account Number
+  date: Run Date
+  type: Action
+  description: Description
+  symbol: Symbol
+  quantity: Quantity
+  price: Price
+  amount: Amount

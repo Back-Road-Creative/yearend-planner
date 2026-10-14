@@ -1,0 +1,4 @@
+Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #
+DEBIT,12/13/2025,"Online Transfer to Example Savings (synthetic)",-250.00,ACCT_XFER,4325.75,,
+CREDIT,12/01/2025,"ORIG CO NAME:EXAMPLE INC (synthetic)",2100.00,ACH_CREDIT,4575.75,,
+DEBIT,11/20/2025,"MONTHLY SERVICE FEE",-12.00,FEE_TRANSACTION,2475.75,,

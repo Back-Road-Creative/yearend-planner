@@ -1,0 +1,14 @@
+# Fidelity single-account history download (the older layout: no account
+# column, "($)" in the money headers, blank comma rows above and notes below).
+# Layout cited in tests/fixtures/real/csv/layouts.yaml.
+source: fidelity_history
+kind: transaction
+match: [Run Date, Action, Security Description, Amount ($)]
+columns:
+  date: Run Date
+  type: Action
+  description: Security Description
+  symbol: Symbol
+  quantity: Quantity
+  price: Price ($)
+  amount: Amount ($)

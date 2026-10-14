@@ -1,0 +1,9 @@
+"Transactions  for account Individual ...321 as of 01/05/2026 02:21:05 PM ET"
+"Date","Action","Symbol","Description","Quantity","Price","Fees & Comm","Amount"
+"12/30/2025","Buy","BND","VANGUARD TOTAL BOND MARKET ETF","5","$73.7789","","-$368.89"
+"12/18/2025","Sell","VTI","VANGUARD TOTAL STOCK MARKET ETF","1","$258.40","$0.01","$258.39"
+"01/02/2026 as of 12/31/2025","Bank Interest","","BANK INT 120125-123125 SCHWAB BANK","","","","$0.03"
+"12/10/2025","Reinvest Shares","BND","VANGUARD TOTAL BOND MARKET ETF","0.0249","$73.8993","","-$1.84"
+"12/06/2025","Reinvest Dividend","BND","VANGUARD TOTAL BOND MARKET ETF","","","","$1.84"
+"12/01/2025","Qualified Dividend","VTI","VANGUARD TOTAL STOCK MARKET ETF","","","","$0.54"
+"Transactions Total","","","","","","","-$109.93",
