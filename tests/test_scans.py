@@ -52,6 +52,11 @@ def test_a_thousands_comma_the_scan_read_as_a_stop_still_reads_whole() -> None:
     ):
         m = amount.search(f"1 Mortgage interest {read}")
         assert m and pdf.parse_amount(m.group(1)) == value, read
+    # a return line whose number the scan lost still takes the whole amount
+    line = re.compile(r"\b10\s+Adjustments[^\n]*?\b10\s+" + pdf.AMOUNT, re.I)
+    loose = pdf._loose_line(line)
+    m = loose.search("10 Adjustments to income 4.189.00\n")
+    assert m and pdf.parse_amount(m.group(1)) == 4189.0
 
 
 def test_a_figure_whose_marks_the_scan_misread_still_reads_as_printed() -> None:
