@@ -1888,6 +1888,11 @@ year and next from the installed policyengine-us. It needs no network.
   not counted, so the next launch tries again. `planner update --check`
   looks right now, whatever the last check said. `--no-update-check` or
   `PLANNER_UPDATE_FEED=off` turns it off (the header then says so).
+- **Signed by the publisher.** The release's `.sha256` file is trusted only
+  when its `.sha256.sig` verifies against `public_key` in
+  `config/update.yaml` (an Ed25519 key; `planner/engine/sign.py`). A release
+  signed by any other key, or an install whose `public_key` is empty, is held
+  before the zip is downloaded; a release with no signature is not offered.
 - **Checked before it is used.** A newer release is downloaded, its sha256
   checked against the `.sha256` file published beside it, and unpacked into
   `python-candidate/`. It must pass its own selfcheck there, with its own
@@ -1940,12 +1945,18 @@ year and next from the installed policyengine-us. It needs no network.
   restore a backup this release made. Every release's tests open the v0.1.0
   `data/` folder in `tests/fixtures/data-v0.1.0` (synthetic, made by the
   v0.1.0 tag with `make.py` beside it) and run it end to end.
-- `scripts/build_release.py` writes the `.sha256` file beside the zip.
+- `scripts/build_release.py` writes the `.sha256` file beside the zip;
+  `scripts/sign_release.py sign` signs it with the `UPDATE_SIGNING_KEY`
+  repository secret and refuses when the secret is unset or does not match
+  `public_key`. The key pair is made once with
+  `python scripts/sign_release.py keygen config/update.yaml | gh secret set UPDATE_SIGNING_KEY`:
+  the public half lands in the file, the private half goes only to the secret.
 
 ### What an update refuses (unit 7d)
 
 | Case | What happens | Way past it |
 |---|---|---|
+| The `.sha256` is not signed by the key in `config/update.yaml`, or that key is empty | held before the zip is downloaded; shown on the dashboard | a release signed by the publisher; never edit `public_key` to fit a release |
 | The zip does not match its published sha256 | refused before anything is unpacked | download it again |
 | A file in the staged update changed, went missing or was added before the swap (an edit, a virus scanner's quarantine, a disk fault) | the staged copy is removed; this release runs on | `planner update --check` downloads it again |
 | An older planner, an older policyengine-us, or a release that drops a tax year the installed one publishes (older rules) | refused; the staged copy is removed | `--allow-downgrade`; to go back one release, `planner update --rollback` |
@@ -2082,7 +2093,10 @@ steps on a clean Windows runner:
 3. builds the zip
 4. proves it with `scripts/windows_proof.ps1` on Windows Server 2025, then
    proves the same zip again on Windows Server 2022
-5. once both pass, attaches the zip and its `.sha256` to a **draft** release
+5. signs the `.sha256` with the `UPDATE_SIGNING_KEY` secret (no secret, no
+   release)
+6. once both pass, attaches the zip, its `.sha256` and `.sha256.sig` to a
+   **draft** release
 
 Publishing the draft is a person's decision. The update check reads published
 releases only.
