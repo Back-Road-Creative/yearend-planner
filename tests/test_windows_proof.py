@@ -245,6 +245,13 @@ def test_invoke_defender_retries_then_fails_the_same_way() -> None:
         text=True,
         check=True,
         timeout=120,
-    ).stdout.split("\n")
-    assert out[0].strip() == "ok"
-    assert out[1].strip() == "failed down after 3"
+    ).stdout.splitlines()
+    # Write-Host lands on stdout under -Command: each retry is logged.
+    assert [ln.strip() for ln in out if ln.strip()] == [
+        "Defender not ready (attempt 1 of 3): starting",
+        "Defender not ready (attempt 2 of 3): starting",
+        "ok",
+        "Defender not ready (attempt 1 of 3): down",
+        "Defender not ready (attempt 2 of 3): down",
+        "failed down after 3",
+    ]
