@@ -7,6 +7,7 @@ speckled) and must read back what its text layer does."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,97 @@ def test_a_label_the_scan_misread_is_put_back() -> None:
     # the box number that was read stands; a line like no label is left alone
     assert pdf.repaired("¦ 2Rerts\n  $ 7,200.00", phrases) == "¦ 2Rerts\n  $ 7,200.00"
     assert pdf.repaired("¦ Somethingelse\n  1", phrases) == "¦ Somethingelse\n  1"
+
+
+def test_a_thousands_comma_the_scan_read_as_a_stop_still_reads_whole() -> None:
+    # Windows renders the scan so the engine may take "8,450.00" for "8.450.00"
+    amount = re.compile(r"1 Mortgage interest\s+" + pdf.AMOUNT)
+    for read, value in (
+        ("8.450.00", 8450.0),
+        ("$12.000.00", 12000.0),
+        ("1.234.567.89", 1234567.89),
+        ("(1.500.00)", -1500.0),
+        ("8,450.00", 8450.0),
+        ("8.45", 8.45),
+    ):
+        m = amount.search(f"1 Mortgage interest {read}")
+        assert m and pdf.parse_amount(m.group(1)) == value, read
+
+
+def test_a_figure_whose_marks_the_scan_misread_still_reads_as_printed() -> None:
+    # Under Windows' Arial the engine may read "2,000" as "2.000", with no cents
+    # after it, or lose the stop before the cents ("2,900.00" as "2,90000")
+    amount = re.compile(r"31\s+" + pdf.AMOUNT)
+    for read, value in (
+        ("2.000", 2000.0),
+        ("60.735 00", 60735.0),
+        ("1.234.567", 1234567.0),
+        ("(1.500)", -1500.0),
+        ("2,90000", 2900.0),
+        ("1,234,56789", 1234567.89),
+        ("8.450.00", 8450.0),
+        ("2,900.00", 2900.0),
+        ("8.45", 8.45),
+    ):
+        m = amount.search(f"31 {read}\n")
+        assert m and pdf.parse_figure(m.group(1)) == value, read
+    # a download's price keeps its third decimal: only a form's box reads so
+    assert pdf.parse_amount("12.345") == 12.345
+
+
+def _box_read(source: str, name: str, text: str) -> pdf.Value | None:
+    """``name``'s value on a scanned page of ``source``, as ``_read_page`` reads it."""
+    (tpl,) = [t for t in TEMPLATES if t.source == source]
+    page = pdf.repaired(text, pdf.label_phrases(tpl))
+    (box,) = [b for b in pdf.loosened(tpl).boxes if b.name == name]
+    return box.read(page)
+
+
+@pytest.mark.parametrize(
+    ("source", "name", "text", "value"),
+    [
+        (
+            "il-il1040-p2.yaml",
+            "31",
+            "31 Total payments and refundable credit.Add Lines 25 through 30. "
+            "31 2,90000\n",
+            2900.0,
+        ),
+        (
+            "ca-540-p3.yaml",
+            "78",
+            "78 Add line71 through line77. These are your total payments. 78 2.000\n",
+            2000.0,
+        ),
+        (
+            "ca-540-p3.yaml",
+            "97",
+            "subtract line 93from line92.\n316\n97 Overpaid tax.If line95ismore "
+            "than line64,subtract line "
+            "64fromline95. 97 100\n",
+            316.0,
+        ),
+        (
+            "ca-540-p3.yaml",
+            "97",
+            "97 Overpaid tax.If line95ismore than line64,subtract line "
+            "64fromline95. 97 316\n",
+            316.0,
+        ),
+        (
+            "va-760.yaml",
+            "1",
+            "..-Doyou need to file? See Line 9 and Instructions.. OSS 60.735 00\n"
+            "1.AdjustedGrossIncomefromfederalreturn-Notfederaltaxable income\n00\n",
+            60735.0,
+        ),
+    ],
+)
+def test_a_state_return_line_as_the_windows_scan_lays_it_out(
+    source: str, name: str, text: str, value: float
+) -> None:
+    # Arial reads line 97's dollars above it and its cents' left edge as "100"
+    assert _box_read(source, name, text) == value
 
 
 def test_the_labels_come_from_the_templates_patterns_and_check_boxes() -> None:
@@ -73,6 +165,20 @@ def test_an_engine_box_across_two_boxes_of_the_form_is_cut_in_two() -> None:
     assert (words[1]["x0"], words[1]["x1"]) == (110, 128)
     whole = ocr.words_of([item("no letters")], cells)
     assert [w["text"] for w in whole] == ["no letters"]
+
+
+def test_a_square_the_engine_read_onto_a_label_comes_off_it() -> None:
+    # Windows renders the square's edge so the engine reads it as a bracket on
+    # the label beside it: "Long-term gain or loss]"
+    square = (1055.0, 536.0, 1080.0, 562.0, True)
+    near = {"text": "loss]", "x0": 1017.0, "x1": 1081.0, "top": 540.0, "bottom": 558.0}
+    texts = [w["text"] for w in ocr.marked([near], [square])]
+    assert texts == ["loss", "[X]"]
+    before = {**near, "text": "[Ordinary", "x0": 1060.0, "x1": 1140.0}
+    assert [w["text"] for w in ocr.marked([before], [square])][0] == "Ordinary"
+    # a bracket clear of every square is the form's own
+    clear = {**near, "text": "(loss]", "x1": 1050.0}
+    assert [w["text"] for w in ocr.marked([clear], [square])][0] == "(loss]"
 
 
 def upside_down_engine(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
