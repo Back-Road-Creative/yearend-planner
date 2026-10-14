@@ -32,6 +32,14 @@ from typing import Any
 
 from planner.config import safe_load
 
+# A scan may read a thousands comma as a stop ("8.450.00"); a figure with
+# cents and stops every three digits before them reads as the comma it was, and
+# so does one with no cents after them ("2.000", "60.735 00"), unless it opens
+# with a 0 (a rate, "0.075").
+DIGITS = (
+    r"(?:\d{1,3}(?:\.\d{3})+(?=\.\d\d)|[1-9]\d{0,2}(?:\.\d{3})+(?![\d.,])"
+    r"|[\d,]*\d)"
+)
 # A figure is never a line number: an empty box reads on into the next line's
 # "15." or "19a.", which must not be taken for its amount, nor "15." run into
 # its label's "2025" by a scan. Nor is it a bare "00": a state form prints its
@@ -41,7 +49,7 @@ from planner.config import safe_load
 # that line's number (a capital, whatever case the pattern ignores).
 AMOUNT = (
     r"(?!(?<=\n)\d{1,3}[a-z]?[ \t]+(?-i:[A-Z][a-z]))"
-    r"(\(?-?(?:\$\s*)?(?!00\b)[\d,]*\d(?:\.\d{1,2})?\)?)"
+    rf"(\(?-?(?:\$\s*)?(?!00\b){DIGITS}(?:\.\d{{1,2}})?\)?)"
     r"(?![\d,]*[A-Za-z]?\.(?:\s|$|[A-Z][a-z]|\d{3})|\d|(?-i:[A-Z][a-z]))"
 )
 # The year a form prints after its OMB number, where it has no year box (the
@@ -147,7 +155,7 @@ class Box:
         if m is None:
             return None
         if self.kind == "amount":
-            return parse_amount(m.group(self.group))
+            return parse_figure(m.group(self.group))
         word = " ".join(m.group(self.group).split())
         if not word or (self.allowed and word not in self.allowed):
             return None
@@ -267,8 +275,29 @@ def parse_amount(raw: str) -> float:
     s = raw.strip()
     negative = s.startswith("(") or s.startswith("-") or s.startswith("$-")
     digits = re.sub(r"[^\d.]", "", s)
+    whole, stop, cents = digits.rpartition(".")
+    if "." in whole:  # stops read for thousands commas ("8.450.00")
+        digits = whole.replace(".", "") + stop + cents
     value = float(digits) if digits else 0.0
     return -value if negative else value
+
+
+# A box's figure with stops every three digits and none before cents is in
+# thousands ("2.000"); five digits after a thousands comma are three and the
+# cents, the stop between them lost ("2,90000").
+THOUSANDS_STOPS = re.compile(r"(\(?-?(?:\$\s*)?)([1-9]\d{0,2}(?:\.\d{3})+)(\)?)")
+LOST_STOP = re.compile(r"(,\d{3})(\d\d)(?=\)?$)")
+
+
+def parse_figure(raw: str) -> float:
+    """A form box's figure as printed, where a scan misread its marks. Only a
+    form's box reads so: a download's price may carry a third decimal."""
+    s = raw.strip()
+    if m := THOUSANDS_STOPS.fullmatch(s):
+        s = m.group(1) + m.group(2).replace(".", ",") + m.group(3)
+    elif "." not in s:
+        s = LOST_STOP.sub(r"\1.\2", s)
+    return parse_amount(s)
 
 
 # A symbol font's glyph (an arrow, a check mark) comes through as a private-use
@@ -338,7 +367,9 @@ LINE_AMOUNT = re.compile(
 )
 # The figure that ends a scanned line: with its cents, or whole dollars past a
 # thousands comma (a bare "41" may be a line number).
-CENTS_AT_END = r"(?=\(?-?\$?(?:[\d,]*\d\.\d\d|\d{1,3}(?:,\d{3})+)\)?[ \t]*(?:\n|$))"
+CENTS_AT_END = (
+    rf"(?=\(?-?\$?(?:{DIGITS}\.\d\d|\d{{1,3}}(?:,\d{{3}})+)\)?[ \t]*(?:\n|$))"
+)
 
 
 def _loose_line(pattern: re.Pattern[str]) -> re.Pattern[str]:
