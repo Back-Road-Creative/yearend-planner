@@ -193,10 +193,21 @@ if ((Get-Content -LiteralPath (Join-Path $moved 'data\private\keep.txt')) -ne 'm
 
 Write-Host '== 8. the update feed: run stages it, the next run swaps it in and reruns'
 Set-Content -LiteralPath "$candZip.sha256" -Value "$sha  yearend-planner-$next-win64.zip" -Encoding ascii
+# A throwaway publisher key: the install trusts its public half, the feed
+# carries the .sha256 signed by its private half (planner/engine/sign.py).
+$signer = "import sys; sys.path.insert(0, sys.argv[1]); from pathlib import Path; from planner.engine import sign; " +
+    "k = sign.keygen(); p = Path(sys.argv[2]); " +
+    "Path(sys.argv[3]).write_text(sign.sign(k[0], p.read_bytes()), encoding='ascii'); print(k[1])"
+$public = (& (Join-Path $moved 'python\python.exe') -c $signer $moved "$candZip.sha256" "$candZip.sha256.sig" | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $public) { throw 'could not sign the proof feed' }
+$updateYaml = Join-Path $moved 'config\update.yaml'
+(Get-Content -LiteralPath $updateYaml -Raw) -replace '(?m)^public_key:.*$', "public_key: `"$public`"" |
+    Set-Content -LiteralPath $updateYaml -Encoding ascii -NoNewline
 $feed = Join-Path $base 'latest.json'
 $rel = @{ tag_name = "v$next"; assets = @(
     @{ name = "yearend-planner-$next-win64.zip"; browser_download_url = ([System.Uri]$candZip).AbsoluteUri },
-    @{ name = "yearend-planner-$next-win64.zip.sha256"; browser_download_url = ([System.Uri]"$candZip.sha256").AbsoluteUri }) }
+    @{ name = "yearend-planner-$next-win64.zip.sha256"; browser_download_url = ([System.Uri]"$candZip.sha256").AbsoluteUri },
+    @{ name = "yearend-planner-$next-win64.zip.sha256.sig"; browser_download_url = ([System.Uri]"$candZip.sha256.sig").AbsoluteUri }) }
 $rel | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $feed -Encoding utf8
 $env:PLANNER_UPDATE_FEED = ([System.Uri]$feed).AbsoluteUri
 try {
