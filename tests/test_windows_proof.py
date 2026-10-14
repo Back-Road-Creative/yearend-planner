@@ -194,3 +194,64 @@ def test_proof_scans_the_zip_but_asserts_real_time_only_off_hosted_runners() -> 
     assert "$env:GITHUB_ACTIONS" in m.group(0)
     assert "throw" in m.group(0)
     assert text.count("\nAssert-RealTimeOn '") == 2
+
+
+def _retry() -> str:
+    text = SCRIPT.read_text(encoding="utf-8")
+    m = re.search(r"^function Invoke-Defender\b.*?^\}", text, re.M | re.S)
+    assert m, "windows_proof.ps1 defines Invoke-Defender"
+    return m.group(0)
+
+
+def test_defender_calls_retry_while_the_service_starts() -> None:
+    """A hosted Server 2025 runner's Defender service can still be starting when
+    the proof begins: Get-MpPreference failed 0x800106ba (yearend #170) and
+    Start-MpScan "Errors were encountered" (main 84d7906b; #169). The same two
+    calls are retried, three attempts 20 s apart, then fail as before; the scan
+    itself is unchanged."""
+    fn = _retry()
+    assert "[int]$Tries = 3" in fn and "[int]$Wait = 20" in fn
+    assert "Start-Sleep -Seconds $Wait" in fn and "throw" in fn
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "$pref = Invoke-Defender { Get-MpPreference }" in text
+    scan = "Start-MpScan -ScanType CustomScan -ScanPath $dest"
+    assert f"Invoke-Defender {{ {scan} }}" in text
+    code = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
+    body = "\n".join(code).replace(fn, "")
+    for call in ("Get-MpPreference", "Start-MpScan"):
+        assert body.count(call) == 1, call  # only the wrapped call
+
+
+@pytest.mark.skipif(
+    not (shutil.which("pwsh") or shutil.which("powershell")),
+    reason="needs PowerShell (runs on the windows-latest job)",
+)
+def test_invoke_defender_retries_then_fails_the_same_way() -> None:
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    assert shell
+    probe = (
+        "$ErrorActionPreference = 'Stop'\n"
+        + _retry()
+        + "\n$script:n = 0\n"
+        + "Invoke-Defender -Wait 0 { $script:n++; "
+        + "if ($script:n -lt 3) { throw 'starting' }; 'ok' }\n"
+        + "$script:n = 0\n"
+        + "try { Invoke-Defender -Wait 0 { $script:n++; throw 'down' } } "
+        + 'catch { "failed $($_.Exception.Message) after $script:n" }\n'
+    )
+    out = subprocess.run(  # noqa: S603
+        [shell, "-NoProfile", "-Command", probe],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=120,
+    ).stdout.splitlines()
+    # Write-Host lands on stdout under -Command: each retry is logged.
+    assert [ln.strip() for ln in out if ln.strip()] == [
+        "Defender not ready (attempt 1 of 3): starting",
+        "Defender not ready (attempt 2 of 3): starting",
+        "ok",
+        "Defender not ready (attempt 1 of 3): down",
+        "Defender not ready (attempt 2 of 3): down",
+        "failed down after 3",
+    ]
