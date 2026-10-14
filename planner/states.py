@@ -49,6 +49,19 @@ class PenaltyRule:
 
 
 @dataclass(frozen=True)
+class IncomeTest:
+    """A state that asks for installments by income, not tax: none is due
+    unless the gross income tops the exemptions plus the deductions plus
+    ``floor`` of income not subject to withholding."""
+
+    floor: float
+    deduction: float
+    joint_deduction: float
+    per_dependent: float
+    source: str
+
+
+@dataclass(frozen=True)
 class EstRules:
     """One agency's estimated-tax installments: the due dates as (years after
     the tax year, month, day), the share of the year's required payment due by
@@ -60,7 +73,7 @@ class EstRules:
     over it leaves only the current-year leg. Both AGI lines halve for married
     filing separately. ``notes`` are the state's own caveats, on its line.
     ``penalty``: its underpayment charge (None: the federal Form 2210 method
-    stands in)."""
+    stands in). ``income_test``: the state asks by income instead (GA)."""
 
     due: tuple[tuple[int, int, int], ...]
     shares: tuple[float, ...]
@@ -74,6 +87,7 @@ class EstRules:
     current_only_agi: float | None = None
     notes: tuple[str, ...] = ()
     penalty: PenaltyRule | None = None
+    income_test: IncomeTest | None = None
 
     def installments(self) -> tuple[tuple[int, tuple[int, int, int], float], ...]:
         """(number, due, cumulative share) of each installment that asks for
@@ -385,10 +399,17 @@ _RULES = {
         current_factor=0.70,
         over=True,
         notes=(
-            "Form 500-ES asks for installments once income not subject to "
-            "withholding passes 1,000 beyond the exemptions and standard "
-            "deduction, a test of income the planner does not apply: any tax "
-            "after withholding is treated as due",
+            "the Form 500-ES income test reads gross income as the federal AGI "
+            "and income not subject to withholding as that AGI less W-2 wages; "
+            "the standard deduction stands in for itemized deductions",
+        ),
+        income_test=IncomeTest(
+            1_000.0,
+            12_000.0,
+            24_000.0,
+            4_000.0,
+            "Form 500-ES (Rev. 07/24/24), 2025: who must file, standard "
+            "deduction, dependent exemption; the last published edition",
         ),
     ),
     # more than 500; 110% over 150,000 (75,000 separately) of last year's AGI
