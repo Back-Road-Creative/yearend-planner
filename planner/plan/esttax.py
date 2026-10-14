@@ -24,6 +24,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from planner import states
+from planner.engine.household import Household
 from planner.engine.tax import compute, r
 from planner.ingest.needs import load_manual, manual_path, need_value
 from planner.ledger import db
@@ -105,6 +106,37 @@ def de_minimis(agency: str, owe: float, separate: bool = False) -> bool:
     limit = rule.threshold(separate)
     owe = r(owe)
     return owe <= limit if rule.over else owe < limit
+
+
+def income_exempt(
+    agency: str,
+    gross: float,
+    unwithheld: float,
+    dependents: int = 0,
+    joint: bool = False,
+) -> bool:
+    """True when the agency asks for installments by income (Form 500-ES) and
+    this income does not reach it: the gross income over the exemptions and
+    deductions, and the income not subject to withholding, both not over the
+    floor."""
+    test = rules(agency)[0].income_test
+    if test is None:
+        return False
+    deduction = test.joint_deduction if joint else test.deduction
+    over = r(gross - deduction - test.per_dependent * dependents)
+    return min(over, r(unwithheld)) <= test.floor
+
+
+def income_figures(h: Household, agi: float) -> tuple[float, float, int, bool]:
+    """(gross, not withheld, dependents, joint) for income_exempt: the AGI
+    stands in for gross income and W-2 wages for the income withheld on."""
+    wages = h.wages + (h.spouse.wages if h.spouse is not None else 0)
+    return (
+        r(agi),
+        r(max(agi - wages, 0.0)),
+        len(h.dependents),
+        h.filing_status == "JOINT",
+    )
 
 
 @dataclass(frozen=True)
@@ -536,13 +568,14 @@ def _agency(
     separate: bool = False,
     agi: float | None = None,
     periods: list[float] | None = None,
+    exempt: bool = False,
 ) -> Agency:
     rule, own = rules(name)
     annual, basis = safe_harbor(
         name, current, prior, prior_agi, separate=separate, agi=agi
     )
     required = r(max(annual - withheld, 0.0))
-    small = de_minimis(name, current - withheld, separate)
+    small = exempt or de_minimis(name, current - withheld, separate)
     ag = Agency(name, current, prior, prior_agi, required, basis, withheld, small)
     ag.separate = separate
     ag.payments = [p for p in paid if p.agency == name]
@@ -572,7 +605,13 @@ def _agency(
             f"{name}: bank payments to the state are not matched by name; type "
             f"each with planner paid --agency {name}"
         )
-    if small:
+    if exempt and rule.income_test is not None:
+        ag.notes.append(
+            f"{name}: Form 500-ES: income not subject to withholding, beyond the "
+            "exemptions and deductions, not over "
+            f"{rule.income_test.floor:,.0f}; no estimated payments required"
+        )
+    elif small:
         word = "not over" if rule.over else "under"
         ag.notes.append(
             f"{name}: tax after withholding {word} "
@@ -838,6 +877,7 @@ def estimate(
                 separate,
                 res.agi,
                 periods if name == FED else None,
+                income_exempt(name, *income_figures(pj.inputs.household, res.agi)),
             )
         )
     fed = et.agencies[0]

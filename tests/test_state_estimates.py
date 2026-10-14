@@ -11,6 +11,7 @@ from datetime import date
 import pytest
 
 from planner import states
+from planner.engine.household import Dependent, Household, Person
 from planner.ingest.needs import enter
 from planner.paths import Layout
 from planner.plan import calendar, esttax
@@ -77,8 +78,66 @@ def test_de_minimis(agency: str, owe: float, separate: bool, exempt: bool) -> No
 
 def test_georgia_has_no_tax_amount_test() -> None:
     # Form 500-ES: the test is $1,000 of income not subject to withholding,
-    # not a tax figure; any tax left after withholding is treated as due
+    # not a tax figure (income_exempt below)
     assert esttax.de_minimis("ga", 1.0) is False
+
+
+@pytest.mark.parametrize(
+    ("gross", "unwithheld", "dependents", "joint", "exempt"),
+    [
+        # 2025 Form 500-ES "who must file": gross income over the exemptions,
+        # plus the deductions, plus 1,000 of income not subject to withholding
+        (50_000.0, 1_000.0, 0, False, True),
+        (50_000.0, 1_000.01, 0, False, False),
+        (13_000.0, 13_000.0, 0, False, True),  # 12,000 standard deduction
+        (13_000.01, 13_000.01, 0, False, False),
+        (25_000.0, 25_000.0, 0, True, True),  # 24,000 joint
+        (25_000.01, 25_000.01, 0, True, False),
+        (21_000.0, 21_000.0, 2, False, True),  # 4,000 a dependent
+        (21_000.01, 21_000.01, 2, False, False),
+    ],
+)
+def test_georgia_asks_for_installments_on_its_income_test(
+    gross: float, unwithheld: float, dependents: int, joint: bool, exempt: bool
+) -> None:
+    assert esttax.income_exempt("ga", gross, unwithheld, dependents, joint) is exempt
+
+
+def test_a_state_without_an_income_test_is_never_exempt_by_one() -> None:
+    assert esttax.income_exempt("nc", 0.0, 0.0) is False
+    assert esttax.income_exempt("fed", 0.0, 0.0) is False
+
+
+def test_the_income_test_reads_agi_less_wages_as_not_withheld() -> None:
+    h = Household(
+        age=50,
+        filing_status="JOINT",
+        state="GA",
+        wages=40_000,
+        spouse=Person(age=50, wages=20_000),
+        dependents=(Dependent(age=10),),
+    )
+    assert esttax.income_figures(h, 75_000.0) == (75_000.0, 15_000.0, 1, True)
+    # wages above the AGI (pre-tax deductions) leave nothing unwithheld
+    assert esttax.income_figures(h, 50_000.0)[1] == 0.0
+
+
+def test_an_agency_its_income_test_exempts_owes_no_installment() -> None:
+    ag = esttax._agency(
+        "ga",
+        3_000.0,
+        2_000.0,
+        70_000.0,
+        0.0,
+        [],
+        2026,
+        date(2026, 3, 1),
+        exempt=True,
+    )
+    assert ag.de_minimis and ag.required == 2_000.0
+    assert [i.required for i in ag.installments] == [0.0] * 4
+    assert ag.penalty == 0.0
+    assert any("ga: Form 500-ES" in n and "not over 1,000" in n for n in ag.notes)
 
 
 @pytest.mark.parametrize(
