@@ -161,10 +161,11 @@ def _ink(image: Any) -> Any:
 
 # What the engine reads a check box as, empty or marked.
 BOX_GLYPHS = "口区回☐☑☒□■"
-# A check box's wall the engine read onto the end of the word before it ("loss]").
-WALL_GLYPHS = "[]|"
 # A return's line number ("46", "4b"), boxed: the square is its cell.
 LINE_NUMBER = re.compile(r"\d{2,}|\d{1,2}[a-z]")
+# What the engine reads a check box's edge as, run onto the word beside it
+# ("loss]").
+EDGE_GLYPHS = "[]|" + BOX_GLYPHS
 
 
 def check_squares(image: Any) -> list[tuple[float, float, float, float, bool]]:
@@ -340,12 +341,18 @@ def marked(
     for w in words:
         cx, cy = (w["x0"] + w["x1"]) / 2, (w["top"] + w["bottom"]) / 2
         text = w["text"].strip(BOX_GLYPHS)
-        if any(
-            a < w["x1"] <= c + (c - a) / 2 and b <= cy <= d
-            for a, b, c, d, _m in squares
-        ):
-            text = text.rstrip(WALL_GLYPHS)
-        if not text or any(a <= cx <= c and b <= cy <= d for a, b, c, d, _m in squares):
+        if any(a <= cx <= c and b <= cy <= d for a, b, c, d, _m in squares):
+            continue
+        for a, b, c, d, _m in squares:
+            if w["top"] < d and b < w["bottom"]:
+                # the square's edge read as a bracket on a word reaching into it
+                if w["x0"] < a < w["x1"] or (
+                    a < w["x1"] <= c + (c - a) / 2 and b <= cy <= d
+                ):
+                    text = text.rstrip(EDGE_GLYPHS)
+                if w["x0"] < c < w["x1"]:
+                    text = text.lstrip(EDGE_GLYPHS)
+        if not text:
             continue
         out.append({**w, "text": text})
     out += [_word("[X]", a, c, b, d) for a, b, c, d, m in squares if m]

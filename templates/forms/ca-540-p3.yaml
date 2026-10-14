@@ -16,4 +16,4 @@ boxes:
   "71": {label: "California income tax withheld", pattern: 'California income tax withheld\. See instructions[\s.•]*71\s+AMOUNT'}
   "72": {label: "California estimated tax and other payments", pattern: 'California estimated tax and other payments\. See instructions[\s.•]*72\s+AMOUNT'}
   "78": {label: "Total payments", pattern: 'These are your total payments\.?(?:[ \t]*78)?(?: See instructions)?[\s.•]*(?:78\s+)?AMOUNT'}
-  "97": {label: "Overpaid tax", pattern: 'subtract line 64 from line 95\.?[\s.•]*97\s+AMOUNT'}
+  "97": {label: "Overpaid tax", pattern: '(?:subtract line 64 from line 95\.?[\s.•]*97\s+|(?<=\n)(?=[\d,.]+[ \t]*\n[^\n]*subtract line 64 from line 95[^\n]*\b97\b))AMOUNT'}
