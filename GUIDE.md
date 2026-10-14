@@ -2144,6 +2144,13 @@ The Linux test run measures coverage of `planner/` and fails below the floor in
 `ci.yml`. Dependabot proposes weekly updates for the lockfile and the CI
 actions.
 
+Ruff, the format check and mypy run once, in the Ubuntu test job; mypy runs a
+second time with `--platform win32` so the Windows-only branches are still
+type-checked. Both OS legs still run the whole suite. A newer push to a pull
+request replaces that pull request's obsolete run; a run on `main` is never
+cancelled. The zip `windows-proof` uploads is kept for 7 days. The release
+evidence is the tag's draft release, not that upload.
+
 The release can only contain files git tracks. `scripts/build_release.py`
 stages its contents from `git ls-files`, so a developer's own `data/`, `out/`
 or untracked notes cannot ship. Before zipping, `audit()` refuses a stage that
