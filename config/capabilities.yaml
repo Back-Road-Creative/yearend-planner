@@ -160,10 +160,10 @@ pdf_filed_1040_and_schedules_1_2_3_c_d_se:
   tests: ["tests/test_forms.py"]
   note: "synthetic dot-leader text"
 pdf_nc_d400:
-  status: partial
-  evidence: partial
-  tests: ["tests/test_forms.py::test_nc_d400_and_ssa_statement"]
-  note: "lines 6, 12b, 15, 20a verified; payment lines checked against the 2025 D-401 (28 overpayment, 34 refund), not a real filed PDF"
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_forms.py::test_nc_d400_and_ssa_statement", "tests/test_real_forms.py::test_a_real_form_reads_back_its_synthetic_values", "tests/test_scans.py::test_a_scan_of_a_real_form_reads_back_its_synthetic_values"]
+  note: "lines 6, 12b, 15, 19, 20a, 21a, 23, 28 and 34 read back from NC DOR's own 2025 D-400 (tests/fixtures/real/nc-d400.pdf, pinned by hash) filled with synthetic figures, as text and as a scan; payment lines per the 2025 D-401 (28 overpayment, 34 refund). The official blank stands in for a filed return (plan decision 3: no volunteer documents)"
 pdf_ssa_statement:
   status: verified
   evidence: implemented
@@ -177,10 +177,10 @@ pdf_1099_r_distribution_code:
   evidence: implemented
   tests: ["tests/test_forms.py::test_1099r_letter_code"]
 pdf_1040_filing_status_state_zip:
-  status: partial
-  evidence: partial
-  tests: ["tests/test_needs.py"]
-  note: "synthetic check marks only, a tax-software PDF's rendering is unconfirmed"
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_needs.py", "tests/test_forms.py::test_1040_filing_status_state_and_zip", "tests/test_real_forms.py::test_a_real_form_reads_back_its_synthetic_values", "tests/test_scans.py::test_a_scan_of_a_real_form_reads_back_its_synthetic_values"]
+  note: "the filing-status check mark, state and ZIP read back from the IRS's own 2025 Form 1040 (tests/fixtures/real/1040.pdf, pinned by hash) filled with synthetic values, as text and as a scan. The official blank stands in for a tax-software print (plan decision 3: no volunteer documents); a print that moves the address line or the check boxes is not covered"
 zip_to_county_crosswalk:
   status: verified
   evidence: implemented
@@ -569,7 +569,7 @@ update_check:
   status: verified
   evidence: implemented
   tests: ["tests/test_feed.py"]
-  note: "windows_proof.ps1 steps 7-8; feed -> sha256 -> candidate selfcheck -> staged; at most weekly (data/update/last-check.json), result in the page header; launcher swap on exit 75 with undo; held -> dashboard alert; rollback"
+  note: "windows_proof.ps1 steps 7-8; feed -> publisher signature on the .sha256 (config/update.yaml public_key, held otherwise) -> sha256 -> candidate selfcheck -> staged; at most weekly (data/update/last-check.json), result in the page header; launcher swap on exit 75 with undo; held -> dashboard alert; rollback"
 engine_baseline:
   status: verified
   evidence: implemented

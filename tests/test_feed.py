@@ -19,7 +19,7 @@ from typer.testing import CliRunner
 
 from planner.cli import app
 from planner.dashboard import page
-from planner.engine import feed
+from planner.engine import feed, sign
 from planner.engine import update as upd
 from planner.paths import Layout
 from tests.conftest import stub_interpreter, write_baseline
@@ -28,6 +28,7 @@ runner = CliRunner()
 posix = pytest.mark.skipif(sys.platform == "win32", reason="sh stub interpreter")
 STUB_OK = stub_interpreter()
 STUB_BAD = "#!/bin/sh\necho broken >&2\nexit 1\n"
+PRIVATE, PUBLIC = sign.keygen()  # this suite's publisher key
 
 
 def release(
@@ -50,16 +51,20 @@ def release(
     return z
 
 
-def publish(folder: Path, z: Path, version: str) -> str:
+def publish(folder: Path, z: Path, version: str, key: str | None = PRIVATE) -> str:
+    """A feed offering ``z``, its .sha256 and, unless ``key`` is None, the
+    .sha256's signature by ``key``."""
     sha = z.with_name(z.name + ".sha256")
     sha.write_text(f"{upd.sha256(z)}  {z.name}\n", encoding="ascii")
-    rel = {
-        "tag_name": f"v{version}",
-        "assets": [
-            {"name": z.name, "browser_download_url": z.as_uri()},
-            {"name": sha.name, "browser_download_url": sha.as_uri()},
-        ],
-    }
+    assets = [
+        {"name": z.name, "browser_download_url": z.as_uri()},
+        {"name": sha.name, "browser_download_url": sha.as_uri()},
+    ]
+    if key is not None:
+        sig = sha.with_name(sha.name + ".sig")
+        sig.write_text(sign.sign(key, sha.read_bytes()) + "\n", encoding="ascii")
+        assets.append({"name": sig.name, "browser_download_url": sig.as_uri()})
+    rel = {"tag_name": f"v{version}", "assets": assets}
     path = folder / "latest.json"
     path.write_text(json.dumps(rel), encoding="utf-8")
     return path.as_uri()
@@ -72,7 +77,16 @@ def lay(planner_home: Path) -> Layout:
     lay = Layout(planner_home)
     lay.ensure()
     write_baseline(lay.root)
+    trust(lay, PUBLIC)
     return lay
+
+
+def trust(lay: Layout, public: str) -> None:
+    """Name ``public`` as the publisher key in the install's update.yaml."""
+    cfg = lay.config / "update.yaml"
+    data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    data["public_key"] = public
+    cfg.write_text(yaml.safe_dump(data), encoding="utf-8")
 
 
 def _stage_ready(root: Path) -> Path:
@@ -295,3 +309,87 @@ def test_manual_zip_of_a_new_major_needs_allow_major(
         )
         assert r.exit_code == 0, r.output  # no launcher: swapped in-process
         assert (lay.root / "VERSION").read_text().strip() == "0.2.0"
+
+
+def test_a_signature_checks_the_exact_bytes_and_key() -> None:
+    data = b"0" * 64 + b"  yearend-planner-0.2.0-win64.zip\n"
+    sig = sign.sign(PRIVATE, data)
+    assert sign.verify(PUBLIC, data, sig)
+    assert not sign.verify(PUBLIC, data.replace(b"0", b"1", 1), sig)
+    assert not sign.verify(sign.keygen()[1], data, sig)
+    assert not sign.verify(PUBLIC, data, "not base64!")
+    assert not sign.verify("short", data, sig)
+
+
+@posix
+def test_a_release_signed_by_another_key_is_held_before_download(
+    lay: Layout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    z = release(tmp_path, "0.2.0")
+    monkeypatch.setenv(
+        "PLANNER_UPDATE_FEED", publish(tmp_path, z, "0.2.0", sign.keygen()[0])
+    )
+    line = feed.check(lay, date(2026, 10, 14))
+    assert line == (
+        "update 0.2.0 held: its .sha256 is not signed by the publisher key in "
+        "config/update.yaml; still on 0.1.0"
+    )
+    assert not (lay.root / upd.CANDIDATE).exists()
+    assert not list((lay.data / "update").glob("*.zip"))  # never downloaded
+    assert (lay.root / "VERSION").read_text().strip() == "0.1.0"
+    assert feed.held(lay)["reason"].startswith("its .sha256 is not signed")  # type: ignore[index]
+
+
+@posix
+def test_a_release_without_a_signature_is_not_offered(
+    lay: Layout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    z = release(tmp_path, "0.2.0")
+    monkeypatch.setenv("PLANNER_UPDATE_FEED", publish(tmp_path, z, "0.2.0", None))
+    assert feed.check(lay, date(2026, 10, 14)) == ""
+    assert feed.last_check(lay)["message"] == "no installable release is published"  # type: ignore[index]
+    assert not (lay.root / upd.CANDIDATE).exists()
+
+
+@posix
+def test_an_install_with_no_publisher_key_holds_every_release(
+    lay: Layout, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    trust(lay, "")
+    z = release(tmp_path, "0.2.0")
+    monkeypatch.setenv("PLANNER_UPDATE_FEED", publish(tmp_path, z, "0.2.0"))
+    assert feed.check(lay, date(2026, 10, 14)) == (
+        "update 0.2.0 held: config/update.yaml names no publisher key, so the "
+        "release cannot be checked; still on 0.1.0"
+    )
+    assert not (lay.root / upd.CANDIDATE).exists()
+
+
+def test_the_shipped_config_names_a_key_slot() -> None:
+    cfg = yaml.safe_load(
+        (Path(__file__).parents[1] / "config" / "update.yaml").read_text("utf-8")
+    )
+    assert "public_key" in cfg
+
+
+def test_sign_release_refuses_no_key_or_a_key_installs_would_not_trust(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.sign_release as sr
+
+    cfg = tmp_path / "update.yaml"
+    cfg.write_text('feed: x\npublic_key: ""\n', encoding="utf-8")
+    private = sr.keygen(cfg)
+    public = sr.trusted(cfg)
+    assert public and private not in cfg.read_text("utf-8")
+    sha = tmp_path / "yearend-planner-0.2.0-win64.zip.sha256"
+    sha.write_text("ab  yearend-planner-0.2.0-win64.zip\n", encoding="ascii")
+    monkeypatch.delenv("UPDATE_SIGNING_KEY", raising=False)
+    with pytest.raises(SystemExit, match="refusing an unsigned release"):
+        sr.sign_file(sha, cfg)
+    monkeypatch.setenv("UPDATE_SIGNING_KEY", sign.keygen()[0])
+    with pytest.raises(SystemExit, match="does not match public_key"):
+        sr.sign_file(sha, cfg)
+    monkeypatch.setenv("UPDATE_SIGNING_KEY", private)
+    out = sr.sign_file(sha, cfg)
+    assert sign.verify(public, sha.read_bytes(), out.read_text("ascii"))

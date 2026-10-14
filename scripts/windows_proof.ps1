@@ -16,11 +16,25 @@ $os = Get-CimInstance Win32_OperatingSystem
 Write-Host "== on $($os.Caption) build $($os.BuildNumber)"
 $started = Get-Date
 
+# A hosted runner's Defender service can still be starting when the proof
+# begins (Get-MpPreference 0x800106ba, Start-MpScan "Errors were encountered"):
+# the same call is tried again, three attempts 20 s apart, then fails as before.
+function Invoke-Defender([scriptblock]$Call, [int]$Tries = 3, [int]$Wait = 20) {
+  for ($i = 1; ; $i++) {
+    try { return & $Call }
+    catch {
+      if ($i -ge $Tries) { throw }
+      Write-Host "  Defender not ready (attempt $i of $Tries): $($_.Exception.Message)"
+      Start-Sleep -Seconds $Wait
+    }
+  }
+}
+
 Write-Host '== Defender: real-time protection on before the zip is unpacked'
 # Runner images turn real-time protection off and exclude whole drives to save
 # time; a user's computer scans each file as it is written and opened. Drop the
 # exclusions, turn it on, and prove it is on: every later step runs under it.
-$pref = Get-MpPreference
+$pref = Invoke-Defender { Get-MpPreference }
 foreach ($x in @($pref.ExclusionPath)) { if ($x) { Remove-MpPreference -ExclusionPath $x } }
 foreach ($x in @($pref.ExclusionProcess)) { if ($x) { Remove-MpPreference -ExclusionProcess $x } }
 foreach ($x in @($pref.ExclusionExtension)) { if ($x) { Remove-MpPreference -ExclusionExtension $x } }
@@ -46,7 +60,7 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 # multi-threaded robocopy do the same work in a fraction of the time.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::ExtractToDirectory($Zip, $dest, $true)
-Start-MpScan -ScanType CustomScan -ScanPath $dest
+Invoke-Defender { Start-MpScan -ScanType CustomScan -ScanPath $dest }
 $found = @(Get-MpThreatDetection | Where-Object { $_.InitialDetectionTime -ge $started })
 if ($found) { throw "Defender flagged the unzipped release: $($found.Resources -join ', ')" }
 Write-Host '  scanned the unzipped release: nothing flagged'
@@ -193,10 +207,21 @@ if ((Get-Content -LiteralPath (Join-Path $moved 'data\private\keep.txt')) -ne 'm
 
 Write-Host '== 8. the update feed: run stages it, the next run swaps it in and reruns'
 Set-Content -LiteralPath "$candZip.sha256" -Value "$sha  yearend-planner-$next-win64.zip" -Encoding ascii
+# A throwaway publisher key: the install trusts its public half, the feed
+# carries the .sha256 signed by its private half (planner/engine/sign.py).
+$signer = "import sys; sys.path.insert(0, sys.argv[1]); from pathlib import Path; from planner.engine import sign; " +
+    "k = sign.keygen(); p = Path(sys.argv[2]); " +
+    "Path(sys.argv[3]).write_text(sign.sign(k[0], p.read_bytes()), encoding='ascii'); print(k[1])"
+$public = (& (Join-Path $moved 'python\python.exe') -c $signer $moved "$candZip.sha256" "$candZip.sha256.sig" | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $public) { throw 'could not sign the proof feed' }
+$updateYaml = Join-Path $moved 'config\update.yaml'
+(Get-Content -LiteralPath $updateYaml -Raw) -replace '(?m)^public_key:.*$', "public_key: `"$public`"" |
+    Set-Content -LiteralPath $updateYaml -Encoding ascii -NoNewline
 $feed = Join-Path $base 'latest.json'
 $rel = @{ tag_name = "v$next"; assets = @(
     @{ name = "yearend-planner-$next-win64.zip"; browser_download_url = ([System.Uri]$candZip).AbsoluteUri },
-    @{ name = "yearend-planner-$next-win64.zip.sha256"; browser_download_url = ([System.Uri]"$candZip.sha256").AbsoluteUri }) }
+    @{ name = "yearend-planner-$next-win64.zip.sha256"; browser_download_url = ([System.Uri]"$candZip.sha256").AbsoluteUri },
+    @{ name = "yearend-planner-$next-win64.zip.sha256.sig"; browser_download_url = ([System.Uri]"$candZip.sha256.sig").AbsoluteUri }) }
 $rel | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $feed -Encoding utf8
 $env:PLANNER_UPDATE_FEED = ([System.Uri]$feed).AbsoluteUri
 try {

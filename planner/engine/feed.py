@@ -2,8 +2,12 @@
 selfcheck here?
 
 ``config/update.yaml`` names the feed: a GitHub "latest release" API address
-whose release carries ``*-win64.zip`` and ``*-win64.zip.sha256`` assets
-(``PLANNER_UPDATE_FEED`` overrides it; ``off`` disables the check). The check
+whose release carries ``*-win64.zip``, ``*-win64.zip.sha256`` and
+``*-win64.zip.sha256.sig`` assets (``PLANNER_UPDATE_FEED`` overrides it;
+``off`` disables the check). The ``.sha256`` is trusted only when its ``.sig``
+verifies against ``public_key`` in the same file (:mod:`planner.engine.sign`);
+a release signed by any other key, or an install with no key, is held before
+the zip is downloaded. The check
 sends one plain GET with no personal data. Offline, a refused address or a
 feed with no newer release is not an error: the check says nothing. A newer
 release is downloaded to ``data/update/``, verified and self-checked into
@@ -31,6 +35,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from planner.config import load_yaml
+from planner.engine import sign
 from planner.engine import update as upd
 from planner.paths import Layout
 
@@ -46,6 +51,14 @@ class Offer:
     version: str
     zip_url: str
     sha_url: str
+    sig_url: str
+
+
+def public_key(lay: Layout) -> str:
+    """The publisher key the install trusts; "" when none is configured."""
+    cfg = lay.config / "update.yaml"
+    key = load_yaml(cfg).get("public_key") if cfg.exists() else None
+    return str(key or "").strip()
 
 
 def feed_url(lay: Layout) -> str | None:
@@ -67,14 +80,18 @@ def _open(url: str, timeout: int) -> bytes:
 
 
 def latest(url: str) -> Offer | None:
-    """The feed's release, or None when it lacks a win64 zip and its sha256."""
+    """The feed's release, or None when it lacks a win64 zip, its sha256 or
+    the sha256's signature."""
     rel: dict[str, Any] = json.loads(_open(url, TIMEOUT))
     assets = {a["name"]: a["browser_download_url"] for a in rel.get("assets", [])}
     zips = [n for n in assets if n.endswith("-win64.zip")]
-    if not zips or zips[0] + ".sha256" not in assets:
+    if not zips:
+        return None
+    sha, sig = zips[0] + ".sha256", zips[0] + ".sha256.sig"
+    if sha not in assets or sig not in assets:
         return None
     return Offer(
-        str(rel["tag_name"]).lstrip("v"), assets[zips[0]], assets[zips[0] + ".sha256"]
+        str(rel["tag_name"]).lstrip("v"), assets[zips[0]], assets[sha], assets[sig]
     )
 
 
@@ -129,6 +146,20 @@ def _due(lay: Layout, today: date) -> bool:
     return not 0 <= age < WEEK  # a clock set back also asks again
 
 
+def _hold(lay: Layout, today: date, version: str, reason: str) -> str:
+    """Record ``version`` as held for ``reason`` and say so."""
+    current = upd.installed_version(lay.root)
+    record = {
+        "version": version,
+        "installed": current,
+        "reason": reason,
+        "date": today.isoformat(),
+    }
+    (lay.data / HELD).write_text(json.dumps(record), encoding="utf-8")
+    _record(lay, today, "held", f"update {version} held (see alerts)")
+    return f"update {version} held: {reason}; still on {current}"
+
+
 def check(
     lay: Layout,
     today: date | None = None,
@@ -178,9 +209,34 @@ def check(
     folder.mkdir(parents=True, exist_ok=True)
     zip_path = folder / Path(urlsplit(offer.zip_url).path).name
     try:
-        zip_path.write_bytes(_open(offer.zip_url, 600))
-        sha = _open(offer.sha_url, TIMEOUT).decode("ascii").split()[0]
+        sha_file = _open(offer.sha_url, TIMEOUT)
+        signature = _open(offer.sig_url, TIMEOUT).decode("ascii")
+        sha = sha_file.decode("ascii").split()[0]
     except (OSError, ValueError, UnicodeDecodeError, IndexError):
+        _record(
+            lay, today, "offline", f"update {offer.version} could not be downloaded"
+        )
+        return ""
+    key = public_key(lay)
+    if not key:
+        return _hold(
+            lay,
+            today,
+            offer.version,
+            "config/update.yaml names no publisher key, so the release cannot "
+            "be checked",
+        )
+    if not sign.verify(key, sha_file, signature):
+        return _hold(
+            lay,
+            today,
+            offer.version,
+            "its .sha256 is not signed by the publisher key in config/update.yaml",
+        )
+    try:
+        zip_path.write_bytes(_open(offer.zip_url, 600))
+    except OSError:
+        zip_path.unlink(missing_ok=True)
         _record(
             lay, today, "offline", f"update {offer.version} could not be downloaded"
         )
@@ -197,15 +253,7 @@ def check(
         )
     except upd.UpdateError as exc:
         shutil.rmtree(lay.root / upd.CANDIDATE, ignore_errors=True)
-        record = {
-            "version": offer.version,
-            "installed": current,
-            "reason": str(exc).splitlines()[0],
-            "date": today.isoformat(),
-        }
-        (lay.data / HELD).write_text(json.dumps(record), encoding="utf-8")
-        _record(lay, today, "held", f"update {offer.version} held (see alerts)")
-        return f"update {offer.version} held: {record['reason']}; still on {current}"
+        return _hold(lay, today, offer.version, str(exc).splitlines()[0])
     finally:
         zip_path.unlink(missing_ok=True)
     (lay.data / HELD).unlink(missing_ok=True)
