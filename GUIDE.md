@@ -114,7 +114,8 @@ and photos go through OCR with confirm (Phase 2e, below).
 CSV exports go in the same inbox. Each header-led block is matched against
 `templates/csv/` (Vanguard download: holdings and transactions in one file; Vanguard
 cost basis by lot; realized gains; dividends and interest; Fidelity positions and
-activity; Schwab positions, brokerage history and checking; Chase checking; bank
+activity; Schwab positions, brokerage history and checking; Chase, Capital One 360, Bank of
+America and Wells Fargo checking; bank
 exports with a signed Amount or Debit/Credit columns) and lands in the ledger's `rows` table: one row per
 line, money in cents, the source line kept verbatim. A row's identity is the broker's
 transaction ID when the export carries one, else a hash of the row plus file name and
@@ -132,7 +133,13 @@ one-cell line is a title or a note, never a row (Schwab's title names the accoun
 "Account Total" and "Transactions Total" lines are skipped, "--", "n/a" and
 "Incomplete" are no figure rather than zero, and a Schwab date "01/02/2026 as of
 12/31/2025" counts from the as-of date. When two templates fit a block, the one naming
-more of its headers wins. `tests/fixtures/real/csv/layouts.yaml` cites the source of every
+more of its headers wins. Wells Fargo's download has no header line: its five columns
+are read by position, and only a file whose every line fits that shape is read as
+one. Capital One 360 prints an unsigned amount that its Transaction Type marks Debit
+or Credit; any other type is refused, not guessed. Bank of America's download opens
+with a statement summary: its Total credits and Total debits must equal the file's
+own rows, so a cut-short or edited download goes to UNMATCHED instead of the ledger.
+`tests/fixtures/real/csv/layouts.yaml` cites the source of every
 real layout and names the templates that have none yet. Vanguard's cost-basis,
 realized-gains and income exports and the two bank layouts are among those: they are
 matched on the column names in `templates/csv/`, verified against synthetic files, and

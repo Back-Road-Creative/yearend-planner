@@ -14,7 +14,12 @@ import pytest
 import yaml
 
 from planner.ingest import CSV_TEMPLATES_DIR
-from planner.ingest.csvfile import load_csv_templates, parse_csv, read_blocks
+from planner.ingest.csvfile import (
+    Unmatched,
+    load_csv_templates,
+    parse_csv,
+    read_blocks,
+)
 from planner.ingest.derive import derive_year
 from planner.ledger import db
 
@@ -36,6 +41,7 @@ def test_a_real_layout_reads_with_its_templates(entry: dict[str, Any]) -> None:
 
 def test_every_csv_template_has_a_real_layout_or_says_why_not() -> None:
     read = {s for e in MANIFEST["layouts"] for s in e["expect"]}
+    read |= {s for e in MANIFEST["layouts"] for s in e.get("checks", [])}
     for tpl in TEMPLATES:
         assert tpl.path is not None
         sourced = tpl.source in read
@@ -148,3 +154,74 @@ def test_each_issuers_dividends_and_interest_reach_the_ytd_facts() -> None:
     assert ytd("fidelity-transactions.csv")["dividends"] == 71.30
     assert ytd("chase-checking.csv") == {"deposits": 2100.0, "withdrawals": 262.0}
     assert ytd("schwab-checking.csv") == {"deposits": 1.0, "withdrawals": 500.0}
+    assert ytd("capitalone-360.csv") == {"deposits": 504.83, "withdrawals": 21.0}
+    assert ytd("bofa-checking.csv") == {"deposits": 2000.0, "withdrawals": 310.25}
+    assert ytd("wellsfargo-checking.csv") == {
+        "deposits": 1500.0,
+        "withdrawals": 165.1,
+    }
+
+
+def test_a_headerless_export_reads_by_position() -> None:
+    rows = _rows("wellsfargo-checking.csv")
+    assert [(r.date, r.amount_cents, r.description) for r in rows] == [
+        ("2025-01-05", -4510, "EXAMPLE GROCER (synthetic) PURCHASE"),
+        ("2025-01-10", 150000, "EXAMPLE EMPLOYER (synthetic) DIR DEP"),
+        ("2025-01-12", -12000, "CHECK 1042"),
+    ]
+    assert [r.line for r in rows] == [1, 2, 3]
+
+
+def test_a_headerless_row_off_the_layout_is_refused(tmp_path: Path) -> None:
+    p = tmp_path / "odd.csv"
+    p.write_text('"x","-45.10","*","","STORE"\n', encoding="utf-8")
+    with pytest.raises(Unmatched, match="no CSV template matches"):
+        parse_csv(p, TEMPLATES)
+    p.write_text(
+        '"01/05/2025","-45.10","*","","STORE"\n"01/06/2025","oops","*","","X"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(Unmatched, match="line 2"):
+        parse_csv(p, TEMPLATES)
+
+
+def test_a_type_column_signs_an_unsigned_amount(tmp_path: Path) -> None:
+    rows = _rows("capitalone-360.csv")
+    assert [(r.date, r.amount_cents) for r in rows] == [
+        ("2025-11-27", -2100),
+        ("2025-11-30", 35),
+        ("2025-11-26", 50448),
+    ]
+    p = tmp_path / "c1.csv"
+    p.write_text(
+        "Account Number,Transaction Description,Transaction Date,"
+        "Transaction Type,Transaction Amount,Balance\n"
+        "1122,Hold,11/27/25,Pending,21.00,1.00\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(Unmatched, match="Pending"):
+        parse_csv(p, TEMPLATES)
+
+
+def test_a_statement_summary_is_not_a_row_and_checks_the_rows(
+    tmp_path: Path,
+) -> None:
+    rows = _rows("bofa-checking.csv")
+    assert {r.source for r in rows} == {"bofa_checking"}
+    assert [r.amount_cents for r in rows] == [200000, -31025]
+    short = (LAYOUTS / "bofa-checking.csv").read_text(encoding="utf-8")
+    short = short.replace("-310.25,", "-31.25,", 1)
+    p = tmp_path / "bofa.csv"
+    p.write_text(short, encoding="utf-8")
+    with pytest.raises(Unmatched, match="Total debits"):
+        parse_csv(p, TEMPLATES)
+
+
+def test_a_headerless_template_needs_one_shape_per_position(tmp_path: Path) -> None:
+    (tmp_path / "bad.yaml").write_text(
+        "source: bad\nkind: bank\npositions: [Date, Amount]\nshape: ['.*']\n"
+        "columns: {date: Date, amount: Amount}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="one pattern per position"):
+        load_csv_templates(tmp_path)

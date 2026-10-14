@@ -30,6 +30,11 @@ above a header is the block's `[title]`, usable as a column (`account: "[title]"
 `skip:` maps a column to values whose rows are totals, not data (`Symbol: [Account
 Total]`). "--", "n/a", "na" and "Incomplete" read as no value. A date "A as of B"
 reads as B. When several templates claim a block, the one with the longest `match`
-wins. A block no template claims
+wins. A headerless export sets `positions:` (column names in order) and `shape:` (a
+regex each cell must fit) instead of `match:`; a line off that shape is refused.
+`sign:` (`column`, `debit`, `credit`) signs an unsigned amount by a type column, and
+any other value there is refused. `kind: summary` with `totals:` (label: `credits` or
+`debits`) reads a statement summary as a check, not rows: the file's bank rows must
+add to each total. A block no template claims
 sends the file to UNMATCHED with the headers it found: add or edit a template,
 drop the file again.

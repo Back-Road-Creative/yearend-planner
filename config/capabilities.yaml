@@ -240,6 +240,11 @@ csv_fidelity_schwab_chase:
   evidence: implemented
   tests: ["tests/test_csv_layouts.py"]
   note: "Fidelity positions, all-accounts activity and single-account history; Schwab positions, brokerage history and checking; Chase checking; each against its published download layout (titles, notes, total lines, no-figure cells, as-of dates)"
+csv_capitalone_bofa_wellsfargo:
+  status: verified
+  evidence: implemented
+  tests: ["tests/test_csv_layouts.py"]
+  note: "Capital One 360 (type-signed amounts), Bank of America (statement summary checks the rows) and Wells Fargo (headerless, read by position) checking downloads, each against its published layout"
 csv_vanguard_cost_basis_realized_income:
   status: partial
   evidence: partial

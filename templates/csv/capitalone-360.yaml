@@ -1,0 +1,17 @@
+# Capital One 360 checking/savings download: an unsigned Transaction
+# Amount that Transaction Type marks Debit or Credit; two-digit-year dates.
+# Layout cited in tests/fixtures/real/csv/layouts.yaml.
+source: capitalone_360
+kind: bank
+match: [Account Number, Transaction Description, Transaction Date, Transaction Type, Transaction Amount, Balance]
+date_format: "%m/%d/%y"
+columns:
+  account: Account Number
+  date: Transaction Date
+  type: Transaction Type
+  description: Transaction Description
+  amount: Transaction Amount
+sign:
+  column: Transaction Type
+  debit: [Debit]
+  credit: [Credit]

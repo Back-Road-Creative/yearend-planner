@@ -55,6 +55,25 @@ layouts:
     licence: MIT (layout only; no file content copied)
     expect:
       chase_checking: 3
+  - name: capitalone-360
+    file: capitalone-360.csv
+    source: https://github.com/nozzlegear/foxy-balance/blob/a32a3e7/tests/FoxyBalance.Sync.Tests/CapitalOneTransactionParserTests.fs
+    licence: MIT (layout only; no file content copied)
+    expect:
+      capitalone_360: 3
+  - name: bofa-checking
+    file: bofa-checking.csv
+    source: https://github.com/VonHoltenCodes/SlowBooks-Pro-2026/blob/b50eaba/tests/fixtures/bofa_detail_real_shape.csv
+    licence: source-available (layout only; no file content copied)
+    expect:
+      bofa_checking: 2
+    checks: [bofa_summary]
+  - name: wellsfargo-checking
+    file: wellsfargo-checking.csv
+    source: https://github.com/grindlemire/WellsFarGO/blob/8450e91/money/money.go
+    licence: none stated (layout only; no file content copied)
+    expect:
+      wellsfargo_checking: 3
 # No public sample of these exports was found (searched 2026-10-08: issuer help
 # pages, open-source importers, forums). Their column names are the planner's
 # expectation; `planner acceptance` on your own export is the check.

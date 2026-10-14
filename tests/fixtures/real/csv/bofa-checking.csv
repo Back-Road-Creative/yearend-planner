@@ -1,0 +1,10 @@
+Description,,Summary Amt.
+Beginning balance as of 01/01/2025,,"1,500.00"
+Total credits,,"2,000.00"
+Total debits,,"-310.25"
+Ending balance as of 01/31/2025,,"3,189.75"
+
+Date,Description,Amount,Running Bal.
+01/01/2025,Beginning balance as of 01/01/2025,,"1,500.00"
+01/15/2025,"EXAMPLE EMPLOYER (synthetic) DES:PAYROLL","2,000.00","3,500.00"
+01/20/2025,EXAMPLE UTILITY (synthetic) BILL PAY,-310.25,"3,189.75"

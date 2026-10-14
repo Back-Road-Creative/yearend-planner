@@ -35,22 +35,42 @@ class CsvTemplate:
     term_values: dict[str, str] = field(default_factory=dict)
     skip: dict[str, list[str]] = field(default_factory=dict)
     title: str = ""
+    # A headerless export (Wells Fargo): the column names by position, and the
+    # pattern each cell must fit, so no other headerless file is claimed.
+    positions: list[str] = field(default_factory=list)
+    shape: list[str] = field(default_factory=list)
+    # An unsigned amount signed by a type column (Capital One 360).
+    sign: dict[str, list[str]] = field(default_factory=dict)
+    # A statement summary: its labelled totals check the file's bank rows.
+    totals: dict[str, str] = field(default_factory=dict)
     path: Path | None = None
 
     def matches(self, headers: list[str]) -> bool:
         have = {h.lower() for h in headers}
-        return all(m.lower() in have for m in self.match)
+        return bool(self.match) and all(m.lower() in have for m in self.match)
+
+    def fits(self, cells: list[str]) -> bool:
+        return (
+            bool(self.positions)
+            and len(cells) == len(self.positions)
+            and all(
+                re.fullmatch(p, c.strip())
+                for p, c in zip(self.shape, cells, strict=True)
+            )
+        )
 
 
 def load_csv_templates(folder: Path) -> list[CsvTemplate]:
     out: list[CsvTemplate] = []
     for p in sorted(folder.glob("*.yaml")):
         raw = safe_load(p.read_text(encoding="utf-8"))
+        if len(raw.get("shape") or []) != len(raw.get("positions") or []):
+            raise ValueError(f"{p.name}: `shape` needs one pattern per position")
         out.append(
             CsvTemplate(
                 source=str(raw["source"]),
                 kind=str(raw["kind"]),
-                match=[str(m) for m in raw["match"]],
+                match=[str(m) for m in raw.get("match") or []],
                 columns={str(k): str(v) for k, v in raw["columns"].items()},
                 date_format=str(raw.get("date_format", "%m/%d/%Y")),
                 term_values={
@@ -61,6 +81,15 @@ def load_csv_templates(folder: Path) -> list[CsvTemplate]:
                     for k, v in (raw.get("skip") or {}).items()
                 },
                 title=str(raw.get("title", "")),
+                positions=[str(x) for x in raw.get("positions") or []],
+                shape=[str(x) for x in raw.get("shape") or []],
+                sign={
+                    str(k): [str(x).lower() for x in v]
+                    if isinstance(v, list)
+                    else [str(v)]
+                    for k, v in (raw.get("sign") or {}).items()
+                },
+                totals={str(k): str(v) for k, v in (raw.get("totals") or {}).items()},
                 path=p,
             )
         )
@@ -72,6 +101,8 @@ class Block:
     headers: list[str]
     rows: list[tuple[int, list[str]]]  # (1-based line number, cells)
     title: str = ""  # the one-cell line above the header ("Individual ...321")
+    line: int = 0  # the header line's number
+    head: list[str] = field(default_factory=list)  # the header line's cells as read
 
 
 # A cell only a data row carries: a number, an amount or a date.
@@ -109,7 +140,9 @@ def read_blocks(path: Path) -> list[Block]:
             headers = [c.strip() for c in cells]
             while headers and not headers[-1]:
                 headers.pop()
-            current = Block(headers=headers, rows=[], title=title or "")
+            current = Block(
+                headers=headers, rows=[], title=title or "", line=line_no, head=cells
+            )
             title = None
             blocks.append(current)
             continue
@@ -169,6 +202,8 @@ def normalize_block(
         title = m.group(1).strip()
     rows: list[Row] = []
     for line_no, cells in block.rows:
+        if tpl.positions and not tpl.fits(cells):
+            raise Unmatched(f"line {line_no} does not have the {tpl.source} layout")
         if any(
             _cell(block.headers, cells, name).lower() in values
             for name, values in tpl.skip.items()
@@ -197,6 +232,17 @@ def normalize_block(
             credit = _money(get("credit")) or 0
             debit = _money(get("debit")) or 0
             amount = credit - debit
+        if tpl.sign and amount is not None:
+            [column] = tpl.sign["column"]
+            said = _cell(block.headers, cells, column)
+            if said.lower() in tpl.sign.get("debit", []):
+                amount = -abs(amount)
+            elif said.lower() in tpl.sign.get("credit", []):
+                amount = abs(amount)
+            else:
+                raise Unmatched(
+                    f"line {line_no}: {column} {said!r} is neither a debit nor a credit"
+                )
         term_raw = get("term")
         term = tpl.term_values.get(term_raw.lower(), term_raw.lower()) or None
         rows.append(
@@ -223,20 +269,63 @@ def normalize_block(
     return rows
 
 
+def _summary(block: Block, tpl: CsvTemplate) -> dict[str, tuple[str, int]]:
+    """A statement summary's totals by what they check: {"credits": (label, cents)}."""
+    out: dict[str, tuple[str, int]] = {}
+    for _, cells in block.rows:
+        said = _cell(block.headers, cells, tpl.columns["description"])
+        for label, what in tpl.totals.items():
+            if said.lower().startswith(label.lower()):
+                cents = _money(_cell(block.headers, cells, tpl.columns["amount"]))
+                if cents is not None:
+                    out[what] = (label, cents)
+    return out
+
+
 def parse_csv(path: Path, templates: list[CsvTemplate]) -> list[Row]:
-    blocks = [b for b in read_blocks(path) if b.rows]
-    if not blocks:
-        raise Unmatched("CSV has no data rows")
-    today = datetime.now(UTC).date().isoformat()
-    rows: list[Row] = []
-    for block in blocks:
+    headerless = [t for t in templates if t.positions]
+    blocks: list[tuple[Block, CsvTemplate | None]] = []
+    for block in read_blocks(path):
         # The template naming the most of the block's headers claims it, so a
         # broker's layout wins over a generic bank one it happens to contain.
         claims = [t for t in templates if t.matches(block.headers)]
         tpl = max(claims, key=lambda t: len(t.match), default=None)
+        if tpl is None and _data_row(block.head):
+            # No header at all: the first line is a row of a headerless layout.
+            fit = [t for t in headerless if t.fits(block.head)]
+            if fit:
+                tpl = fit[0]
+                block = Block(
+                    headers=tpl.positions,
+                    rows=[(block.line, block.head), *block.rows],
+                    title=block.title,
+                )
+        if block.rows or (tpl is None and _data_row(block.head)):
+            blocks.append((block, tpl))  # a lone line no layout fits is refused
+    if not blocks:
+        raise Unmatched("CSV has no data rows")
+    today = datetime.now(UTC).date().isoformat()
+    rows: list[Row] = []
+    checks: dict[str, tuple[str, int]] = {}
+    for block, tpl in blocks:
         if tpl is None:
             raise Unmatched(
                 "no CSV template matches headers: " + ", ".join(block.headers)
             )
+        if tpl.kind == "summary":
+            checks.update(_summary(block, tpl))  # totals, not rows
+            continue
         rows.extend(normalize_block(block, tpl, path.name, today))
+    bank = [r.amount_cents or 0 for r in rows if r.kind == "bank"]
+    found = {
+        "credits": sum(a for a in bank if a > 0),
+        "debits": sum(a for a in bank if a < 0),
+    }
+    for what, (label, cents) in checks.items():
+        if found.get(what) != cents:
+            raise Unmatched(
+                f"the statement summary's {label} is {cents / 100:,.2f} but the "
+                f"rows add to {found.get(what, 0) / 100:,.2f}: the download is "
+                "incomplete or was edited"
+            )
     return rows
