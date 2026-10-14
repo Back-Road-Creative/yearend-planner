@@ -178,6 +178,9 @@ _TAXED = {
     "WV": "West Virginia",
     "WI": "Wisconsin",
 }
+# The local_income_tax answers the planner prices: a full-year resident of New
+# York City or of Yonkers files NY, whose resident tax the engine figures.
+LOCAL_PRICED = ("nyc", "yonkers")
 # The states whose rules the planner has, each from its own 2026 estimated-tax
 # instructions (and its underpayment form for the safe harbor). The federal
 # dates and equal shares unless said; "over": required only when the tax after
@@ -217,7 +220,10 @@ _PENALTIES = {
         (("2025-04-15", 0.095),),
         None,
         "2026-04-15",
-        notes=("New York City and Yonkers tax are not in the figure",),
+        notes=(
+            "a full-year New York City or Yonkers resident's tax is in the "
+            "figure when local_income_tax says nyc or yonkers",
+        ),
     ),
     "PA": PenaltyRule(
         "REV-1630",
@@ -343,7 +349,9 @@ _RULES = {
         "Form IT-2105-I 2026",
         notes=(
             "the 300 test and the payments include New York City and Yonkers "
-            "tax, which the planner does not price; the test is per spouse "
+            "resident tax, which the planner adds when local_income_tax says "
+            "nyc or yonkers (not a part-year or nonresident one, the Yonkers "
+            "nonresident earnings tax or the MCTMT); the test is per spouse "
             f"even on a joint return; New York AGI is {_FED_AGI}",
         ),
     ),

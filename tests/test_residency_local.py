@@ -22,7 +22,7 @@ def test_both_are_asked_in_every_state() -> None:
     residency = need_for("state_residency")
     local = need_for("local_income_tax")
     assert residency.choices == ("full_year", "moved", "other_state")
-    assert local.choices == ("no", "yes")
+    assert local.choices == ("no", "yes", "nyc", "yonkers")
     for code in ("NC", "CA", "TX", "WA"):
         assert residency.asked is not None and residency.asked({"state": code})
         assert local.asked is not None and local.asked({"state": code})

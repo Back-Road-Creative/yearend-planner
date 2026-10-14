@@ -223,9 +223,20 @@ def gate(
     return out + _documents(lay)
 
 
+def priced_local(
+    state: str | None, residency: str | None, local: str | None
+) -> str | None:
+    """``nyc`` or ``yonkers`` when the answers make the local tax one the planner
+    prices: a full-year New York resident in the city. Else None."""
+    if state == "NY" and residency == "full_year" and local in states.LOCAL_PRICED:
+        return local
+    return None
+
+
 def _where(state: str, residency: str | None, local: str | None) -> list[Gap]:
     """The planner prices a full-year resident of one state with no local
-    income tax; anything else is named, never priced as though it were that."""
+    income tax, or in New York City or Yonkers; anything else is named, never
+    priced as though it were that."""
     out = []
     taxing = states.get(state).income_tax
     if residency == "moved":
@@ -251,7 +262,9 @@ def _where(state: str, residency: str | None, local: str | None) -> list[Gap]:
                 STATE_PRICED,
             )
         )
-    if local == "yes":
+    if local in ("yes", *states.LOCAL_PRICED) and not priced_local(
+        state, residency, local
+    ):
         out.append(
             Gap(
                 "state",

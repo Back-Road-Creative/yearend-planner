@@ -822,7 +822,7 @@ def estimate(
         current = (
             r(res.fed_total_tax - res.refundable_credits)
             if name == FED
-            else res.state_tax
+            else res.state_and_local_tax
         )
         pri = prior[name]
         et.agencies.append(
@@ -854,10 +854,11 @@ def estimate(
             f"installment's shortfall; type {schedule_ai.KEY} (each income line "
             "through March, May and August) to figure it"
         )
-    if len(names) == 1 and res.state_tax > 0:
+    if len(names) == 1 and res.state_and_local_tax > 0:
         et.notes.append(
-            f"{pj.inputs.household.state}: the engine's {res.state_tax:,.2f} of "
-            "state tax has no installments here and is not on the cash line "
+            f"{pj.inputs.household.state}: the engine's "
+            f"{res.state_and_local_tax:,.2f} of state tax has no installments "
+            "here and is not on the cash line "
             "(a state with no income tax: a capital gains excise, say)"
         )
     for key in (withheld_key(a) for a in names):

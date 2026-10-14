@@ -2803,9 +2803,15 @@ every fact the planner cannot answer correctly. Each gap has a reason (starting
   each a gap: the part-year return, the other state's nonresident return and the
   credit for tax paid to another state are not priced. `local_income_tax yes` (a
   city, county or school district tax: W-2 box 19, or a local return last year,
-  such as an Ohio school district's SD 100, Pennsylvania's earned income tax or New
-  York City's) is a gap too. These touch every planner section and the state
-  return, not the federal draft.
+  such as an Ohio school district's SD 100 or Pennsylvania's earned income tax) is
+  a gap too. In New York only, `nyc` or `yonkers` (a resident of New York City or
+  of Yonkers all year, with `state_residency full_year`) is priced: the engine's
+  resident tax is added to New York's tax in the estimated-tax figures (the 300
+  test, the installments, the safe harbor) and the IT-2105.9 penalty. The same
+  answer in another state, with `moved` or `other_state`, is still a gap, and the
+  Yonkers nonresident earnings tax, the MCTMT and IT-201 lines 47-58 are not
+  handled. These touch every planner section and the state return, not the
+  federal draft.
 - **Document**: each file in `data/inbox/UNMATCHED/`. Anything on it is left out, so it
   touches every priced panel and the draft until its figures are typed with
   `planner enter` or the file is moved out because it holds no tax figures.

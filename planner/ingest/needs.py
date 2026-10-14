@@ -535,9 +535,10 @@ NEEDS: tuple[Need, ...] = (
         "a local income tax the plan does not price",
         "yes when a city, county or school district taxes your income: local "
         "tax withheld on a W-2 (box 19, the locality in box 20) or a local "
-        "return filed last year",
+        "return filed last year; in New York, nyc or yonkers for a resident of "
+        "New York City or of Yonkers all year, whose tax is priced",
         "enum",
-        choices=("no", "yes"),
+        choices=("no", "yes", *states.LOCAL_PRICED),
         unlocks=("Estimated tax",),
         asked=lambda s: _known_state(s),
     ),
@@ -2821,6 +2822,14 @@ def _education(key: str, s: str) -> list[dict[str, Any]]:
     if len(out) > DEPENDENTS_MAX + 2:
         raise ValueError(f"{key}: at most {DEPENDENTS_MAX + 2} students")
     return out
+
+
+def offered_choices(need: Need, so_far: dict[str, Any]) -> tuple[str, ...]:
+    """The choices to offer for the values so far: ``nyc`` and ``yonkers`` only
+    to a New York filer (a city resident of any other state files its own)."""
+    if need.key == "local_income_tax" and so_far.get("state") != "NY":
+        return tuple(c for c in need.choices if c not in states.LOCAL_PRICED)
+    return need.choices
 
 
 def _known_state(so_far: dict[str, Any]) -> bool:
