@@ -7,4 +7,4 @@ feed: https://api.github.com/repos/Back-Road-Creative/yearend-planner/releases/l
 # The publisher's Ed25519 public key (base64). A release is installed only
 # when its .sha256.sig verifies against it; empty holds every release.
 # Set once by: python scripts/sign_release.py keygen config/update.yaml
-public_key: ""
+public_key: "nmJWRsuBTYWRtIp6NigCPM6nI8iQIOK8MIWBLQkuTHc="
