@@ -20,6 +20,10 @@ planner's field names (`account`, `date`, `type`, `description`, `symbol`,
 `quantity`, `price`, `amount`, `basis`, `acquired`, `term`, `txn_id`, or
 `debit`/`credit` in place of `amount`) to the export's column names.
 `date_format` defaults to `%m/%d/%Y`. A file with several header-led blocks
-(Vanguard's download) matches each block on its own. A block no template claims
+(Vanguard's download) matches each block on its own; a blank line followed by a data
+row (a number, amount or date in some cell) carries on the block above, a blank line
+followed by a header row starts a new one. Every template has a real-layout fixture
+in `tests/fixtures/real/csv/` cited in its `layouts.yaml`, or an `unsourced:` entry
+there saying why not. A block no template claims
 sends the file to UNMATCHED with the headers it found: add or edit a template,
 drop the file again.

@@ -123,10 +123,15 @@ export is a snapshot stamped with the import date. Headers the templates do not
 recognise send the file to UNMATCHED with the headers listed, and the fix is a template
 edit, never a code change. `planner rows --year 2025 --kind transaction` lists rows.
 
-Vanguard's cost-basis, realized-gains and income exports are matched on the column
-names in `templates/csv/`; they are verified against synthetic files in the test suite,
-and your own export is the check that the names are right (the UNMATCHED reason shows
-what differs).
+Vanguard's download is checked against its published layout: each account's rows
+parted by a blank line with no repeated header (a data row after a blank line carries on
+the block above), trailing commas, and the employer-plan holdings and plan transactions
+blocks a 401(k) adds. `tests/fixtures/real/csv/layouts.yaml` cites the source of every
+real layout and names the templates that have none yet. Vanguard's cost-basis,
+realized-gains and income exports and the two bank layouts are among those: they are
+matched on the column names in `templates/csv/`, verified against synthetic files, and
+your own export is the check that the names are right (the UNMATCHED reason shows what
+differs).
 
 ## Filed returns and other forms (Phase 2c)
 

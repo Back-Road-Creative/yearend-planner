@@ -13,6 +13,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -65,8 +66,18 @@ class Block:
     rows: list[tuple[int, list[str]]]  # (1-based line number, cells)
 
 
+# A cell only a data row carries: a number, an amount or a date.
+DATA_CELL = re.compile(r"[-+($]*\s*(?:\d[\d,]*)?\.?\d+\)?|\d{1,2}/\d{1,2}/\d{2,4}")
+
+
+def _data_row(cells: list[str]) -> bool:
+    return any(DATA_CELL.fullmatch(c.strip()) for c in cells)
+
+
 def read_blocks(path: Path) -> list[Block]:
-    """Split a CSV into header-led blocks; blank lines separate blocks."""
+    """Split a CSV into header-led blocks; blank lines separate blocks. A data
+    row after a blank line carries on the block above (Vanguard's download
+    parts each account's holdings with one); a header row starts a new one."""
     try:
         text = path.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError:
@@ -77,6 +88,8 @@ def read_blocks(path: Path) -> list[Block]:
         if not any(c.strip() for c in cells):
             current = None
             continue
+        if current is None and blocks and _data_row(cells):
+            current = blocks[-1]
         if current is None:
             headers = [c.strip() for c in cells]
             while headers and not headers[-1]:

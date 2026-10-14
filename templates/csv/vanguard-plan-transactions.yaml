@@ -1,0 +1,15 @@
+# Vanguard download, employer plan transactions block (contributions,
+# exchanges, distributions). "Transaction Activity" is Vanguard's own code
+# and is kept only in the row's raw line. Layout cited in
+# tests/fixtures/real/csv/layouts.yaml.
+source: vanguard_plan_transactions
+kind: transaction
+match: [Account Number, Trade Date, Run Date, Transaction Description, Dollar Amount]
+columns:
+  account: Account Number
+  date: Trade Date
+  type: Transaction Description
+  description: Transaction Description
+  quantity: Transaction Shares
+  price: Share Price
+  amount: Dollar Amount

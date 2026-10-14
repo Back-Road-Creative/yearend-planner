@@ -233,8 +233,8 @@ needed_grouped_by_document:
 csv_vanguard_download:
   status: verified
   evidence: implemented
-  tests: ["tests/test_csv.py"]
-  note: "holdings + transactions blocks"
+  tests: ["tests/test_csv.py", "tests/test_csv_layouts.py"]
+  note: "holdings, transactions, plan holdings and plan transactions blocks, checked against the published download layout (blank-line account groups, trailing commas)"
 csv_vanguard_cost_basis_realized_income:
   status: partial
   evidence: partial

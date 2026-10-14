@@ -1,0 +1,24 @@
+Account Number,Investment Name,Symbol,Shares,Share Price,Total Value,
+12345678,VANGUARD TOTAL BOND MARKET ETF,BND,10.000,74.32,743.20,
+12345678,Vanguard Federal Money Market Fund,VMFXX,1.000,1.0,1.00,
+
+23456789,VANGUARD TOTAL STOCK MARKET ETF,VTI,10.000,198.305,1983.05,
+23456789,Vanguard Federal Money Market Fund,VMFXX,0.22000,1.0,0.22000,
+
+
+
+Account Number,Trade Date,Settlement Date,Transaction Type,Transaction Description,Investment Name,Symbol,Shares,Share Price,Principal Amount,Commission Fees,Net Amount,Accrued Interest,Account Type,
+12345678,12/29/2025,12/29/2025,Dividend,Dividend Received,VANGUARD TOTAL BOND MARKET ETF,BND,0.0,1.0,200.5,0.0,200.5,0.0,Cash,
+12345678,12/29/2025,12/29/2025,Reinvestment,Dividend Reinvestment,VANGUARD TOTAL BOND MARKET ETF,BND,2.0,100.25,-200.5,0.0,-200.5,0.0,Cash,
+
+23456789,12/30/2025,12/30/2025,Dividend,Dividend Received,VANGUARD FEDERAL MONEY MARKET FUND,,0.0,0.0,0.22,0.0,0.22,0.0,Cash,
+
+
+Plan Number,Plan Name,Fund Name,Shares,Price,Total Value,
+000123,EXAMPLE INC. 401(K) PLAN (synthetic),Vanguard Total Bond Market Index Fund Institutional Shares,1.000,9.66000000,9.66,
+
+
+Account Number,Trade Date,Run Date,Transaction Activity,Transaction Description,Investment Name,Share Price,Transaction Shares,Dollar Amount,
+000123,09/08/2025,09/08/2025,111111,Plan Contribution,Total Bond Mkt Index Inst,2.36,23.644,55.80,
+
+
