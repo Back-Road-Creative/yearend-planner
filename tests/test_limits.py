@@ -33,13 +33,23 @@ def lay(planner_home: Path) -> Layout:
     return lay
 
 
+def _stale_ira_row(lay: Layout) -> None:
+    """A hand row the engine disagrees with: 2026's IRA limit before Notice
+    2025-67 (synthetic)."""
+    path = lay.config / "thresholds.yaml"
+    data: dict[Any, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data[2026]["ira_contribution_limit"]["value"] = 7000
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+
 @pytest.mark.engine
 def test_published_and_projected_values_are_told_apart() -> None:
-    # pinned to policyengine-us 2.21.0 (uv.lock): re-check on every engine update
+    # pinned to policyengine-us 2.38.19 (uv.lock): re-check on every engine update
     assert engine_value("std_deduction_single", 2026) == (16100.0, True)
     assert engine_value("std_deduction_single", 2027) == (16550.0, False)
-    # the engine's file stops at 2024 for the IRA limit, so 2026 is its projection
-    assert engine_value("ira_contribution_limit", 2026) == (7000.0, False)
+    # the engine carries Notice 2025-67's 2026 IRA limit; 2027 is its projection
+    assert engine_value("ira_contribution_limit", 2026) == (7500.0, True)
+    assert engine_value("ira_contribution_limit", 2027) == (7500.0, False)
     assert engine_value("nc_income_tax_rate", 2026) == (0.0399, True)
 
 
@@ -47,10 +57,11 @@ def test_published_and_projected_values_are_told_apart() -> None:
 def test_hand_rows_win_engine_fills_next_year_and_drift_is_reported(
     lay: Layout,
 ) -> None:
+    _stale_ira_row(lay)
     rep = limits.refresh(lay, 2026)
     assert rep.coverage == {2026: "config", 2027: "engine projection + carried"}
     drift = " | ".join(rep.drift[2026])
-    assert "ira_contribution_limit 2026: 7,500" in drift and "projects 7,000" in drift
+    assert "ira_contribution_limit 2026: 7,000" in drift and "has 7,500" in drift
     assert "hsa_limit_self" in rep.carried[2027]
     assert "std_deduction_single" in rep.projected[2027]
     merged = load_thresholds(lay.config / "thresholds.yaml")
@@ -74,7 +85,8 @@ def test_a_year_missing_from_the_hand_file_is_filled_and_flagged(
     path.write_text(yaml.safe_dump({2025: data[2026]}), encoding="utf-8")
     rep = limits.refresh(lay, 2026, write=False)
     assert not (lay.config / ENGINE_THRESHOLDS).exists()
-    assert rep.coverage[2026] == "engine projection + carried"
+    # every 2026 limit the engine prices is published, so nothing is projected
+    assert rep.coverage[2026] == "engine + carried"
     assert "hsa_limit_self" in rep.carried[2026]
     pg = page.gather(lay, 2026, date(2026, 7, 10))
     soft = [a.text for a in pg.alerts if a.kind == "thresholds"]

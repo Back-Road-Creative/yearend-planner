@@ -11,7 +11,7 @@ requires-python = ">=3.12,<3.13"
 license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "Joe Petrucelli", email = "info@backroadcreative.com" }]
 dependencies = [
-    "policyengine-us>=2.21.0",
+    "policyengine-us>=2.38.19,<2.39",
     "pyyaml>=6.0.2",
     "jinja2>=3.1.6",
     "typer>=0.15.0",

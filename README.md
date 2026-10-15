@@ -194,6 +194,11 @@ GitHub-hosted runners, which refuse it), a folder too deep for Windows, and a ru
 part way. It runs on Windows Server 2025 (Windows 11 24H2's build) and Server 2022; on a
 desktop Windows 10 or 11 machine, run the same script as administrator.
 
+policyengine-us is pinned to one minor (`>=2.38.19,<2.39` in `pyproject.toml`) because
+`planner/engine/tax.py` patches the engine's AMT and ACA variables by shape; a bump to
+the next minor means re-porting those patches first (a reshaped variable raises
+`EngineShapeError` naming it).
+
 ## License
 
 AGPL-3.0-or-later. PolicyEngine US is AGPL-3.0; this planner is distributed under the

@@ -74,6 +74,7 @@ ENGINE = (
     "farm_operations_income",
     "oh_additions",
     "oh_agi",
+    "oh_business_income_deduction",
     "oh_personal_exemptions_eligible_person",
     "oh_income_tax_before_non_refundable_credits",
     "oh_income_tax_before_refundable_credits",
@@ -377,9 +378,11 @@ def lay_lines(
         l20 = add(FORM, "20", "Tax due", l13 - l19, "13 - 19")
         add(FORM, "22", "Total amount due", l20, "20 (21 interest not drafted)")
 
-    # Line 3 and line 10 against the engine, which rounds nothing, has no
-    # business income deduction and does not see the typed items.
-    want = v["oh_agi"] + adds - deds - b13
+    # Line 3 and line 10 against the engine, which rounds nothing and does
+    # not see the typed items. The engine's Ohio AGI already takes its own
+    # business income deduction (Schedule C income only): put that back and
+    # take line 13 off instead, which also covers typed oh_business_income.
+    want = v["oh_agi"] + v["oh_business_income_deduction"] + adds - deds - b13
     if abs(l3 - want) > ROUNDING:
         notes.append(
             f"CHECK: OH IT 1040 line 3 against the engine's Ohio AGI less the "
