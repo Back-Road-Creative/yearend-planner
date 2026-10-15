@@ -9,9 +9,10 @@ income that deduction leaves; the credit then reduces the premiums that
 qualify, which moves income and the credit again. ``settle_se_health`` runs
 that loop (Pub. 974's Iterative Calculation Method) by feeding the engine the
 settled deduction as its premium input, so every figure read back (tax, MAGI,
-credit, the draft's Schedule 1 line 17) is consistent with it. The engine's
-28% rate and unrecaptured section 1250 gain path is replaced by the Schedule D
-Tax Worksheet (``_sdtw_tax``).
+credit, the draft's Schedule 1 line 17) is consistent with it. The engine
+(policyengine-us 2.38) prices the 28% rate and unrecaptured section 1250 gain
+by the Schedule D Tax Worksheet itself, so ``SDTW_VARS``, ``preferential`` and
+``line_16`` read its figures and nothing here overrides that path.
 """
 
 from __future__ import annotations
@@ -186,39 +187,6 @@ SDTW_VARS = (
 )
 
 
-def _sdtw_tax(system: Any) -> None:
-    """Price 28% rate and unrecaptured section 1250 gain by the Schedule D Tax
-    Worksheet. The engine's own path keeps the 28% gain in the rate schedule's
-    base below the 0% threshold and also adds 28% of all of it, bands the
-    gains at the 0% threshold instead of the 24% bracket top (line 19) and
-    never takes line 46 when it is smaller, so a filer in the 12% bracket with
-    $10,000 of collectibles gain is charged $2,800 more than the worksheet.
-    The engine's tax is income_tax_main_rates (the rate schedule on taxable
-    income less capital_gains_excluded_from_taxable_income) plus
-    capital_gains_tax; with the worksheet those are lines 44 and 31 + 34 + 40 +
-    43, and regular_tax_before_credits (Form 6251 line 10's regular tax, less
-    capital_gains_tax) is the main-rates tax. Without such gain the engine's
-    formulas run unchanged."""
-    from policyengine_us.model_api import Variable, where
-
-    def pick(name: str, branch: Any) -> None:
-        engine = system.variables[name].formulas["0001-01-01"]
-
-        def formula(tax_unit: Any, period: Any, parameters: Any) -> Any:
-            applies, excluded, gains_tax = _sdtw(tax_unit, period, parameters)
-            mine = branch(tax_unit, period, excluded, gains_tax)
-            return where(applies, mine, engine(tax_unit, period, parameters))
-
-        system.update_variable(type(name, (Variable,), {"formula": formula}))
-
-    pick("capital_gains_excluded_from_taxable_income", lambda tu, pe, x, g: x)
-    pick("capital_gains_tax", lambda tu, pe, x, g: g)
-    pick(
-        "regular_tax_before_credits",
-        lambda tu, pe, x, g: tu("income_tax_main_rates", pe),
-    )
-
-
 # Form 6251 line 2i (unit 3e-8): a tax unit input the engine does not define.
 ISO = "amt_iso_adjustment"
 SENIOR = "additional_senior_deduction"  # Schedule 1-A line 37
@@ -228,14 +196,15 @@ def _amt_iso(system: Any) -> None:
     """Form 6251 line 2i, the exercise of incentive stock options: for the AMT
     the shares' value over the exercise price is income (Pub. 525), which the
     engine does not model. A tax unit input joins AMT income (line 4), so the
-    exemption's phase-out, the 26% and 28% tax and Part III all see it. So does
-    the enhanced deduction for seniors (Schedule 1-A line 37), which the 2025
-    instructions add back as a personal exemption (section 56(b)(5)(D), lines
-    1a and 1b) and the engine leaves deducted. The married filing separately
-    addition (line 4's instruction: over the separate limit, 25% of the
-    excess, up to the exemption) is figured on line 4 with both."""
+    exemption's phase-out, the 26% and 28% tax and Part III all see it. The
+    enhanced deduction for seniors (Schedule 1-A line 37), which the 2025
+    instructions add back (lines 1a and 1b), is in the engine's amt_income. The
+    married filing separately addition (line 4's instruction: over the separate
+    limit, 25% of the excess, up to the exemption) is figured on line 4 with
+    both, which the engine's amt_separate_addition leaves out."""
     from policyengine_us.model_api import USD, YEAR, TaxUnit, Variable, max_, min_
 
+    engine_amt_income = system.variables["amt_income"]
     system.add_variable(
         type(
             ISO,
@@ -249,8 +218,14 @@ def _amt_iso(system: Any) -> None:
             },
         )
     )
-    adds = [*system.variables["amt_income"].adds, ISO, SENIOR]
-    system.update_variable(type("amt_income", (Variable,), {"adds": adds}))
+
+    def income(tax_unit: Any, period: Any, parameters: Any) -> Any:
+        # The engine's line 1 through line 4 (it adds back the senior deduction
+        # itself, from gov.irs.income.amt.deductions_add_back), plus line 2i.
+        engine = engine_amt_income.get_formula(period)
+        return engine(tax_unit, period, parameters) + tax_unit(ISO, period)
+
+    system.update_variable(type("amt_income", (Variable,), {"formula": income}))
 
     def separate(tax_unit: Any, period: Any, parameters: Any) -> Any:
         line4 = (
@@ -276,7 +251,6 @@ def _system() -> Any:
 
     system = CountryTaxBenefitSystem()
     _aca_400_edge(system)
-    _sdtw_tax(system)
     _amt_iso(system)
     return system
 
