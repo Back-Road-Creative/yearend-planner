@@ -720,6 +720,9 @@ def build(
                 f"dependents: the year-of-marriage calculation counts {n} on your "
                 "spouse's side; check spouse_premarriage_dependents"
             )
+    fields["local_resident"] = coverage.priced_local(
+        fields["state"], value.get("state_residency"), value.get("local_income_tax")
+    )
     out.coverage = coverage.gate(
         lay,
         fields["state"],

@@ -153,6 +153,9 @@ class Household:
     filing_status: str
     state: str
     county: str | None = None
+    # "nyc" or "yonkers": a full-year resident of New York City or of Yonkers
+    # (planner.coverage.priced_local); the engine adds that local resident tax
+    local_resident: str | None = None
     wages: int = 0
     se_income: int = 0
     interest: int = 0
@@ -457,6 +460,10 @@ class Household:
             "state_name": {yr: self.state for yr in years},
             "qualified_passenger_vehicle_loan_interest": {y: self.car_loan_interest},
         }
+        if self.local_resident == "nyc":
+            household["in_nyc"] = {y: True}
+        elif self.local_resident == "yonkers":
+            household["in_yonkers"] = {y: True}
         if self.county:
             if (
                 self.county != self.county.upper()

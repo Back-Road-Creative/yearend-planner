@@ -62,9 +62,18 @@ class TaxResult:
     # The guideline of the year BEFORE the tax year: the one the premium tax credit
     # and cost-sharing tests use (Form 8962 line 4). Medicaid uses ``fpg``.
     aca_fpg: float
+    # The NYC or Yonkers resident tax (household.local_resident); the engine's
+    # state_income_tax does not carry it
+    local_tax: float = 0.0
     itemizes: bool = False  # Schedule A beats the standard deduction
     itemized_deductions: float = 0.0  # Schedule A line 17
     standard_deduction: float = 0.0
+
+    @property
+    def state_and_local_tax(self) -> float:
+        """The state's tax with the local resident tax on top: the figure the
+        state's estimated-tax tests and penalty read."""
+        return r(self.state_tax + self.local_tax)
 
 
 # IRC 36B(c)(1)(A): the premium tax credit needs household income that "does not
@@ -1096,6 +1105,9 @@ def _compute(year: int, household: Household) -> TaxResult:
         + v["additional_medicare_tax"]
         + v["net_investment_income_tax"]
     )
+    local = {"nyc": "nyc_income_tax", "yonkers": "ny_yonkers_income_tax"}.get(
+        household.local_resident or ""
+    )
     return TaxResult(
         year=year,
         engine_version=engine_version(),
@@ -1105,6 +1117,7 @@ def _compute(year: int, household: Household) -> TaxResult:
         refundable_credits=r(v["income_tax_refundable_credits"]),
         ltcg_tax=r(max(ltcg_tax, 0.0)),
         state_tax=r(v["state_income_tax"]),
+        local_tax=r(float(_calc(sim, local, year)[0])) if local else 0.0,
         agi=r(v["adjusted_gross_income"]),
         aca_magi=r(v["aca_magi"]),
         taxable_income=r(v["taxable_income"]),
