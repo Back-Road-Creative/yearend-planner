@@ -1,5 +1,6 @@
 name: release
-# Push a tag vX.Y.Z (planner/__init__.py __version__) to run the suite, build
+# Push a tag vX.Y.Z (planner/__init__.py __version__) on a main commit whose
+# ci.yml run passed (the gate job refuses anything else) to run the suite, build
 # the Windows zip on a clean Windows machine, prove it with
 # scripts/windows_proof.ps1 on Windows Server 2025 and then on Server 2022 (the
 # same zip), sign the .sha256 with the UPDATE_SIGNING_KEY secret
@@ -14,7 +15,24 @@ permissions:
   contents: write
 
 jobs:
+  # The tag must name a commit on main that ci.yml already passed; nothing is
+  # built until scripts/release_gate.py says so.
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Tag is on main and CI passed it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release_gate.py
+
   release:
+    needs: gate
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v7
