@@ -188,6 +188,7 @@ uv run --no-project python scripts/refresh_zip_county.py   # rebuild config/zip_
 CI runs the suite on Ubuntu and Windows and proves the release zip on a clean Windows
 runner (`scripts/windows_proof.ps1`): real calculation, path with a space and non-ASCII
 characters, moved folder, network blocked, standard user, cloud-sync folder refused,
+a tax pack export with its files checked, a backup, restore and undo round trip,
 a Defender scan of the unpacked release (real-time protection asserted on except on
 GitHub-hosted runners, which refuse it), a folder too deep for Windows, and a run killed
 part way. It runs on Windows Server 2025 (Windows 11 24H2's build) and Server 2022; on a

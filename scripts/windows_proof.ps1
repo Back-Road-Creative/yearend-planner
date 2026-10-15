@@ -136,6 +136,19 @@ try {
         foreach ($shown in 'Example Bank (synthetic)', '1,235.00', '9,800.00') {
             if ($page -notlike "*$shown*") { throw "index.html after the offline run lacks $shown" }
         }
+        # taxpack on the unzipped release, offline: every file the preparer is
+        # promised (planner/taxprep/package.py FILES) is written and not empty.
+        # schedule-b.csv is written only when Schedule B is required.
+        Invoke-Planner $moved @('taxpack', '--year', '2025', '--as-of', '2026-02-10') | Out-Null
+        $pack = Join-Path $moved 'out\tax-2025'
+        foreach ($f in 'cover.txt', 'draft.txt', 'draft.html', 'form-8949.csv', 'schedule-c.txt',
+                       'carryforward.csv', 'basis.csv', 'estimated-payments.csv', 'forms.csv',
+                       'coverage.csv', 'originals.zip') {
+            $one = Join-Path $pack $f
+            if (-not (Test-Path -LiteralPath $one)) { throw "taxpack did not write out\tax-2025\$f" }
+            if ((Get-Item -LiteralPath $one).Length -le 0) { throw "taxpack wrote an empty out\tax-2025\$f" }
+        }
+        if (Test-Path -LiteralPath "$pack.partial") { throw 'taxpack left out\tax-2025.partial behind' }
     }
 } finally { Remove-NetFirewallRule -DisplayName 'planner-proof-block' }
 
@@ -204,6 +217,36 @@ if ($o -notlike "*rolled back to $ver*") { throw 'rollback did not report' }
 if ((Get-Content -LiteralPath (Join-Path $moved 'VERSION')).Trim() -ne $ver) { throw 'VERSION not restored' }
 if (Test-Path (Join-Path $moved 'python-previous')) { throw 'python-previous left behind' }
 if ((Get-Content -LiteralPath (Join-Path $moved 'data\private\keep.txt')) -ne 'mine') { throw 'data/ touched' }
+
+Write-Host '== 7b. backup, restore, undo (run before step 8: the next run settles data-previous/)'
+# Plain (no password prompt). data/ at backup time is hashed, then changed, then
+# restored: the change must vanish, the backed-up files come back byte for byte,
+# the data it replaced waits in data-previous/, and undo brings the change back.
+$bk = Join-Path $base 'proof-backup.zip'
+Invoke-Planner $moved @('backup', '--plain', $bk) | Out-Null
+if (-not (Test-Path -LiteralPath $bk)) { throw 'backup did not write the zip' }
+if ((Get-Item -LiteralPath $bk).Length -le 0) { throw 'backup wrote an empty zip' }
+$keep = Join-Path $moved 'data\private\keep.txt'
+$baseline = Join-Path $moved 'data\engine-baseline.json'
+$want = @{}
+foreach ($f in $keep, $baseline) { $want[$f] = (Get-FileHash -Algorithm SHA256 -LiteralPath $f).Hash }
+$marker = Join-Path $moved 'data\private\restore-marker.txt'
+Set-Content -LiteralPath $marker -Value 'after the backup (synthetic)'
+Set-Content -LiteralPath $keep -Value 'changed after the backup'
+$o = Invoke-Planner $moved @('restore', $bk)
+if ($o -notlike '*restored * files from proof-backup.zip*') { throw 'restore did not report' }
+if (Test-Path -LiteralPath $marker) { throw 'restore kept a file made after the backup' }
+foreach ($f in $keep, $baseline) {
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $f).Hash -ne $want[$f]) { throw "restore changed $f" }
+}
+if (-not (Test-Path -LiteralPath (Join-Path $moved 'data-previous\private\restore-marker.txt'))) { throw 'data it replaced was not kept in data-previous' }
+$o = Invoke-Planner $moved @('restore', '--undo')
+if ($o -notlike '*data-previous/ is data/ again*') { throw 'undo did not report' }
+if (Test-Path -LiteralPath (Join-Path $moved 'data-previous')) { throw 'data-previous left behind after undo' }
+if (-not (Test-Path -LiteralPath $marker)) { throw 'undo did not bring back the pre-restore data' }
+if ((Get-Content -LiteralPath $keep) -ne 'changed after the backup') { throw 'undo did not return the pre-restore keep.txt' }
+Set-Content -LiteralPath $keep -Value 'mine'
+Remove-Item -LiteralPath $marker
 
 Write-Host '== 8. the update feed: run stages it, the next run swaps it in and reruns'
 Set-Content -LiteralPath "$candZip.sha256" -Value "$sha  yearend-planner-$next-win64.zip" -Encoding ascii
