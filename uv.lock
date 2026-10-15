@@ -1738,7 +1738,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.15" },
     { name = "pdfplumber", specifier = ">=0.11.0" },
     { name = "playwright", marker = "extra == 'dev'", specifier = "==1.63.0" },
-    { name = "policyengine-us", specifier = ">=2.21.0" },
+    { name = "policyengine-us", specifier = ">=2.38.19,<2.39" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0" },

@@ -113,3 +113,29 @@ def test_line_16_puts_line_21_through_the_tax_table() -> None:
     line, gap = line_16(regular, v["taxable_income"], preferential(v), 2025, "SINGLE")
     assert line == table_tax(34_250, 2025, "SINGLE") == 3_875
     assert gap == pytest.approx(3.50, abs=0.01)
+
+
+class _Stub:
+    """A system whose variable has the wrong shape; add_variable is a no-op."""
+
+    def __init__(self, variables: dict[str, Any]) -> None:
+        self.variables = variables
+
+    def add_variable(self, variable: Any) -> None:
+        pass
+
+
+@pytest.mark.parametrize("shape", ["no formula", "missing"])
+def test_a_reshaped_engine_variable_fails_with_a_readable_error(shape: str) -> None:
+    from types import SimpleNamespace
+
+    from planner.engine import tax
+
+    variables = (
+        {} if shape == "missing" else {"amt_income": SimpleNamespace(formulas={})}
+    )
+    with pytest.raises(tax.EngineShapeError) as raised:
+        tax._amt_iso(_Stub(variables))
+    message = str(raised.value)
+    assert "amt_income" in message and "formula" in message
+    assert "policyengine-us" in message and "re-port planner/engine/tax.py" in message

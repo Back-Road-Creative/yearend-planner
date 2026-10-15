@@ -187,6 +187,27 @@ SDTW_VARS = (
 )
 
 
+class EngineShapeError(RuntimeError):
+    """An engine variable the patches read is not shaped as they expect."""
+
+
+def _engine_formula_of(system: Any, name: str) -> Any:
+    """The engine's own formula for ``name``, looked up by period when called
+    (never by a dated key). Raises ``EngineShapeError`` naming the variable, the
+    shape expected and the installed policyengine-us when it has none."""
+    from importlib.metadata import version
+
+    variable = system.variables.get(name)
+    if variable is None or not getattr(variable, "formulas", None):
+        found = "is not defined" if variable is None else "has no formula"
+        raise EngineShapeError(
+            f"policyengine-us {version('policyengine-us')}: variable {name!r} "
+            f"{found}; the engine patches expect a variable with a formula to "
+            "wrap. The engine changed shape: re-port planner/engine/tax.py patches."
+        )
+    return variable.get_formula
+
+
 # Form 6251 line 2i (unit 3e-8): a tax unit input the engine does not define.
 ISO = "amt_iso_adjustment"
 SENIOR = "additional_senior_deduction"  # Schedule 1-A line 37
@@ -204,7 +225,7 @@ def _amt_iso(system: Any) -> None:
     both, which the engine's amt_separate_addition leaves out."""
     from policyengine_us.model_api import USD, YEAR, TaxUnit, Variable, max_, min_
 
-    engine_amt_income = system.variables["amt_income"]
+    engine_formula = _engine_formula_of(system, "amt_income")
     system.add_variable(
         type(
             ISO,
@@ -222,7 +243,7 @@ def _amt_iso(system: Any) -> None:
     def income(tax_unit: Any, period: Any, parameters: Any) -> Any:
         # The engine's line 1 through line 4 (it adds back the senior deduction
         # itself, from gov.irs.income.amt.deductions_add_back), plus line 2i.
-        engine = engine_amt_income.get_formula(period)
+        engine = engine_formula(period)
         return engine(tax_unit, period, parameters) + tax_unit(ISO, period)
 
     system.update_variable(type("amt_income", (Variable,), {"formula": income}))
