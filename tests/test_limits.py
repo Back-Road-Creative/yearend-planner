@@ -44,7 +44,7 @@ def _stale_ira_row(lay: Layout) -> None:
 
 @pytest.mark.engine
 def test_published_and_projected_values_are_told_apart() -> None:
-    # pinned to policyengine-us 2.38.19 (uv.lock): re-check on every engine update
+    # pinned to policyengine-us 2.40.1 (uv.lock): re-check on every engine update
     assert engine_value("std_deduction_single", 2026) == (16100.0, True)
     assert engine_value("std_deduction_single", 2027) == (16550.0, False)
     # the engine carries Notice 2025-67's 2026 IRA limit; 2027 is its projection
