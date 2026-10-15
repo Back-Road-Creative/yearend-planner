@@ -464,7 +464,7 @@ estimated-tax instructions and underpayment form:
 | PA | federal | 25% each | under 430 | 90%, or 100% of last year's |
 | IL | federal | 25% each | not over 1,000 | 90%, or 100% |
 | OH | federal | 25% each | not over 500 | 90%, or 100% |
-| GA | federal | 25% each | not over 0 (the 500-ES test is income, not applied) | 70%, or 100% |
+| GA | federal | 25% each | income not withheld (AGI less wages) beyond the standard deduction and $4,000 a dependent not over $1,000 (Form 500-ES) | 70%, or 100% |
 | NC | federal | 25% each | under 1,000 | 90%, or 100% (no 110% step) |
 | MI | federal | 25% each | not over 500 | 90%, or 100% / 110% over 150,000 |
 | NJ | federal | 25% each | not over 400 | 80%, or 100% |

@@ -324,7 +324,7 @@ state_estimated_tax_rules:
   status: partial
   evidence: implemented
   tests: ["tests/test_state_estimates.py", "tests/test_states.py::test_a_state_without_its_own_rules_is_estimated_on_federal_ones"]
-  note: "CA NY PA IL OH GA NC MI NJ VA on their own 2026 rules (dates, shares, de minimis, safe harbor); every other taxing state on the federal ones, marked Estimated; a state's AGI is the federal AGI; a full-year New York City or Yonkers resident's tax (local_income_tax nyc or yonkers) is added to NY's tax for the 300 test, the installments and the safe harbor; GA's income test, a part-year or nonresident NYC/Yonkers return, the Yonkers nonresident earnings tax and the MCTMT are not applied"
+  note: "CA NY PA IL OH GA NC MI NJ VA on their own 2026 rules (dates, shares, de minimis, safe harbor); every other taxing state on the federal ones, marked Estimated; a state's AGI is the federal AGI; GA's Form 500-ES income test applied (income not subject to withholding, the federal AGI less W-2 wages, beyond the standard deduction and $4,000 a dependent, not over $1,000: no installments); a full-year New York City or Yonkers resident's tax (local_income_tax nyc or yonkers) is added to NY's tax for the 300 test, the installments and the safe harbor; a part-year or nonresident NYC/Yonkers return, the Yonkers nonresident earnings tax and the MCTMT are not applied"
 underpayment_penalty:
   status: partial
   evidence: implemented
