@@ -2085,8 +2085,11 @@ how old the figures are. The plan still runs.
 ## Releases and the privacy audit (Phase 8c)
 
 To publish a release, set `__version__` in `planner/__init__.py`, then push a
-tag `vX.Y.Z` that matches it. `.github/workflows/release.yml` then runs these
-steps on a clean Windows runner:
+tag `vX.Y.Z` that matches it, on a commit already merged to main whose `ci`
+run passed. `.github/workflows/release.yml` first refuses any other tag
+(`scripts/release_gate.py`: a commit not on main, or no successful `ci` run for
+it, and the run stops with the reason), then runs these steps on a clean
+Windows runner:
 
 1. checks that the tag matches the version
 2. runs the suite
