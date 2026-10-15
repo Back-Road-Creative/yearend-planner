@@ -255,3 +255,31 @@ def test_invoke_defender_retries_then_fails_the_same_way() -> None:
         "Defender not ready (attempt 2 of 3): down",
         "failed down after 3",
     ]
+
+
+def test_proof_exports_a_taxpack_and_proves_backup_restore_undo() -> None:
+    """YE-E3: the packaged exe proves taxpack (step 4, files asserted) and the
+    backup -> restore -> undo round trip (a step after 7, before step 8's run
+    settles data-previous/). Each new step fails the script with a throw."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    net = _step(text, "== 4.", "== 5.")
+    assert "'taxpack', '--year', '2025'" in net
+    for name in (
+        "cover.txt", "draft.txt", "draft.html", "form-8949.csv", "schedule-c.txt",
+        "carryforward.csv", "basis.csv", "estimated-payments.csv", "forms.csv",
+        "coverage.csv", "originals.zip",
+    ):  # fmt: skip
+        assert name in net, name
+    assert "out\\tax-2025" in net and "Test-Path" in net
+    assert net.index("'taxpack'") < net.index("finally")
+    assert "throw" in net[net.index("'taxpack'") :]
+
+    rt = _step(text, "== 7b.", "== 8.")
+    assert text.index("== 7.") < text.index("== 7b.") < text.index("== 8.")
+    order = [rt.index(c) for c in ("'backup'", "'restore'", "'--undo'")]
+    assert order == sorted(order)
+    assert rt.index("'backup'") < rt.index("restore-marker") < rt.index("'restore',")
+    assert "--plain" in rt and "Get-Item" in rt and ".Length -le 0" in rt
+    assert "Get-FileHash" in rt and "data-previous" in rt
+    assert rt.count("throw") >= 6
+    assert "Write-Warning" not in rt and "Write-Warning" not in net

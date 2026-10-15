@@ -2146,6 +2146,17 @@ Unit 7f added these checks to the proof script:
   the way a power cut does, but it cannot lose a disk write that was already
   under way. Unit 7b's crash tests cover that case by cutting off at each write.
 
+- **Tax pack, backup, restore and undo.** With the network blocked (step 4),
+  the proof runs `taxpack --year 2025` on the unzipped release and fails unless
+  every file in `out\tax-2025` (cover, draft, Form 8949, Schedule C,
+  carryforward, basis, estimated payments, forms, coverage and the originals ZIP)
+  exists and is not empty. After the update and rollback (step 7b), it runs
+  `backup --plain`, changes `data\`, runs `restore` and checks the change is
+  gone, the backed-up files match byte for byte and the replaced data waits in
+  `data-previous\`. Then `restore --undo` must bring the changed data back and
+  remove `data-previous\`. This runs before step 8, whose run settles
+  `data-previous\`.
+
 The other steps already covered a standard (non-admin) user, a non-ASCII folder
 name (`C:\pröof dir\planner ✓`, then `moved après`), a moved folder and a
 blocked network.
