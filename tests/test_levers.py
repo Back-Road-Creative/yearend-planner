@@ -14,6 +14,7 @@ from planner.ledger import portfolio
 from planner.paths import Layout
 from planner.plan import conversion, levers, year
 from planner.plan.inputs import Overrides
+from tests.test_limits import _stale_ira_row
 from tests.test_spending import AS_OF, lay  # noqa: F401
 from tests.test_withdraw import lots  # noqa: F401
 
@@ -181,8 +182,11 @@ def test_cli_levers_whatif_thresholds(lots: Layout) -> None:  # noqa: F811
     r = runner.invoke(app, ["thresholds", "--year", "2026"])
     assert r.exit_code == 0, r.output
     assert "std_deduction_single" in r.output and "engine agrees" in r.output
-    # the engine's IRA limit lags Notice 2025-67; the config row wins for sizing
-    assert "ENGINE HAS 7,000" in r.output and "row(s) differ" in r.output
+    assert "row(s) differ" not in r.output
+    # a stale hand row is shown against the engine; the config row wins for sizing
+    _stale_ira_row(lots)
+    r = runner.invoke(app, ["thresholds", "--year", "2026"])
+    assert "ENGINE HAS 7,500" in r.output and "row(s) differ" in r.output
     assert runner.invoke(app, ["thresholds", "--year", "1990"]).exit_code == 1
 
 
