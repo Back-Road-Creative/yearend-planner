@@ -1056,7 +1056,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-us"
-version = "2.38.19"
+version = "2.40.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
@@ -1066,9 +1066,9 @@ dependencies = [
     { name = "tables" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/23/59/dd2c68950e913904e0d55033feef1f7e73aaebcf6e69e11df4f522a3c2b0/policyengine_us-2.38.19.tar.gz", hash = "sha256:eef1ef8529c869e6d34c67871ac2b85690e6be045a59b63c7034dee88e84c0ab", size = 13633496, upload-time = "2026-10-11T14:11:20.911Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/96/ac/7dee77e49110475631f1fdad4aa5bd77723dc6a540842a0fba95e2ba9522/policyengine_us-2.40.1.tar.gz", hash = "sha256:3efa9a52ad417d48f353a20b02a28181be952ece0564aca1f0bc68208a765dba", size = 13679954, upload-time = "2026-10-12T07:06:12.214Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f9/f6/85abf1406bc23742d0bf65b3fe740183da3b2a341aaa355f27333aa25f81/policyengine_us-2.38.19-py3-none-any.whl", hash = "sha256:1cb21f3c696fa024eeb1ddd00a7628b7b9163db25ccdf7a7620299ab47c2a9ff", size = 17165552, upload-time = "2026-10-11T14:11:17.293Z" },
+    { url = "https://files.pythonhosted.org/packages/42/83/213cc06e7de9b428ccd10bdded255222951f600a40c13e67c0719e287275/policyengine_us-2.40.1-py3-none-any.whl", hash = "sha256:863f36ce9c552696884ac43644804653c93b8c6d1143e9723449070d0d584c62", size = 17244774, upload-time = "2026-10-12T07:06:08.826Z" },
 ]
 
 [[package]]
@@ -1738,7 +1738,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.15" },
     { name = "pdfplumber", specifier = ">=0.11.0" },
     { name = "playwright", marker = "extra == 'dev'", specifier = "==1.63.0" },
-    { name = "policyengine-us", specifier = ">=2.38.19,<2.39" },
+    { name = "policyengine-us", specifier = ">=2.38.19,<2.41" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0" },
