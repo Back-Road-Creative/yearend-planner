@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from planner.ingest.needs import enter, needed
+from planner.ledger import db
 from planner.plan import inputs
 from planner.taxprep import draft, f8606
 from tests.test_pensions_qcd import _lay, _lines, _r
@@ -97,11 +98,24 @@ def test_basis_makes_part_of_the_distribution_tax_free(planner_home: Path) -> No
     assert form["10"] == 0.12 and form["12"] == 2400.0 and form["14"] == 9600.0
 
 
-def test_nondeductible_contribution_leaves_the_deduction(planner_home: Path) -> None:
+WAGES = [db.Fact("W-2", 2025, "Employer (synthetic)", "1", "", 10000.0, 1)]
+
+
+def test_no_deduction_without_compensation(planner_home: Path) -> None:
+    # IRC 219(b)(1)(B): the deduction is capped at compensation; an IRA
+    # distribution is not compensation
     lay = _lay(planner_home, [_r(IRA, 20000.0, 20000.0, "yes")], born="1962-03-10")
     enter(lay, 2025, "traditional_ira_contribution", "7000")
     enter(lay, 2025, "ira_basis", "none")
-    assert _lines(draft.build(lay, 2025), "11a") == {"11a": 13000.0}
+    assert _lines(draft.build(lay, 2025), "11a") == {"11a": 20000.0}
+
+
+def test_nondeductible_contribution_leaves_the_deduction(planner_home: Path) -> None:
+    docs = [_r(IRA, 20000.0, 20000.0, "yes"), WAGES]
+    lay = _lay(planner_home, docs, born="1962-03-10")
+    enter(lay, 2025, "traditional_ira_contribution", "7000")
+    enter(lay, 2025, "ira_basis", "none")
+    assert _lines(draft.build(lay, 2025), "11a") == {"11a": 23000.0}
     enter(lay, 2025, "ira_basis", "basis 0 nondeductible 7000 value 50000")
     inp = inputs.build(lay, 2025)
     assert inp.household.nondeductible_ira_contribution == 7000
@@ -109,7 +123,7 @@ def test_nondeductible_contribution_leaves_the_deduction(planner_home: Path) -> 
     # line 10 = 7,000 / (50,000 + 20,000) = 0.1; 18,000 taxable, no deduction
     assert _lines(draft.build(lay, 2025), "4b", "11a") == {
         "4b": 18000.0,
-        "11a": 18000.0,
+        "11a": 28000.0,
     }
 
 

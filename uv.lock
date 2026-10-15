@@ -458,8 +458,8 @@ name = "httpcore2"
 version = "2.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11", marker = "sys_platform != 'emscripten'" },
-    { name = "truststore", marker = "sys_platform != 'emscripten'" },
+    { name = "h11" },
+    { name = "truststore" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cb/f3/1db7aa2bc2524062192bb0e0323969492d1883152a232fe36eea65f4e35c/httpcore2-2.13.1.tar.gz", hash = "sha256:e0aa977abe17e69a3b820a24542a6fa88702676d83880b8d194dcd18408e5103", size = 68071, upload-time = "2026-09-23T07:47:22.372Z" }
 wheels = [
@@ -962,7 +962,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "ptyprocess" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
@@ -1056,7 +1056,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-us"
-version = "2.23.4"
+version = "2.38.19"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
@@ -1066,9 +1066,9 @@ dependencies = [
     { name = "tables" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0e/ac/baab7f357ac8c24cb8fac798515c81bb71324941cd395d0d9a1a764727af/policyengine_us-2.23.4.tar.gz", hash = "sha256:b821ed538e34a2462787a9cc36d04862c22546e50402fde49566167a6a9e5b4f", size = 12715527, upload-time = "2026-10-03T17:03:22.281Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/23/59/dd2c68950e913904e0d55033feef1f7e73aaebcf6e69e11df4f522a3c2b0/policyengine_us-2.38.19.tar.gz", hash = "sha256:eef1ef8529c869e6d34c67871ac2b85690e6be045a59b63c7034dee88e84c0ab", size = 13633496, upload-time = "2026-10-11T14:11:20.911Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/ed/1222a3a845090b414a28c3eb043f9da42f95c5d74fb3129688ce08739e08/policyengine_us-2.23.4-py3-none-any.whl", hash = "sha256:19cf6e430e8c397c9f2d61de829c4b4486426a227fad16185339a1c4480f20c4", size = 15776192, upload-time = "2026-10-03T17:03:19.306Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/f6/85abf1406bc23742d0bf65b3fe740183da3b2a341aaa355f27333aa25f81/policyengine_us-2.38.19-py3-none-any.whl", hash = "sha256:1cb21f3c696fa024eeb1ddd00a7628b7b9163db25ccdf7a7620299ab47c2a9ff", size = 17165552, upload-time = "2026-10-11T14:11:17.293Z" },
 ]
 
 [[package]]
@@ -1738,7 +1738,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.15" },
     { name = "pdfplumber", specifier = ">=0.11.0" },
     { name = "playwright", marker = "extra == 'dev'", specifier = "==1.63.0" },
-    { name = "policyengine-us", specifier = ">=2.21.0" },
+    { name = "policyengine-us", specifier = ">=2.38.19,<2.39" },
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0" },
